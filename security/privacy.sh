@@ -11,11 +11,12 @@ privacy_menu() {
 
         local choice
         choice=$(show_menu "Privacy & Security" \
-            "privacy.sexy - build custom batch" \
-            "privacy.sexy - run standard preset" \
-            "Set hostname (hide identity on network)" \
+            "privacy.sexy — custom batch" \
+            "privacy.sexy — standard preset" \
+            "---" \
+            "Set hostname" \
             "Disable Homebrew analytics" \
-            "Set encrypted DNS (Quad9)" \
+            "Encrypted DNS (Quad9)" \
             "Back")
 
         case "$choice" in

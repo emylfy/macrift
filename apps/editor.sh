@@ -7,7 +7,7 @@ editor_menu() {
         set_title "macrift > editor"
 
         local choice
-        choice=$(show_menu "Code Editor - copy settings.json" \
+        choice=$(show_menu "Code Editor" \
             "VSCode" \
             "Cursor" \
             "Windsurf" \

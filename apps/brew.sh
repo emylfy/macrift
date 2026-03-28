@@ -12,6 +12,7 @@ brew_menu() {
             "Utilities" \
             "Media" \
             "Communication" \
+            "---" \
             "Install ALL bundles" \
             "Import from .brewbak" \
             "Export to .brewbak" \
@@ -47,9 +48,10 @@ install_bundle() {
     local installed
     installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
 
-    # Parse Brewfile — split into new and already installed
+    # Parse Brewfile — split into new, broken, and already installed
     local new_lines=()
     local new_labels=()
+    local broken_casks=()
     local installed_count=0
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
@@ -64,6 +66,19 @@ install_bundle() {
             continue
         fi
         if echo "$installed" | grep -qxF "$name"; then
+            # For casks, verify the .app actually exists in /Applications
+            if [[ "$line" =~ ^cask ]]; then
+                # || true prevents set -e from triggering if find exits non-zero
+                app_path=$(find /opt/homebrew/Caskroom/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
+                if [[ -n "$app_path" ]]; then
+                    appname=$(basename "$app_path")
+                    if [[ ! -e "/Applications/$appname" ]]; then
+                        # Registered in brew but .app is missing — queue for silent reinstall
+                        broken_casks+=("$name")
+                        continue
+                    fi
+                fi
+            fi
             installed_count=$((installed_count + 1))
         else
             new_lines+=("$line")
@@ -71,9 +86,35 @@ install_bundle() {
         fi
     done < "$path"
 
-    # Show installed count
     if [[ $installed_count -gt 0 ]]; then
         log_ok "$installed_count already installed"
+    fi
+
+    # Handle missing apps separately — ask user once, then fix silently
+    if [[ ${#broken_casks[@]} -gt 0 ]]; then
+        printf "\n"
+        log_warn "${#broken_casks[@]} app(s) are missing from Applications"
+        for cask in "${broken_casks[@]}"; do
+            printf "  ${DIM}· %s${RESET}\n" "$cask"
+        done
+        printf "\n"
+        printf "  ${DIM}This will reinstall the apps listed above.${RESET}\n"
+        printf "\n"
+        if confirm "Fix them now?"; then
+            printf "\n"
+            for cask in "${broken_casks[@]}"; do
+                log_info "Reinstalling $cask..."
+                if brew reinstall --cask "$cask"; then
+                    log_ok "$cask reinstalled"
+                else
+                    log_warn "Failed to reinstall $cask"
+                fi
+                printf "\n"
+            done
+            printf "  ${DIM}press enter to continue${RESET} "
+            read -r < /dev/tty || true
+        fi
+        printf "\n"
     fi
 
     if [[ ${#new_labels[@]} -eq 0 ]]; then
@@ -83,7 +124,7 @@ install_bundle() {
         return 0
     fi
 
-    # Multiselect only new packages
+    # Multiselect for new packages only
     local selected
     selected=$(show_multiselect "$brewfile" "${new_labels[@]}")
 
@@ -92,7 +133,7 @@ install_bundle() {
         return 0
     fi
 
-    # Build temp Brewfile with selected packages only
+    # Build temp Brewfile with selected packages
     local tmp
     tmp=$(mktemp /tmp/macrift_brew_XXXXXX)
 
@@ -175,6 +216,20 @@ import_brewbak() {
             continue
         fi
         if echo "$installed" | grep -qxF "$name"; then
+            # For casks, verify the .app actually exists in /Applications
+            if [[ "$line" =~ ^cask ]]; then
+                # || true prevents set -e from triggering if find exits non-zero
+                app_path=$(find /opt/homebrew/Caskroom/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
+                if [[ -n "$app_path" ]]; then
+                    appname=$(basename "$app_path")
+                    if [[ ! -e "/Applications/$appname" ]]; then
+                        # Registered in brew but .app is missing — treat as broken
+                        new_lines+=("$line")
+                        new_labels+=("$label [broken]")
+                        continue
+                    fi
+                fi
+            fi
             installed_count=$((installed_count + 1))
         else
             new_lines+=("$line")

@@ -1,5 +1,24 @@
 # Changelog
 
+## 29.03
+
+### Features
+
+- **brew:** detect broken casks (registered in Homebrew but missing from `/Applications`) — prompt to reinstall silently
+- **customize:** split Terminal entry into separate Terminal / Shell / FastFetch items
+- **terminal:** iTerm2 now uses `defaults export/import` plist flow instead of a static `profile.json`
+- **terminal:** `fastfetch_menu` — dedicated menu with install + apply config options; supports `cat.txt` logo
+- **common:** `show_menu` supports `"---"` separator — renders as blank line, skipped in numbering
+- **security:** simplified privacy menu labels, added visual separator
+
+### Changes
+
+- `setup_shell` renamed to `shell_menu` (persistent loop); FastFetch moved to its own menu
+- `config/shell/fastfetch.jsonc` → `config/shell/config.jsonc`
+- `config/iterm2/profile.json` removed — replaced by plist-based export/import
+
+---
+
 ## 26.03
 
 Initial release.

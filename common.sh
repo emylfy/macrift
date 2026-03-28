@@ -43,10 +43,11 @@ show_menu() {
     local count=${#items[@]}
     local last_idx=$((count - 1))
 
-    # Calculate box width from longest item
+    # Calculate box width from longest item (skip separators)
     local max_len=0
     local i
     for ((i=0; i<count; i++)); do
+        [[ "${items[$i]}" == "---" ]] && continue
         if [[ ${#items[$i]} -gt $max_len ]]; then
             max_len=${#items[$i]}
         fi
@@ -68,9 +69,14 @@ show_menu() {
     printf "╮${RESET}\n" >&2
     # │ (empty)   │
     printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
-    # │  N › Item │  (items 1..N-1)
+    # │  N › Item │  (items 1..N-1, "---" renders as blank separator line)
+    local num=0
     for ((i=0; i<last_idx; i++)); do
-        local num=$((i + 1))
+        if [[ "${items[$i]}" == "---" ]]; then
+            printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+            continue
+        fi
+        num=$((num + 1))
         local vis=$((2 + 1 + 3 + ${#items[$i]}))
         local pad=$((inner_w - vis))
         printf "  ${BOLD}${PURPLE}│${RESET}  ${CYAN}%d${RESET} ${DIM}›${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "$num" "${items[$i]}" "$pad" "" >&2
