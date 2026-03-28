@@ -35,8 +35,7 @@ cleanup_menu() {
                         log_err "Failed to install Mole"
                     fi
                 fi
-                printf "\n  ${DIM}press enter to continue${RESET} "
-                read -r < /dev/tty
+                wait_enter
                 return
                 ;;
             r|R)
@@ -47,8 +46,7 @@ cleanup_menu() {
                 ;;
             *)
                 log_err "Invalid option — use Y, N, or R"
-                printf "  ${DIM}press enter to retry${RESET} "
-                read -r < /dev/tty
+                wait_retry
                 ;;
         esac
     done

@@ -1,5 +1,31 @@
 # Changelog
 
+## 29.03.3
+
+### New
+
+- **Games bundle** — Steam, Heroic Games Launcher, Modrinth (`config/Brewfile.games`)
+
+### Added packages
+
+- **Communication** — Vesktop (Vencord Discord)
+- **Development** — GitHub Desktop, Warp, FFmpeg, scrcpy
+- **Utilities** — 1Password, RustDesk, Todoist
+
+### Improved
+
+- **ShellCheck compliance** — all `printf` calls use `%b` format specifier, fixed SC2004/SC2181/SC2155 across 15 files
+- **common.sh** — reusable `wait_enter()`, `wait_retry()`, `prompt_path()` helpers replacing inline patterns
+- **brew.sh** — Games entry in menu, `brew_install()` uses direct `if` instead of `$?` check
+- **CI** — added SC2016/SC2024 to ShellCheck exclusions, `Brewfile.games` in existence check
+
+### Removed
+
+- Xcode from `Brewfile.appstore` (mas install unreliable for large apps)
+- Compatibility section from README (redundant)
+
+---
+
 ## 29.03.2
 
 ### New

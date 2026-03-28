@@ -43,11 +43,11 @@ WHITE='\033[0;37m'
 set_title() { printf "\033]0;%s\007" "$1"; }
 
 #
-log_info()  { printf "${CYAN}  [info]${RESET}  %s\n" "$1"; _log_file "[info] $1"; }
-log_ok()    { printf "${GREEN}  [  ok]${RESET}  %s\n" "$1"; _log_file "[  ok] $1"; }
-log_err()   { printf "${RED}  [ err]${RESET}  %s\n" "$1"; _log_file "[ err] $1"; }
-log_warn()  { printf "${YELLOW}  [warn]${RESET}  %s\n" "$1"; _log_file "[warn] $1"; }
-log_skip()  { printf "${DIM}  [skip]${RESET}  %s\n" "$1"; _log_file "[skip] $1"; }
+log_info()  { printf '%b  %s\n' "${CYAN}  [info]${RESET}" "$1"; _log_file "[info] $1"; }
+log_ok()    { printf '%b  %s\n' "${GREEN}  [  ok]${RESET}" "$1"; _log_file "[  ok] $1"; }
+log_err()   { printf '%b  %s\n' "${RED}  [ err]${RESET}" "$1"; _log_file "[ err] $1"; }
+log_warn()  { printf '%b  %s\n' "${YELLOW}  [warn]${RESET}" "$1"; _log_file "[warn] $1"; }
+log_skip()  { printf '%b  %s\n' "${DIM}  [skip]${RESET}" "$1"; _log_file "[skip] $1"; }
 
 # 
 divider() {
@@ -56,7 +56,7 @@ divider() {
     local pad=$(( (width - ${#label} - 2) / 2 ))
     local line=""
     for ((i=0; i<pad; i++)); do line+="─"; done
-    printf "\n${BOLD}${PURPLE}%s %s %s${RESET}\n\n" "$line" "$label" "$line"
+    printf '\n%b%s %s %s%b\n\n' "${BOLD}${PURPLE}" "$line" "$label" "$line" "${RESET}"
 }
 
 # 
@@ -86,37 +86,40 @@ show_menu() {
 
     local top_fill=$((inner_w - ${#title} - 3))
 
+    local BP="${BOLD}${PURPLE}"
+    local R="${RESET}"
+
     printf "\n" >&2
     # ╭─ Title ───╮
-    printf "  ${BOLD}${PURPLE}╭─ ${RESET}${BOLD}${WHITE}%s${RESET}${BOLD}${PURPLE} " "$title" >&2
+    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
     printf '─%.0s' $(seq 1 $top_fill) >&2
-    printf "╮${RESET}\n" >&2
+    printf '╮%b\n' "$R" >&2
     # │ (empty)   │
-    printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
     # │  N › Item │  (items 1..N-1, "---" renders as blank separator line)
     local num=0
     for ((i=0; i<last_idx; i++)); do
         if [[ "${items[$i]}" == "---" ]]; then
-            printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+            printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
             continue
         fi
         num=$((num + 1))
         local vis=$((2 + 1 + 3 + ${#items[$i]}))
         local pad=$((inner_w - vis))
-        printf "  ${BOLD}${PURPLE}│${RESET}  ${CYAN}%d${RESET} ${DIM}›${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "$num" "${items[$i]}" "$pad" "" >&2
+        printf '  %b│%b  %b%d%b %b›%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
     done
     # │ (empty)   │
-    printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
     # │  0 › Back │  (last item = 0)
     local vis=$((2 + 1 + 3 + ${#items[$last_idx]}))
     local pad=$((inner_w - vis))
-    printf "  ${BOLD}${PURPLE}│${RESET}  ${DIM}0 › %s${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "${items[$last_idx]}" "$pad" "" >&2
+    printf '  %b│%b  %b0 › %s%b%*s%b│%b\n' "$BP" "$R" "$DIM" "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
     # │ (empty)   │
-    printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
     # ╰───────────╯
-    printf "  ${BOLD}${PURPLE}╰" >&2
+    printf '  %b╰' "$BP" >&2
     printf '─%.0s' $(seq 1 $inner_w) >&2
-    printf "╯${RESET}\n" >&2
+    printf '╯%b\n' "$R" >&2
 
     printf "\n" >&2
     local key=""
@@ -160,20 +163,23 @@ show_info_box() {
 
     local top_fill=$((inner_w - ${#title} - 3))
 
+    local BP="${BOLD}${PURPLE}"
+    local R="${RESET}"
+
     printf "\n" >&2
-    printf "  ${BOLD}${PURPLE}╭─ ${RESET}${BOLD}${WHITE}%s${RESET}${BOLD}${PURPLE} " "$title" >&2
+    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
     printf '─%.0s' $(seq 1 $top_fill) >&2
-    printf "╮${RESET}\n" >&2
+    printf '╮%b\n' "$R" >&2
 
     for ((i=0; i<count; i++)); do
         local line="${lines[$i]}"
         local pad=$((inner_w - ${#line} - 2))
-        printf "  ${BOLD}${PURPLE}│${RESET}  %s%*s${BOLD}${PURPLE}│${RESET}\n" "$line" "$pad" "" >&2
+        printf '  %b│%b  %s%*s%b│%b\n' "$BP" "$R" "$line" "$pad" "" "$BP" "$R" >&2
     done
 
-    printf "  ${BOLD}${PURPLE}╰" >&2
+    printf '  %b╰' "$BP" >&2
     printf '─%.0s' $(seq 1 $inner_w) >&2
-    printf "╯${RESET}\n" >&2
+    printf '╯%b\n' "$R" >&2
 }
 
 # 
@@ -190,7 +196,7 @@ show_multiselect() {
     declare -a selected
     local i
     for ((i=0; i<count; i++)); do
-        selected[$i]="1"
+        selected[i]="1"
     done
 
     # Calculate box width: "  › [*] item  " = 8 + item_len + 2
@@ -221,49 +227,52 @@ show_multiselect() {
             printf "\033[%dA\033[J" "$redraw_lines" >&2
         fi
 
+        local BP="${BOLD}${PURPLE}"
+        local R="${RESET}"
+
         printf "\n" >&2
         # ╭─ Title ───╮
-        printf "  ${BOLD}${PURPLE}╭─ ${RESET}${BOLD}${WHITE}%s${RESET}${BOLD}${PURPLE} " "$title" >&2
+        printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
-        printf "╮${RESET}\n" >&2
+        printf '╮%b\n' "$R" >&2
         # │ (empty) │
-        printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
 
         # │ items │
         for ((i=0; i<count; i++)); do
             local pad=$((inner_w - 8 - ${#items[$i]}))
             if [[ $i -eq $cursor ]]; then
-                if [[ "${selected[$i]}" == "1" ]]; then
-                    printf "  ${BOLD}${PURPLE}│${RESET}  ${CYAN}›${RESET} ${GREEN}[*]${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "${items[$i]}" "$pad" "" >&2
+                if [[ "${selected[i]}" == "1" ]]; then
+                    printf '  %b│%b  %b›%b %b[*]%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 else
-                    printf "  ${BOLD}${PURPLE}│${RESET}  ${CYAN}›${RESET} ${DIM}[ ]${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "${items[$i]}" "$pad" "" >&2
+                    printf '  %b│%b  %b›%b %b[ ]%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 fi
             else
-                if [[ "${selected[$i]}" == "1" ]]; then
-                    printf "  ${BOLD}${PURPLE}│${RESET}    ${GREEN}[*]${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "${items[$i]}" "$pad" "" >&2
+                if [[ "${selected[i]}" == "1" ]]; then
+                    printf '  %b│%b    %b[*]%b %s%*s%b│%b\n' "$BP" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 else
-                    printf "  ${BOLD}${PURPLE}│${RESET}    ${DIM}[ ]${RESET} %s%*s${BOLD}${PURPLE}│${RESET}\n" "${items[$i]}" "$pad" "" >&2
+                    printf '  %b│%b    %b[ ]%b %s%*s%b│%b\n' "$BP" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 fi
             fi
         done
 
         # │ (empty) │
-        printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         # │ ‹ Back  │
         local back_pad=$((inner_w - 10))
         if [[ $cursor -eq $count ]]; then
-            printf "  ${BOLD}${PURPLE}│${RESET}  ${CYAN}›${RESET} ${DIM}‹ Back${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$back_pad" "" >&2
+            printf '  %b│%b  %b›%b %b‹ Back%b%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
         else
-            printf "  ${BOLD}${PURPLE}│${RESET}    ${DIM}‹ Back${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$back_pad" "" >&2
+            printf '  %b│%b    %b‹ Back%b%*s%b│%b\n' "$BP" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
         fi
         # │ (empty) │
-        printf "  ${BOLD}${PURPLE}│${RESET}%*s${BOLD}${PURPLE}│${RESET}\n" "$inner_w" "" >&2
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         # ╰─────────╯
-        printf "  ${BOLD}${PURPLE}╰" >&2
+        printf '  %b╰' "$BP" >&2
         printf '─%.0s' $(seq 1 $inner_w) >&2
-        printf "╯${RESET}\n" >&2
+        printf '╯%b\n' "$R" >&2
         # hint below box
-        printf "  ${DIM}↑↓ move  space toggle  a all  enter confirm${RESET}\n" >&2
+        printf '  %b↑↓ move  space toggle  a all  enter confirm%b\n' "$DIM" "$R" >&2
 
         # Read keypress
         IFS= read -rsn1 key < /dev/tty || true
@@ -285,10 +294,10 @@ show_multiselect() {
             fi
         elif [[ "$key" == ' ' ]]; then
             if [[ $cursor -lt $count ]]; then
-                if [[ "${selected[$cursor]}" == "1" ]]; then
-                    selected[$cursor]="0"
+                if [[ "${selected[cursor]}" == "1" ]]; then
+                    selected[cursor]="0"
                 else
-                    selected[$cursor]="1"
+                    selected[cursor]="1"
                 fi
             fi
         elif [[ "$key" == 'a' || "$key" == 'A' ]]; then
@@ -302,7 +311,7 @@ show_multiselect() {
             done
             local val="1"
             if $all_on; then val="0"; fi
-            for ((i=0; i<count; i++)); do selected[$i]="$val"; done
+            for ((i=0; i<count; i++)); do selected[i]="$val"; done
         elif [[ "$key" == '' ]]; then
             if [[ $cursor -eq $count ]]; then
                 printf "\033[?25h" >&2
@@ -317,21 +326,26 @@ show_multiselect() {
 
     # Output selected items to stdout
     for ((i=0; i<count; i++)); do
-        if [[ "${selected[$i]}" == "1" ]]; then
+        if [[ "${selected[i]}" == "1" ]]; then
             echo "${items[$i]}"
         fi
     done
 }
 
+# Reusable prompts
+wait_enter() { printf '\n  %bpress enter to continue%b ' "$DIM" "$RESET"; read -r < /dev/tty || true; }
+wait_retry()  { printf '  %bpress enter to retry%b ' "$DIM" "$RESET"; read -r < /dev/tty || true; }
+prompt_path() { printf '  %bpath:%b ' "$CYAN" "$RESET"; }
+
 #
 confirm() {
     local msg="${1:-Continue?}"
     if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
-        printf "  ${YELLOW}%s${RESET} ${DIM}[auto: y]${RESET}\n" "$msg"
+        printf '  %b%s%b %b[auto: y]%b\n' "$YELLOW" "$msg" "$RESET" "$DIM" "$RESET"
         _log_file "[auto] $msg → y"
         return 0
     fi
-    printf "  ${YELLOW}%s${RESET} ${DIM}[y/n]${RESET} " "$msg"
+    printf '  %b%s%b %b[y/n]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$RESET"
     read -r answer
     [[ "$answer" =~ ^[Yy]$ ]]
 }
@@ -339,7 +353,7 @@ confirm() {
 # 
 require_sudo() {
     if ! sudo -n true 2>/dev/null; then
-        printf "\n  ${YELLOW}Sudo access needed for system tweaks${RESET}\n"
+        printf '\n  %bSudo access needed for system tweaks%b\n' "$YELLOW" "$RESET"
         sudo -v
     fi
     # keep-alive: update existing sudo timestamp in background
@@ -391,21 +405,24 @@ brew_install() {
             return 0
         fi
         log_info "Installing $package..."
-        brew install --cask "$package"
+        if brew install --cask "$package"; then
+            log_ok "$package installed"
+        else
+            log_err "Failed to install $package"
+            return 1
+        fi
     else
         if brew list "$package" &>/dev/null; then
             log_skip "$package already installed"
             return 0
         fi
         log_info "Installing $package..."
-        brew install "$package"
-    fi
-
-    if [[ $? -eq 0 ]]; then
-        log_ok "$package installed"
-    else
-        log_err "Failed to install $package"
-        return 1
+        if brew install "$package"; then
+            log_ok "$package installed"
+        else
+            log_err "Failed to install $package"
+            return 1
+        fi
     fi
 }
 
@@ -456,24 +473,24 @@ show_audit_table() {
     fi
 
     printf "\n"
-    printf "  ${BOLD}── %s ${RESET}${DIM}" "$category"
+    printf '  %b── %s %b' "${BOLD}" "$category" "${RESET}${DIM}"
     printf '─%.0s' {1..35}
-    printf "${RESET}\n"
-    printf "  ${DIM}%-28s %-15s %-15s${RESET}\n" "Setting" "Current" "New"
-    printf "  ${DIM}%-28s %-15s %-15s${RESET}\n" "───────" "───────" "───"
+    printf '%b\n' "$RESET"
+    printf '  %b%-28s %-15s %-15s%b\n' "$DIM" "Setting" "Current" "New" "$RESET"
+    printf '  %b%-28s %-15s %-15s%b\n' "$DIM" "───────" "───────" "───" "$RESET"
 
     local has_changes=false
     for entry in "${AUDIT_ENTRIES[@]}"; do
         IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
         if [[ "$current" != "$new_val" ]]; then
-            printf "  %-28s ${RED}%-15s${RESET} ${GREEN}%-15s${RESET}\n" "$label" "$current" "$new_val"
+            printf '  %-28s %b%-15s%b %b%-15s%b\n' "$label" "$RED" "$current" "$RESET" "$GREEN" "$new_val" "$RESET"
             has_changes=true
         else
-            printf "  %-28s ${DIM}%-15s %-15s${RESET}\n" "$label" "$current" "(no change)"
+            printf '  %-28s %b%-15s %-15s%b\n' "$label" "$DIM" "$current" "(no change)" "$RESET"
         fi
     done
 
-    printf "  ${DIM}%s${RESET}\n" "$(printf '─%.0s' {1..58})"
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
 
     if ! $has_changes; then
         log_ok "Everything already set"

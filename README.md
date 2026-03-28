@@ -15,8 +15,7 @@
 <h6 align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="#features">Features</a> ·
-  <a href="#customize">Customize</a> ·
-  <a href="#compatibility">Compatibility</a>
+  <a href="#customize">Customize</a>
 </h6>
 
 ---
@@ -177,18 +176,6 @@ Curated wallpaper links opened from the menu:
 - [wallhaven.cc](https://wallhaven.cc)
 
 </details>
-
----
-
-<a id="compatibility"></a>
-
-## Compatibility
-
-| Requirement                                  | Details                      |
-| :------------------------------------------- | :--------------------------- |
-| macOS                                        | Any recent version           |
-| [Homebrew](https://brew.sh)                  | Auto-installed if missing    |
-| Git                                          | Via Xcode CLI tools          |
 
 ---
 

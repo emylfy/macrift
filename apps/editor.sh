@@ -37,8 +37,7 @@ apply_editor_config() {
     if [[ ! -f "$source" ]]; then
         log_warn "No settings.json found in config/vscode/"
         log_info "Add your settings.json there and re-run this"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -56,6 +55,5 @@ apply_editor_config() {
         copy_config "$source" "$target"
         log_ok "$editor_name settings applied"
     fi
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }

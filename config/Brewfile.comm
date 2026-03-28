@@ -2,5 +2,6 @@
 cask "ayugram"
 cask "telegram"
 cask "discord"
+cask "vesktop"
 cask "slack"
 cask "zoom"

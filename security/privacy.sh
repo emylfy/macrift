@@ -63,8 +63,7 @@ run_standard_preset() {
                     log_err "Failed to download preset"
                 fi
                 rm -f "$tmp"
-                printf "\n  ${DIM}press enter to continue${RESET} "
-                read -r < /dev/tty
+                wait_enter
                 return
                 ;;
             r|R)
@@ -72,8 +71,7 @@ run_standard_preset() {
                 ;;
             *)
                 log_err "Invalid option — use Y, N, or R"
-                printf "  ${DIM}press enter to retry${RESET} "
-                read -r < /dev/tty
+                wait_retry
                 ;;
         esac
     done
@@ -87,14 +85,13 @@ set_hostname() {
     current=$(scutil --get ComputerName 2>/dev/null || echo "unknown")
     log_info "Current hostname: $current"
 
-    printf "\n  ${DIM}Enter new hostname (e.g. MacBook):${RESET} "
+    printf '\n  %bEnter new hostname (e.g. MacBook):%b ' "$DIM" "$RESET"
     local name
     read -r name
 
     if [[ -z "$name" ]]; then
         log_info "Cancelled"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -105,8 +102,7 @@ set_hostname() {
     log_ok "Hostname set to: $name"
     log_info "Your Mac will no longer broadcast your real name on networks"
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }
 
 disable_brew_analytics() {
@@ -126,8 +122,7 @@ disable_brew_analytics() {
         fi
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }
 
 set_encrypted_dns() {
@@ -137,7 +132,7 @@ set_encrypted_dns() {
     local current
     current=$(networksetup -getdnsservers Wi-Fi 2>/dev/null || echo "unknown")
     log_info "Current DNS:"
-    printf "  ${DIM}%s${RESET}\n" "$current"
+    printf '  %b%s%b\n' "$DIM" "$current" "$RESET"
     printf "\n"
 
     log_info "Quad9 (9.9.9.9) blocks malware domains and supports DNSSEC"
@@ -148,6 +143,5 @@ set_encrypted_dns() {
         log_ok "DNS set to Quad9"
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }

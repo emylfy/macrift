@@ -76,8 +76,7 @@ install_appstore() {
 
     if [[ ${#new_labels[@]} -eq 0 ]]; then
         log_ok "Everything installed"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r < /dev/tty || true
+        wait_enter
         return 0
     fi
 
@@ -94,7 +93,7 @@ install_appstore() {
         log_info "Dry run — would install from App Store:"
         for ((i=0; i<${#new_labels[@]}; i++)); do
             if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
-                printf "  ${DIM}· %s (id: %s)${RESET}\n" "${new_labels[$i]}" "${new_ids[$i]}"
+                printf '  %b· %s (id: %s)%b\n' "$DIM" "${new_labels[$i]}" "${new_ids[$i]}" "$RESET"
             fi
         done
     else
@@ -110,8 +109,7 @@ install_appstore() {
         done
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }
 
 show_installed_apps() {
@@ -121,9 +119,8 @@ show_installed_apps() {
     _ensure_mas || return
 
     mas list 2>/dev/null | while IFS= read -r line; do
-        printf "  ${DIM}%s${RESET}\n" "$line"
+        printf '  %b%s%b\n' "$DIM" "$line" "$RESET"
     done
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }

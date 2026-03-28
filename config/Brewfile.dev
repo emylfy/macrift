@@ -22,7 +22,12 @@ brew "tree"
 
 cask "visual-studio-code"
 cask "cursor"
+cask "github"
+cask "warp"
 cask "docker-desktop"
 cask "ghostty"
 cask "iterm2"
 cask "docker"
+
+brew "ffmpeg"
+brew "scrcpy"

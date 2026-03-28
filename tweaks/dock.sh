@@ -79,6 +79,5 @@ hot_corners_tweaks() {
         log_ok "Hot corners applied"
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }

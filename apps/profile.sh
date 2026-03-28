@@ -24,10 +24,11 @@ export_profile() {
     clear
     divider "Export Profile"
 
-    local default_path="$HOME/Desktop/macrift-profile-$(date +%Y%m%d)"
-    printf "  ${DIM}Save directory (enter for default):${RESET}\n"
-    printf "  ${DIM}%s${RESET}\n" "$default_path"
-    printf "  ${CYAN}path:${RESET} "
+    local default_path
+    default_path="$HOME/Desktop/macrift-profile-$(date +%Y%m%d)"
+    printf '  %bSave directory (enter for default):%b\n' "$DIM" "$RESET"
+    printf '  %b%s%b\n' "$DIM" "$default_path" "$RESET"
+    prompt_path
     read -r profile_dir
     profile_dir="${profile_dir:-$default_path}"
     profile_dir="${profile_dir//\'/}"
@@ -115,16 +116,15 @@ export_profile() {
 
     printf "\n"
     log_ok "Profile exported: $exported items → $profile_dir"
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }
 
 import_profile() {
     clear
     divider "Import Profile"
 
-    printf "  ${DIM}Drag profile folder or type path${RESET}\n"
-    printf "  ${CYAN}path:${RESET} "
+    printf '  %bDrag profile folder or type path%b\n' "$DIM" "$RESET"
+    prompt_path
     read -r profile_dir
     profile_dir="${profile_dir//\'/}"
     profile_dir="${profile_dir//\"/}"
@@ -132,8 +132,7 @@ import_profile() {
 
     if [[ ! -d "$profile_dir" ]]; then
         log_err "Directory not found: $profile_dir"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -147,8 +146,7 @@ import_profile() {
 
     if [[ ${#available[@]} -eq 0 ]]; then
         log_err "No recognizable profile data found"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -247,6 +245,5 @@ import_profile() {
 
     printf "\n"
     log_ok "Profile import complete: $restored items restored"
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }

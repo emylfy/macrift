@@ -50,7 +50,7 @@ finder_tweaks() {
 
         # Unhide ~/Library (not a defaults command)
         chflags nohidden ~/Library 2>/dev/null || true
-        log_ok "~/Library unhidden"
+        log_ok "$HOME/Library unhidden"
 
         killall Finder 2>/dev/null || true
         log_ok "Finder restarted"

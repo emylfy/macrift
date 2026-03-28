@@ -11,15 +11,13 @@ restore_marketplace() {
 
     if ! command -v spicetify &>/dev/null; then
         log_err "Spicetify not installed — install it from Apps > Spotify first"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r < /dev/tty
+        wait_enter
         return
     fi
 
     if [[ ! -f "$MARKETPLACE_BACKUP" ]]; then
         log_err "Backup not found: config/spicetify/marketplace-settings.json"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r < /dev/tty
+        wait_enter
         return
     fi
 
@@ -80,8 +78,8 @@ JSTAIL
     log_ok "Applied — open Spotify to restore settings"
 
     printf "\n"
-    printf "  ${YELLOW}Open Spotify and wait for the notification,${RESET}\n"
-    printf "  ${YELLOW}then press Y to clean up the temp extension.${RESET}\n\n"
+    printf '  %bOpen Spotify and wait for the notification,%b\n' "$YELLOW" "$RESET"
+    printf '  %bthen press Y to clean up the temp extension.%b\n\n' "$YELLOW" "$RESET"
 
     if confirm "Done? Clean up now?"; then
         log_info "Removing restore extension..."
@@ -95,6 +93,5 @@ JSTAIL
         log_info "  rm $ext_file"
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty
+    wait_enter
 }

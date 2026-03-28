@@ -1,0 +1,4 @@
+# Games
+cask "steam"
+cask "heroic"
+cask "modrinth"

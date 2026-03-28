@@ -62,7 +62,7 @@ main_menu() {
             4) source "$MACRIFT_DIR/security/privacy.sh" && privacy_menu ;;
             5) source "$MACRIFT_DIR/cleanup/cleanup.sh" && cleanup_menu ;;
             6) source "$MACRIFT_DIR/apps/profile.sh" && profile_menu ;;
-            0) printf "\n  ${DIM}bye${RESET}\n\n"; exit 0 ;;
+            0) printf '\n  %bbye%b\n\n' "$DIM" "$RESET"; exit 0 ;;
             *) ;;
         esac
     done

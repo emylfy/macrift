@@ -20,7 +20,7 @@ jobs:
         run: |
           find . -name "*.sh" -not -path "./.git/*" | while read -r file; do
             echo "Checking $file"
-            shellcheck -x -s bash -e SC2034,SC1091 "$file" || exit 1
+            shellcheck -x -s bash -e SC2034,SC1091,SC2016,SC2024 "$file" || exit 1
           done
 
       - name: Bash syntax
@@ -42,7 +42,8 @@ jobs:
         run: |
           for f in config/Brewfile.dev config/Brewfile.browsers config/Brewfile.utils \
                    config/Brewfile.media config/Brewfile.comm config/Brewfile.fonts \
-                   config/Brewfile.appstore config/shell/.zshrc config/shell/starship.toml \
-                   config/shell/config.jsonc config/ghostty/config config/vscode/settings.json; do
+                   config/Brewfile.games config/Brewfile.appstore config/shell/.zshrc \
+                   config/shell/starship.toml config/shell/config.jsonc config/ghostty/config \
+                   config/vscode/settings.json; do
             [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
           done

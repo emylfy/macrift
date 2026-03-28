@@ -45,8 +45,7 @@ install_spotx() {
                 log_info "Running SpotX..."
                 bash <(curl -sSL "$SPOTX_URL") --installmac -f < /dev/tty
                 log_ok "SpotX applied"
-                printf "\n  ${DIM}press enter to continue${RESET} "
-                read -r < /dev/tty
+                wait_enter
                 return
                 ;;
             n|N)
@@ -57,8 +56,7 @@ install_spotx() {
                 ;;
             *)
                 log_err "Invalid option — use Y, N, or R"
-                printf "  ${DIM}press enter to retry${RESET} "
-                read -r < /dev/tty
+                wait_retry
                 ;;
         esac
     done

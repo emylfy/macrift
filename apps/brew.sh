@@ -13,6 +13,7 @@ brew_menu() {
             "Media" \
             "Communication" \
             "Fonts (Nerd Fonts)" \
+            "Games" \
             "---" \
             "Install ALL bundles" \
             "Backup (.brewbak)" \
@@ -25,8 +26,9 @@ brew_menu() {
             4) install_bundle "Brewfile.media" ;;
             5) install_bundle "Brewfile.comm" ;;
             6) install_bundle "Brewfile.fonts" ;;
-            7) install_all_bundles ;;
-            8) brewbak_menu ;;
+            7) install_bundle "Brewfile.games" ;;
+            8) install_all_bundles ;;
+            9) brewbak_menu ;;
             0) return ;;
             *) ;;
         esac
@@ -114,10 +116,10 @@ install_bundle() {
         printf "\n"
         log_warn "${#broken_casks[@]} app(s) are missing from Applications"
         for cask in "${broken_casks[@]}"; do
-            printf "  ${DIM}· %s${RESET}\n" "$cask"
+            printf '  %b· %s%b\n' "$DIM" "$cask" "$RESET"
         done
         printf "\n"
-        printf "  ${DIM}This will reinstall the apps listed above.${RESET}\n"
+        printf '  %bThis will reinstall the apps listed above.%b\n' "$DIM" "$RESET"
         printf "\n"
         if [[ "$MACRIFT_DRY_RUN" == true ]]; then
             log_info "Dry run — would reinstall broken casks"
@@ -132,8 +134,7 @@ install_bundle() {
                 fi
                 printf "\n"
             done
-            printf "  ${DIM}press enter to continue${RESET} "
-            read -r < /dev/tty || true
+            wait_enter
         fi
         printf "\n"
     fi
@@ -167,7 +168,7 @@ install_bundle() {
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install:"
         while IFS= read -r line; do
-            printf "  ${DIM}· %s${RESET}\n" "$line"
+            printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"
         rm -f "$tmp"
         return 0
@@ -200,8 +201,8 @@ import_brewbak() {
     clear
     divider "Import .brewbak"
 
-    printf "  ${DIM}Drag file into terminal or type path${RESET}\n"
-    printf "  ${CYAN}path:${RESET} "
+    printf '  %bDrag file into terminal or type path%b\n' "$DIM" "$RESET"
+    prompt_path
     read -r filepath
 
     # Strip quotes if dragged in
@@ -212,8 +213,7 @@ import_brewbak() {
 
     if [[ ! -f "$filepath" ]]; then
         log_err "File not found: $filepath"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -273,8 +273,7 @@ import_brewbak() {
 
     if [[ ${#new_labels[@]} -eq 0 ]]; then
         log_ok "Everything from backup is already installed"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r
+        wait_enter
         return
     fi
 
@@ -302,18 +301,18 @@ import_brewbak() {
         log_warn "Some packages failed to install"
     fi
     rm -f "$tmp"
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }
 
 export_brewbak() {
     clear
     divider "Export .brewbak"
 
-    local default_path="$HOME/Desktop/macrift-$(date +%Y%m%d).brewbak"
-    printf "  ${DIM}Save path (enter for default):${RESET}\n"
-    printf "  ${DIM}%s${RESET}\n" "$default_path"
-    printf "  ${CYAN}path:${RESET} "
+    local default_path
+    default_path="$HOME/Desktop/macrift-$(date +%Y%m%d).brewbak"
+    printf '  %bSave path (enter for default):%b\n' "$DIM" "$RESET"
+    printf '  %b%s%b\n' "$DIM" "$default_path" "$RESET"
+    prompt_path
     read -r filepath
 
     if [[ -z "$filepath" ]]; then
@@ -329,6 +328,5 @@ export_brewbak() {
     else
         log_err "Export failed"
     fi
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r
+    wait_enter
 }

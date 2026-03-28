@@ -81,8 +81,7 @@ setup_dock_apps() {
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would replace Dock with selected apps"
-        printf "\n  ${DIM}press enter to continue${RESET} "
-        read -r < /dev/tty || true
+        wait_enter
         return
     fi
 
@@ -108,8 +107,7 @@ setup_dock_apps() {
     killall Dock 2>/dev/null || true
     log_ok "Dock layout updated"
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }
 
 add_dock_spacer() {
@@ -123,8 +121,7 @@ add_dock_spacer() {
         log_ok "Spacer added to Dock"
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }
 
 reset_dock() {
@@ -137,6 +134,5 @@ reset_dock() {
         log_ok "Dock reset to defaults"
     fi
 
-    printf "\n  ${DIM}press enter to continue${RESET} "
-    read -r < /dev/tty || true
+    wait_enter
 }
