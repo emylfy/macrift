@@ -42,11 +42,12 @@ Installs to `~/.macrift`, creates a global `macrift` command, and launches autom
 
 |     | Feature                  | What it does                                                            |
 | :-- | :----------------------- | :---------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**        | Dock, Finder, input, misc — 20+ macOS defaults with audit preview       |
-| 📦  | **Apps & Packages**      | 5 Homebrew bundles, .brewbak export/import, SpotX, Spicetify            |
+| ⚙️  | **System Tweaks**        | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc        |
+| 📦  | **Apps & Packages**      | 7 Homebrew bundles, Mac App Store, Dock Layout, .brewbak backup         |
 | 🎨  | **Customize**            | Terminal, shell, code editor, Spicetify marketplace, wallpapers         |
 | 🛡️  | **Security & Privacy**   | privacy.sexy presets, hostname, encrypted DNS, analytics off            |
 | 🧹  | **Cleanup**              | System cleanup via Mole — caches, logs, leftovers                       |
+| 💾  | **Profile Backup**       | Full export/import — Brewfile, defaults, dotfiles, editors, iTerm2      |
 
 <br>
 
@@ -57,12 +58,15 @@ Installs to `~/.macrift`, creates a global `macrift` command, and launches autom
 
 Every tweak shows a diff table before applying. Choose individually or apply all at once.
 
-| Category  | What it does                                                                   |
-| :-------- | :----------------------------------------------------------------------------- |
-| Dock      | Instant autohide, minimize to app icon, hide recents, dim hidden apps          |
-| Finder    | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store |
-| Input     | Disable auto-correct and auto-capitalize                                       |
-| Misc      | Disable boot sound, speed up app open dialog                                   |
+| Category         | What it does                                                                   |
+| :--------------- | :----------------------------------------------------------------------------- |
+| Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
+| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store |
+| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
+| Trackpad & Mouse | Tap to click, tracking speed, right-click, drag windows anywhere               |
+| Screenshots      | Format, save location, shadow, date in filename                                |
+| Hot Corners      | Interactive corner action picker                                               |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations              |
 
 </details>
 
@@ -71,13 +75,17 @@ Every tweak shows a diff table before applying. Choose individually or apply all
 
 <br>
 
-**Homebrew Bundles** — multi-select installer with 5 curated Brewfiles:
+**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
 
 - **Development** — git, gh, lazygit, node, python, go, rust, neovim, fzf, ripgrep, bat, eza, fd...
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
 - **Utilities** — Raycast, Alfred, HiddenBar, Keka, AltTab, SoundSource...
 - **Media** — IINA, OBS, Spotify, Figma, ImageOptim
 - **Communication** — Ayugram, Telegram, Discord, Slack, Zoom
+- **Fonts** — Nerd Fonts (Fira Code, JetBrains Mono, Meslo, Cascadia Code, Hack, Maple Mono)
+- **App Store** — install Mac App Store apps via `mas`
+
+**Dock Layout** — set up dock apps, add spacers, reset to default via `dockutil`.
 
 Export/import your packages with `.brewbak` backup files.
 

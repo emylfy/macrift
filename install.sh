@@ -21,7 +21,7 @@ fi
 # Clone or update
 if [[ -d "$INSTALL_DIR" ]]; then
     echo "  Updating macrift..."
-    git -C "$INSTALL_DIR" pull --quiet
+    git -C "$INSTALL_DIR" pull --rebase --autostash --quiet
 else
     echo "  Cloning macrift..."
     git clone --quiet "$REPO" "$INSTALL_DIR"

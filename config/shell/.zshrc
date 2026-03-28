@@ -7,14 +7,16 @@ export PATH="$HOME/.local/bin:$PATH"
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null
 
 # ── Aliases ─────────────────────────────────────────────
-alias ls="eza --icons --group-directories-first"
-alias ll="eza -la --icons --group-directories-first"
-alias lt="eza --tree --level=2 --icons"
-alias cat="bat --style=auto"
-alias grep="rg"
-alias find="fd"
+if command -v eza &>/dev/null; then
+    alias ls="eza --icons --group-directories-first"
+    alias ll="eza -la --icons --group-directories-first"
+    alias lt="eza --tree --level=2 --icons"
+fi
+command -v bat &>/dev/null && alias cat="bat --style=auto"
+command -v rg &>/dev/null && alias grep="rg"
+command -v fd &>/dev/null && alias find="fd"
+command -v lazygit &>/dev/null && alias lg="lazygit"
 alias g="git"
-alias lg="lazygit"
 alias c="clear"
 alias ..="cd .."
 alias ...="cd ../.."

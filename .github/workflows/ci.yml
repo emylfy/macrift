@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint & Validate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: brew install shellcheck
+
+      - name: ShellCheck
+        run: |
+          find . -name "*.sh" -not -path "./.git/*" | while read -r file; do
+            echo "Checking $file"
+            shellcheck -x -s bash -e SC2034,SC1091 "$file" || exit 1
+          done
+
+      - name: Bash syntax
+        run: |
+          find . -name "*.sh" -not -path "./.git/*" | while read -r file; do
+            echo "Validating $file"
+            bash -n "$file" || exit 1
+          done
+
+      - name: Brewfile syntax
+        run: |
+          for bf in config/Brewfile.*; do
+            [ -f "$bf" ] || continue
+            echo "Validating $bf"
+            grep -vE '^\s*(#|$|brew |cask |tap |mas )' "$bf" && exit 1 || true
+          done
+
+      - name: Config files exist
+        run: |
+          for f in config/Brewfile.dev config/Brewfile.browsers config/Brewfile.utils \
+                   config/Brewfile.media config/Brewfile.comm config/Brewfile.fonts \
+                   config/Brewfile.appstore config/shell/.zshrc config/shell/starship.toml \
+                   config/shell/config.jsonc config/ghostty/config config/vscode/settings.json; do
+            [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
+          done

@@ -38,8 +38,12 @@ setup_iterm2() {
 
     case "$choice" in
         1)
-            defaults export com.googlecode.iterm2 "$config_plist"
-            log_ok "Settings exported to config/iterm2/iterm2.plist"
+            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                log_info "Dry run — would export iTerm2 settings"
+            else
+                defaults export com.googlecode.iterm2 "$config_plist"
+                log_ok "Settings exported to config/iterm2/iterm2.plist"
+            fi
             ;;
         2)
             if [[ ! -f "$config_plist" ]]; then
@@ -47,7 +51,9 @@ setup_iterm2() {
                 log_info "Run export first to save your current settings"
                 return
             fi
-            if confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
+            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                log_info "Dry run — would import iTerm2 settings"
+            elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
                 defaults import com.googlecode.iterm2 "$config_plist"
                 # Remove stale custom folder setting that causes startup errors
                 defaults delete com.googlecode.iterm2 PrefsCustomFolder 2>/dev/null || true
@@ -176,7 +182,10 @@ apply_fastfetch_config() {
         if [[ "$host_format" != "{name}" && -n "$host_format" ]]; then
             log_warn "Host is hardcoded to: $host_format"
             if confirm "Replace with dynamic {name}?"; then
-                sed -i '' "s|\"format\": \"$host_format\"|\"format\": \"{name}\"|" "$config_source"
+                # Escape regex metacharacters in the value before sed substitution
+                local escaped_format
+                escaped_format=$(printf '%s' "$host_format" | sed 's/[&/\.*^$[]/\\&/g')
+                sed -i '' "s|\"format\": \"${escaped_format}\"|\"format\": \"{name}\"|" "$config_source"
                 log_ok "Fixed — will now show actual model name"
             fi
         fi

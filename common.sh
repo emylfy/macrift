@@ -3,7 +3,31 @@
 
 set -euo pipefail
 
-# 
+#
+MACOS_VERSION=$(sw_vers -productVersion 2>/dev/null || echo "0")
+MACOS_MAJOR=$(echo "$MACOS_VERSION" | cut -d. -f1)
+ARCH=$(uname -m)
+
+#
+MACRIFT_DRY_RUN="${MACRIFT_DRY_RUN:-false}"
+MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
+MACRIFT_LOG="${MACRIFT_LOG:-}"
+
+#
+_macrift_cleanup() {
+    cleanup_sudo
+    rm -f /tmp/macrift_* 2>/dev/null || true
+    tput cnorm 2>/dev/null || true  # restore cursor
+}
+trap _macrift_cleanup EXIT INT TERM
+
+# Strip ANSI escape codes and append to log file
+_log_file() {
+    [[ -z "$MACRIFT_LOG" ]] && return
+    printf "%s  %s\n" "$(date '+%H:%M:%S')" "$1" >> "$MACRIFT_LOG"
+}
+
+#
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
@@ -18,12 +42,12 @@ WHITE='\033[0;37m'
 # 
 set_title() { printf "\033]0;%s\007" "$1"; }
 
-# 
-log_info()  { printf "${CYAN}  [info]${RESET}  %s\n" "$1"; }
-log_ok()    { printf "${GREEN}  [  ok]${RESET}  %s\n" "$1"; }
-log_err()   { printf "${RED}  [ err]${RESET}  %s\n" "$1"; }
-log_warn()  { printf "${YELLOW}  [warn]${RESET}  %s\n" "$1"; }
-log_skip()  { printf "${DIM}  [skip]${RESET}  %s\n" "$1"; }
+#
+log_info()  { printf "${CYAN}  [info]${RESET}  %s\n" "$1"; _log_file "[info] $1"; }
+log_ok()    { printf "${GREEN}  [  ok]${RESET}  %s\n" "$1"; _log_file "[  ok] $1"; }
+log_err()   { printf "${RED}  [ err]${RESET}  %s\n" "$1"; _log_file "[ err] $1"; }
+log_warn()  { printf "${YELLOW}  [warn]${RESET}  %s\n" "$1"; _log_file "[warn] $1"; }
+log_skip()  { printf "${DIM}  [skip]${RESET}  %s\n" "$1"; _log_file "[skip] $1"; }
 
 # 
 divider() {
@@ -299,9 +323,14 @@ show_multiselect() {
     done
 }
 
-# 
+#
 confirm() {
     local msg="${1:-Continue?}"
+    if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
+        printf "  ${YELLOW}%s${RESET} ${DIM}[auto: y]${RESET}\n" "$msg"
+        _log_file "[auto] $msg → y"
+        return 0
+    fi
     printf "  ${YELLOW}%s${RESET} ${DIM}[y/n]${RESET} " "$msg"
     read -r answer
     [[ "$answer" =~ ^[Yy]$ ]]
@@ -327,12 +356,22 @@ cleanup_sudo() {
 # 
 check_homebrew() {
     if ! command -v brew &>/dev/null; then
+        # Try to load brew from known paths before declaring missing
+        if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [[ -f /usr/local/bin/brew ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+    fi
+
+    if ! command -v brew &>/dev/null; then
         log_warn "Homebrew not found"
         if confirm "Install Homebrew?"; then
             /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            # add to path for current session
-            if [[ -f /opt/homebrew/bin/brew ]]; then
+            if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
                 eval "$(/opt/homebrew/bin/brew shellenv)"
+            elif [[ -f /usr/local/bin/brew ]]; then
+                eval "$(/usr/local/bin/brew shellenv)"
             fi
             log_ok "Homebrew installed"
         else
@@ -442,6 +481,13 @@ show_audit_table() {
         return 1
     fi
 
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf "\n"
+        log_info "Dry run — no changes applied"
+        audit_reset
+        return 1
+    fi
+
     if confirm "Apply these changes?"; then
         return 0
     else
@@ -485,6 +531,11 @@ backup_file() {
 copy_config() {
     local source="$1"
     local target="$2"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Would copy → $target"
+        return 0
+    fi
 
     local target_dir
     target_dir=$(dirname "$target")

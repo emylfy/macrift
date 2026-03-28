@@ -12,10 +12,10 @@ brew_menu() {
             "Utilities" \
             "Media" \
             "Communication" \
+            "Fonts (Nerd Fonts)" \
             "---" \
             "Install ALL bundles" \
-            "Import from .brewbak" \
-            "Export to .brewbak" \
+            "Backup (.brewbak)" \
             "Back")
 
         case "$choice" in
@@ -24,9 +24,28 @@ brew_menu() {
             3) install_bundle "Brewfile.utils" ;;
             4) install_bundle "Brewfile.media" ;;
             5) install_bundle "Brewfile.comm" ;;
-            6) install_all_bundles ;;
-            7) import_brewbak ;;
-            8) export_brewbak ;;
+            6) install_bundle "Brewfile.fonts" ;;
+            7) install_all_bundles ;;
+            8) brewbak_menu ;;
+            0) return ;;
+            *) ;;
+        esac
+    done
+}
+
+brewbak_menu() {
+    while true; do
+        clear
+        set_title "macrift > brew > backup"
+        local choice
+        choice=$(show_menu "Backup (.brewbak)" \
+            "Import from .brewbak" \
+            "Export to .brewbak" \
+            "Back")
+
+        case "$choice" in
+            1) import_brewbak ;;
+            2) export_brewbak ;;
             0) return ;;
             *) ;;
         esac
@@ -100,7 +119,9 @@ install_bundle() {
         printf "\n"
         printf "  ${DIM}This will reinstall the apps listed above.${RESET}\n"
         printf "\n"
-        if confirm "Fix them now?"; then
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Dry run — would reinstall broken casks"
+        elif confirm "Fix them now?"; then
             printf "\n"
             for cask in "${broken_casks[@]}"; do
                 log_info "Reinstalling $cask..."
@@ -142,6 +163,15 @@ install_bundle() {
             echo "${new_lines[$i]}" >> "$tmp"
         fi
     done
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install:"
+        while IFS= read -r line; do
+            printf "  ${DIM}· %s${RESET}\n" "$line"
+        done < "$tmp"
+        rm -f "$tmp"
+        return 0
+    fi
 
     log_info "Installing selected packages..."
     if brew bundle --file="$tmp"; then

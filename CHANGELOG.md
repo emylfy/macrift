@@ -1,5 +1,34 @@
 # Changelog
 
+## 29.03.2
+
+### New
+
+- **CLI flags** — `--dry-run`, `--no-confirm`, `--log` for non-destructive preview, unattended runs, and session logging
+- **Mac App Store** — install apps via `mas` with multiselect (`apps/appstore.sh`, `config/Brewfile.appstore`)
+- **Dock Layout** — set up dock apps, add spacers, reset to default via `dockutil` (`apps/dock_layout.sh`)
+- **Profile Backup** — full export/import of Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout (`apps/profile.sh`)
+- **Nerd Fonts** bundle — Fira Code, JetBrains Mono, Meslo, Cascadia Code, Hack, Maple Mono (`config/Brewfile.fonts`)
+- **Keyboard & Text** tweaks — key repeat speed, press-and-hold, auto-correct, smart substitutions (`tweaks/keyboard.sh`)
+- **Screenshots** tweaks — format, save location, shadow, date in filename (`tweaks/screenshots.sh`)
+- **Hot Corners** — interactive corner action picker with current values display
+- **GitHub Actions CI** — ShellCheck, bash syntax validation, Brewfile lint, config existence checks
+
+### Improved
+
+- **common.sh** — detect macOS version/arch, cleanup trap, file logging (`_log_file`), auto-confirm mode, smarter Homebrew detection (arm64 + x86), dry-run support in `show_audit_table` and `copy_config`
+- **brew.sh** — separate backup submenu (`brewbak_menu`), Fonts bundle, dry-run in `install_bundle` and broken cask fix
+- **terminal.sh** — dry-run for iTerm2 export/import, fix sed regex escaping in fastfetch host format
+- **macrift.sh** — flag parsing with `--help`, active flags in menu title, Profile Backup in main menu, cleanup moved to common trap
+- **tweaks_menu.sh** — added Keyboard & Text, Trackpad & Mouse, Screenshots, Hot Corners entries; "Apply ALL" includes new modules
+- **dock.sh** — autohide, tile size, animation speed, minimize effect, auto-rearrange Spaces, static-only mode
+- **input.sh** — renamed to "Trackpad & Mouse"; tap-to-click, tracking speed, right-click, drag-windows-anywhere
+- **misc.sh** — expand save/print panels, save-to-disk default, disable window animations, boot sound muting via `nvram`
+- **.zshrc** — aliases guarded with `command -v` checks so shell loads clean without optional tools
+- **install.sh** — `git pull --rebase --autostash` for safer updates
+
+---
+
 ## 29.03
 
 ### Features
