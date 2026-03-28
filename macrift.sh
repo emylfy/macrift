@@ -3,7 +3,9 @@
 
 set -euo pipefail
 
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+MACRIFT_ENTRY="${BASH_SOURCE[0]}"
+[[ -L "$MACRIFT_ENTRY" ]] && MACRIFT_ENTRY="$(readlink "$MACRIFT_ENTRY")"
+source "$(cd "$(dirname "$MACRIFT_ENTRY")" && pwd)/common.sh"
 
 # 
 main_menu() {
@@ -12,7 +14,7 @@ main_menu() {
         set_title "macrift"
 
         local choice
-        choice=$(show_menu "macrift v0.1" \
+        choice=$(show_menu "macrift 26.03" \
             "System Tweaks" \
             "Apps & Packages" \
             "Customize" \
