@@ -1,0 +1,5 @@
+# Browsers
+cask "google-chrome"
+cask "arc"
+cask "zen"
+cask "ungoogled-chromium"

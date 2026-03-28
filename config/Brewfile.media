@@ -1,0 +1,6 @@
+# Media
+cask "iina"
+cask "obs"
+cask "spotify"
+cask "figma"
+cask "imageoptim"

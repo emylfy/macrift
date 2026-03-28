@@ -1,0 +1,57 @@
+# macrift — Starship prompt config
+
+format = """
+$directory\
+$git_branch\
+$git_status\
+$nodejs\
+$python\
+$rust\
+$golang\
+$docker_context\
+$cmd_duration\
+$line_break\
+$character"""
+
+[directory]
+truncation_length = 3
+truncation_symbol = ".../"
+style = "bold cyan"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style = "bold purple"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "bold red"
+
+[nodejs]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[python]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[rust]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[golang]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[docker_context]
+format = "[$symbol$context]($style) "
+symbol = " "
+
+[cmd_duration]
+min_time = 2_000
+format = "[$duration]($style) "
+style = "bold yellow"
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"

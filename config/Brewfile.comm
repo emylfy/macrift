@@ -1,0 +1,6 @@
+# Communication
+cask "ayugram"
+cask "telegram"
+cask "discord"
+cask "slack"
+cask "zoom"

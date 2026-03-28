@@ -1,0 +1,9 @@
+# Utilities
+cask "raycast"
+cask "alfred"
+cask "hiddenbar"
+cask "keka"
+cask "motrix"
+cask "soundsource"
+cask "alt-tab"
+cask "proton-pass"

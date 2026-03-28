@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# macrift — Homebrew bundle installer
+
+brew_menu() {
+    while true; do
+        clear
+        set_title "macrift > brew"
+        local choice
+        choice=$(show_menu "Homebrew Bundles" \
+            "Development" \
+            "Browsers" \
+            "Utilities" \
+            "Media" \
+            "Communication" \
+            "Install ALL bundles" \
+            "Import from .brewbak" \
+            "Export to .brewbak" \
+            "Back")
+
+        case "$choice" in
+            1) install_bundle "Brewfile.dev" ;;
+            2) install_bundle "Brewfile.browsers" ;;
+            3) install_bundle "Brewfile.utils" ;;
+            4) install_bundle "Brewfile.media" ;;
+            5) install_bundle "Brewfile.comm" ;;
+            6) install_all_bundles ;;
+            7) import_brewbak ;;
+            8) export_brewbak ;;
+            0) return ;;
+            *) ;;
+        esac
+    done
+}
+
+install_bundle() {
+    local brewfile="$1"
+    local path="$MACRIFT_DIR/config/$brewfile"
+
+    if [[ ! -f "$path" ]]; then
+        log_err "Brewfile not found: $path"
+        return 1
+    fi
+
+    clear
+
+    # Get installed packages once
+    local installed
+    installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
+
+    # Parse Brewfile — split into new and already installed
+    local new_lines=()
+    local new_labels=()
+    local installed_count=0
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
+        local name="" label=""
+        if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
+            name="${BASH_REMATCH[1]}"
+            label="$name"
+        elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
+            name="${BASH_REMATCH[1]}"
+            label="$name (cask)"
+        else
+            continue
+        fi
+        if echo "$installed" | grep -qxF "$name"; then
+            installed_count=$((installed_count + 1))
+        else
+            new_lines+=("$line")
+            new_labels+=("$label")
+        fi
+    done < "$path"
+
+    # Show installed count
+    if [[ $installed_count -gt 0 ]]; then
+        log_ok "$installed_count already installed"
+    fi
+
+    if [[ ${#new_labels[@]} -eq 0 ]]; then
+        log_ok "Everything installed"
+        printf "\n"
+        confirm "Back" || true
+        return 0
+    fi
+
+    # Multiselect only new packages
+    local selected
+    selected=$(show_multiselect "$brewfile" "${new_labels[@]}")
+
+    if [[ -z "$selected" ]]; then
+        log_info "Nothing selected"
+        return 0
+    fi
+
+    # Build temp Brewfile with selected packages only
+    local tmp
+    tmp=$(mktemp /tmp/macrift_brew_XXXXXX)
+
+    for ((i=0; i<${#new_labels[@]}; i++)); do
+        if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
+            echo "${new_lines[$i]}" >> "$tmp"
+        fi
+    done
+
+    log_info "Installing selected packages..."
+    if brew bundle --file="$tmp"; then
+        log_ok "All packages installed"
+    else
+        log_warn "Some packages failed to install"
+    fi
+    rm -f "$tmp"
+}
+
+install_all_bundles() {
+    if ! confirm "Install all bundles? (select packages in each)"; then
+        return
+    fi
+
+    for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
+        if [[ -f "$brewfile" ]]; then
+            install_bundle "$(basename "$brewfile")"
+        fi
+    done
+
+    log_ok "All bundles done"
+}
+
+import_brewbak() {
+    clear
+    divider "Import .brewbak"
+
+    printf "  ${DIM}Drag file into terminal or type path${RESET}\n"
+    printf "  ${CYAN}path:${RESET} "
+    read -r filepath
+
+    # Strip quotes if dragged in
+    filepath="${filepath//\'/}"
+    filepath="${filepath//\"/}"
+    # Strip trailing whitespace
+    filepath="${filepath%% }"
+
+    if [[ ! -f "$filepath" ]]; then
+        log_err "File not found: $filepath"
+        printf "\n  ${DIM}press enter to continue${RESET} "
+        read -r
+        return
+    fi
+
+    clear
+
+    # Get installed packages
+    local installed
+    installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
+
+    # Parse brewbak — same format as Brewfile
+    local new_lines=()
+    local new_labels=()
+    local installed_count=0
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
+        local name="" label=""
+        if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
+            name="${BASH_REMATCH[1]}"
+            label="$name"
+        elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
+            name="${BASH_REMATCH[1]}"
+            label="$name (cask)"
+        elif [[ "$line" =~ ^tap[[:space:]]+\"([^\"]+)\" ]]; then
+            name="${BASH_REMATCH[1]}"
+            label="$name (tap)"
+            new_lines+=("$line")
+            new_labels+=("$label")
+            continue
+        else
+            continue
+        fi
+        if echo "$installed" | grep -qxF "$name"; then
+            installed_count=$((installed_count + 1))
+        else
+            new_lines+=("$line")
+            new_labels+=("$label")
+        fi
+    done < "$filepath"
+
+    if [[ $installed_count -gt 0 ]]; then
+        log_ok "$installed_count already installed"
+    fi
+
+    if [[ ${#new_labels[@]} -eq 0 ]]; then
+        log_ok "Everything from backup is already installed"
+        printf "\n  ${DIM}press enter to continue${RESET} "
+        read -r
+        return
+    fi
+
+    local selected
+    selected=$(show_multiselect "Import" "${new_labels[@]}")
+
+    if [[ -z "$selected" ]]; then
+        log_info "Nothing selected"
+        return
+    fi
+
+    local tmp
+    tmp=$(mktemp /tmp/macrift_import_XXXXXX)
+
+    for ((i=0; i<${#new_labels[@]}; i++)); do
+        if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
+            echo "${new_lines[$i]}" >> "$tmp"
+        fi
+    done
+
+    log_info "Installing selected packages..."
+    if brew bundle --file="$tmp"; then
+        log_ok "Import complete"
+    else
+        log_warn "Some packages failed to install"
+    fi
+    rm -f "$tmp"
+    printf "\n  ${DIM}press enter to continue${RESET} "
+    read -r
+}
+
+export_brewbak() {
+    clear
+    divider "Export .brewbak"
+
+    local default_path="$HOME/Desktop/macrift-$(date +%Y%m%d).brewbak"
+    printf "  ${DIM}Save path (enter for default):${RESET}\n"
+    printf "  ${DIM}%s${RESET}\n" "$default_path"
+    printf "  ${CYAN}path:${RESET} "
+    read -r filepath
+
+    if [[ -z "$filepath" ]]; then
+        filepath="$default_path"
+    fi
+    filepath="${filepath//\'/}"
+    filepath="${filepath//\"/}"
+    filepath="${filepath%% }"
+
+    log_info "Exporting..."
+    if brew bundle dump --file="$filepath" --force; then
+        log_ok "Exported to $filepath"
+    else
+        log_err "Export failed"
+    fi
+    printf "\n  ${DIM}press enter to continue${RESET} "
+    read -r
+}
