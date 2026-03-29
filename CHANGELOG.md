@@ -9,6 +9,7 @@
 - **DNS provider menu** — 11 providers: Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, Comodo, ControlD (Ads/Family/Uncensored), Hagezi Pro Plus
 - **Homebrew Cleanup** — dedicated option in Cleanup menu: `brew cleanup --prune=all && brew autoremove`, dry-run aware
 - **Ghostty Catppuccin themes** — Mocha and Latte auto-downloaded from `catppuccin/ghostty` on config apply
+- **Arrow key menu navigation** — Up/Down to move, Enter/Right to select, Left to go back; number keys still work
 
 ### Changed
 
@@ -16,10 +17,11 @@
 - **Menu cursor** hidden during display (`\033[?25l/h`) for cleaner rendering
 - **Menu number width** dynamic — aligns correctly for menus with 10+ items
 - **Audit table** — booleans normalized (1/0 → true/false); unset values shown as `default` (dim instead of red); cancel and no-change flows auto-`wait_enter`
-- **Hot Corners** — "Press enter to keep current" hint added; early return if nothing changed
+- **Hot Corners** — refactored to audit table pattern (current vs new); no longer restarts Dock unnecessarily
 - **`apply_all_tweaks`** — confirmation prompt removed; function moved before `tweaks_menu`
 - **Label renames** — "Terminal" → "Terminal Emulator", "Install macrift profile" → "Apply theme profile", "Both" → "Starship + .zshrc", "Apply config from macrift" → "Apply config"
 - **Spotify menu item** relabeled to "Spotify (SpotX + Spicetify)"
+- **Install command** — switched from process substitution to pipe (`curl | bash`) for fish shell compatibility
 
 ### Packages
 
@@ -32,6 +34,10 @@
 
 - Complete overhaul with annotated sections: Workbench, Explorer, Tabbar, Cursor, Editor, Fonts & Lines
 - Sidebar left; status bar hidden; single active tab; compact tabs; `Maple Mono` UI font; `Fira Code` 16px; `source.organizeImports` on save; tabs (not spaces)
+
+### Fixed
+
+- **Hot Corners** — fallback for unset corners changed from `"not set"` string to `0`, preventing `defaults write -int` errors
 
 ### Removed
 

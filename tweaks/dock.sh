@@ -40,10 +40,10 @@ hot_corners_tweaks() {
 
     local tl tr bl br
     local cur_tl cur_tr cur_bl cur_br
-    cur_tl=$(defaults read com.apple.dock wvous-tl-corner 2>/dev/null || echo "not set")
-    cur_tr=$(defaults read com.apple.dock wvous-tr-corner 2>/dev/null || echo "not set")
-    cur_bl=$(defaults read com.apple.dock wvous-bl-corner 2>/dev/null || echo "not set")
-    cur_br=$(defaults read com.apple.dock wvous-br-corner 2>/dev/null || echo "not set")
+    cur_tl=$(defaults read com.apple.dock wvous-tl-corner 2>/dev/null || echo "0")
+    cur_tr=$(defaults read com.apple.dock wvous-tr-corner 2>/dev/null || echo "0")
+    cur_bl=$(defaults read com.apple.dock wvous-bl-corner 2>/dev/null || echo "0")
+    cur_br=$(defaults read com.apple.dock wvous-br-corner 2>/dev/null || echo "0")
 
     printf '\n  %bCurrent: TL=%s  TR=%s  BL=%s  BR=%s%b\n' "$DIM" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br" "$RESET"
     printf '  %bPress enter to keep current value%b\n\n' "$DIM" "$RESET"
@@ -57,32 +57,23 @@ hot_corners_tweaks() {
     printf '  %bBottom-right%b [%s]: ' "$CYAN" "$RESET" "$cur_br"
     read -r br < /dev/tty
 
-    # Use current values if empty
     tl="${tl:-$cur_tl}"
     tr="${tr:-$cur_tr}"
     bl="${bl:-$cur_bl}"
     br="${br:-$cur_br}"
 
-    printf "\n"
-    if [[ "$tl" == "$cur_tl" && "$tr" == "$cur_tr" && "$bl" == "$cur_bl" && "$br" == "$cur_br" ]]; then
-        log_info "No changes"
-        wait_enter
-        return
-    fi
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would set TL=$tl TR=$tr BL=$bl BR=$br"
-    elif confirm "Apply corners: TL=$tl TR=$tr BL=$bl BR=$br?"; then
-        defaults write com.apple.dock wvous-tl-corner -int "$tl"
+    audit_reset
+    audit_default "com.apple.dock" "wvous-tl-corner" "-int" "$tl" "Top-left corner"
+    audit_default "com.apple.dock" "wvous-tr-corner" "-int" "$tr" "Top-right corner"
+    audit_default "com.apple.dock" "wvous-bl-corner" "-int" "$bl" "Bottom-left corner"
+    audit_default "com.apple.dock" "wvous-br-corner" "-int" "$br" "Bottom-right corner"
+
+    if show_audit_table "Hot Corners"; then
+        apply_audited_defaults
         defaults write com.apple.dock wvous-tl-modifier -int 0
-        defaults write com.apple.dock wvous-tr-corner -int "$tr"
         defaults write com.apple.dock wvous-tr-modifier -int 0
-        defaults write com.apple.dock wvous-bl-corner -int "$bl"
         defaults write com.apple.dock wvous-bl-modifier -int 0
-        defaults write com.apple.dock wvous-br-corner -int "$br"
         defaults write com.apple.dock wvous-br-modifier -int 0
-        killall Dock 2>/dev/null || true
         log_ok "Hot corners applied"
     fi
-
-    wait_enter
 }

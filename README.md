@@ -40,7 +40,7 @@ Fresh Mac → full setup in minutes.
 ## Quick Start
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh | bash
 ```
 
 Installs to `~/.macrift`, creates a global `macrift` command, and launches automatically.

@@ -56,85 +56,110 @@ show_menu() {
     local count=${#items[@]}
     local last_idx=$((count - 1))
 
-    # Calculate box width from longest item (skip separators)
-    local max_len=0
-    local i
-    for ((i=0; i<count; i++)); do
-        [[ "${items[$i]}" == "---" ]] && continue
-        if [[ ${#items[$i]} -gt $max_len ]]; then
-            max_len=${#items[$i]}
-        fi
-    done
-
-    # Count real items (skip separators) to get max number width
-    local real_count=0
+    # Build selectable items: sel_nums[i]=choice number, sel_labels[i]=label
+    local sel_nums=() sel_labels=()
+    local i num=0
     for ((i=0; i<last_idx; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
-        real_count=$((real_count + 1))
+        num=$((num + 1))
+        sel_nums+=("$num")
+        sel_labels+=("${items[$i]}")
     done
+    sel_nums+=(0)
+    sel_labels+=("${items[$last_idx]}")
+    local sel_total=${#sel_nums[@]}
+
+    # Box dimensions
+    local max_len=0
+    for ((i=0; i<count; i++)); do
+        [[ "${items[$i]}" == "---" ]] && continue
+        [[ ${#items[$i]} -gt $max_len ]] && max_len=${#items[$i]}
+    done
+    local real_count=$num
     local num_w=${#real_count}
-    # inner = "  " + num + " › " + item + "  "
     local inner_w=$((2 + num_w + 3 + max_len + 2))
     local title_min=$((${#title} + 5))
-    if [[ $title_min -gt $inner_w ]]; then
-        inner_w=$title_min
-    fi
-
+    [[ $title_min -gt $inner_w ]] && inner_w=$title_min
     local top_fill=$((inner_w - ${#title} - 3))
 
-    local BP="${BOLD}${GRAY}"
-    local R="${RESET}"
+    local BP="${BOLD}${GRAY}" R="${RESET}"
+    local total_lines=$((last_idx + 8))
+    local sel=0 first_draw=true
 
     printf "\033[?25l" >&2
 
-    printf "\n" >&2
-    # ╭─ Title ───╮
-    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
-    printf '─%.0s' $(seq 1 $top_fill) >&2
-    printf '╮%b\n' "$R" >&2
-    # │ (empty)   │
-    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-    # │  N › Item │  (items 1..N-1, "---" renders as blank separator line)
-    local num=0
-    for ((i=0; i<last_idx; i++)); do
-        if [[ "${items[$i]}" == "---" ]]; then
-            printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-            continue
+    while true; do
+        if $first_draw; then
+            first_draw=false
+        else
+            printf "\033[%dA\r" "$total_lines" >&2
         fi
-        num=$((num + 1))
-        local vis=$((2 + num_w + 3 + ${#items[$i]}))
+
+        printf "\n" >&2
+        printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
+        printf '─%.0s' $(seq 1 $top_fill) >&2
+        printf '╮%b\n' "$R" >&2
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+
+        local num=0 sel_idx=0
+        for ((i=0; i<last_idx; i++)); do
+            if [[ "${items[$i]}" == "---" ]]; then
+                printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                continue
+            fi
+            num=$((num + 1))
+            local vis=$((2 + num_w + 3 + ${#items[$i]}))
+            local pad=$((inner_w - vis))
+            if [[ $sel_idx -eq $sel ]]; then
+                printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
+                    "$BP" "$R" "${BOLD}${ICE}" "$num_w" "$num" "${items[$i]}" "$R" "$pad" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b  %b%*d%b %b›%b %s%*s%b│%b\n' \
+                    "$BP" "$R" "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+            fi
+            ((sel_idx++))
+        done
+
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        local vis=$((2 + num_w + 3 + ${#items[$last_idx]}))
         local pad=$((inner_w - vis))
-        printf '  %b│%b  %b%*d%b %b›%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
-    done
-    # │ (empty)   │
-    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-    # │  0 › Back │  (last item = 0)
-    local vis=$((2 + num_w + 3 + ${#items[$last_idx]}))
-    local pad=$((inner_w - vis))
-    printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' "$BP" "$R" "$DIM" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
-    # │ (empty)   │
-    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-    # ╰───────────╯
-    printf '  %b╰' "$BP" >&2
-    printf '─%.0s' $(seq 1 $inner_w) >&2
-    printf '╯%b\n' "$R" >&2
-
-    printf "\n" >&2
-    local key=""
-    IFS= read -rsn1 key < /dev/tty || true
-
-    if [[ "$key" == $'\x1b' ]]; then
-        local seq=""
-        read -rsn2 -t 1 seq < /dev/tty || true
-        if [[ "$seq" == '[D' ]]; then
-            printf "‹\n" >&2
-            echo "0"
+        if [[ $sel_idx -eq $sel ]]; then
+            printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
+                "$BP" "$R" "${BOLD}${ICE}" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+        else
+            printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
+                "$BP" "$R" "$DIM" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
         fi
-    elif [[ -n "$key" ]]; then
-        printf "%s\n" "$key" >&2
-        echo "$key"
-    fi
-    printf "\033[?25h" >&2
+
+        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        printf '  %b╰' "$BP" >&2
+        printf '─%.0s' $(seq 1 $inner_w) >&2
+        printf '╯%b\n' "$R" >&2
+        printf "\n" >&2
+
+        local key=""
+        IFS= read -rsn1 key < /dev/tty || true
+
+        if [[ "$key" == $'\x1b' ]]; then
+            local ansi=""
+            read -rsn2 -t 1 ansi < /dev/tty || true
+            case "$ansi" in
+                '[A') ((sel > 0)) && ((sel--)) ;;
+                '[B') ((sel < sel_total - 1)) && ((sel++)) ;;
+                '[C'|'[M') printf "\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
+                '[D') printf "‹\n" >&2; printf "\033[?25h" >&2; echo "0"; return ;;
+            esac
+        elif [[ "$key" == "" ]]; then
+            printf "\033[?25h" >&2
+            echo "${sel_nums[$sel]}"
+            return
+        elif [[ "$key" =~ ^[0-9]$ ]]; then
+            printf "%s\n" "$key" >&2
+            printf "\033[?25h" >&2
+            echo "$key"
+            return
+        fi
+    done
 }
 
 # 
