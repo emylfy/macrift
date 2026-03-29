@@ -45,16 +45,16 @@ hot_corners_tweaks() {
     cur_bl=$(defaults read com.apple.dock wvous-bl-corner 2>/dev/null || echo "not set")
     cur_br=$(defaults read com.apple.dock wvous-br-corner 2>/dev/null || echo "not set")
 
-    printf "\n  ${DIM}Current: TL=%s  TR=%s  BL=%s  BR=%s${RESET}\n" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br"
-    printf "  ${DIM}Press enter to keep current value${RESET}\n\n"
+    printf '\n  %bCurrent: TL=%s  TR=%s  BL=%s  BR=%s%b\n' "$DIM" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br" "$RESET"
+    printf '  %bPress enter to keep current value%b\n\n' "$DIM" "$RESET"
 
-    printf "  ${CYAN}Top-left${RESET} [%s]: " "$cur_tl"
+    printf '  %bTop-left%b [%s]: ' "$CYAN" "$RESET" "$cur_tl"
     read -r tl < /dev/tty
-    printf "  ${CYAN}Top-right${RESET} [%s]: " "$cur_tr"
+    printf '  %bTop-right%b [%s]: ' "$CYAN" "$RESET" "$cur_tr"
     read -r tr < /dev/tty
-    printf "  ${CYAN}Bottom-left${RESET} [%s]: " "$cur_bl"
+    printf '  %bBottom-left%b [%s]: ' "$CYAN" "$RESET" "$cur_bl"
     read -r bl < /dev/tty
-    printf "  ${CYAN}Bottom-right${RESET} [%s]: " "$cur_br"
+    printf '  %bBottom-right%b [%s]: ' "$CYAN" "$RESET" "$cur_br"
     read -r br < /dev/tty
 
     # Use current values if empty
