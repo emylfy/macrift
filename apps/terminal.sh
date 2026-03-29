@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # macrift — Terminal setup (iTerm2 / Ghostty / Shell)
 
+ITERM2_DOMAIN="com.googlecode.iterm2"
+
 terminal_menu() {
     while true; do
         clear
@@ -21,31 +23,35 @@ terminal_menu() {
 }
 
 setup_iterm2() {
-    divider "iTerm2"
-
     if ! brew_install "iterm2" "cask"; then return; fi
 
     local config_dir="$MACRIFT_DIR/config/iterm2"
     local config_plist="$config_dir/iterm2.plist"
+    local dyn_profiles_dir="$HOME/Library/Application Support/iTerm2/DynamicProfiles"
 
     mkdir -p "$config_dir"
 
     local choice
     choice=$(show_menu "iTerm2" \
-        "Export current settings to macrift config" \
-        "Import settings from macrift config" \
+        "Install macrift profile" \
+        "Apply iTerm2 defaults" \
+        "---" \
+        "Export current settings to plist" \
+        "Import settings from plist" \
         "Back")
 
     case "$choice" in
-        1)
+        1) _iterm2_install_profile "$config_dir" "$dyn_profiles_dir" ;;
+        2) _iterm2_system_tweaks ;;
+        3)
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                 log_info "Dry run — would export iTerm2 settings"
             else
-                defaults export com.googlecode.iterm2 "$config_plist"
+                defaults export "$domain" "$config_plist"
                 log_ok "Settings exported to config/iterm2/iterm2.plist"
             fi
             ;;
-        2)
+        4)
             if [[ ! -f "$config_plist" ]]; then
                 log_err "No settings found in config/iterm2/iterm2.plist"
                 log_info "Run export first to save your current settings"
@@ -54,15 +60,126 @@ setup_iterm2() {
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                 log_info "Dry run — would import iTerm2 settings"
             elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
-                defaults import com.googlecode.iterm2 "$config_plist"
-                # Remove stale custom folder setting that causes startup errors
-                defaults delete com.googlecode.iterm2 PrefsCustomFolder 2>/dev/null || true
-                defaults delete com.googlecode.iterm2 LoadPrefsFromCustomFolder 2>/dev/null || true
+                defaults import "$domain" "$config_plist"
+                defaults delete "$domain" PrefsCustomFolder 2>/dev/null || true
+                defaults delete "$domain" LoadPrefsFromCustomFolder 2>/dev/null || true
                 log_ok "Settings imported — restart iTerm2 to apply"
             fi
             ;;
         0) return ;;
     esac
+}
+
+_iterm2_install_profile() {
+    local config_dir="$1"
+    local dyn_dir="$2"
+
+    # Discover available profile JSONs
+    local profiles=()
+    local descriptions=()
+    for f in "$config_dir"/*.json; do
+        [[ -f "$f" ]] || continue
+        local name
+        name=$(grep -m1 '"Name"' "$f" | sed 's/.*"Name"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/' || basename "$f" .json)
+        profiles+=("$f")
+        descriptions+=("$name")
+    done
+
+    if [[ ${#profiles[@]} -eq 0 ]]; then
+        log_err "No profile JSONs found in config/iterm2/"
+        return
+    fi
+
+    local choice
+    choice=$(show_menu "Choose Profile" "${descriptions[@]}" "Back")
+
+    if [[ "$choice" == "0" || -z "$choice" ]]; then return; fi
+
+    local idx=$((choice - 1))
+    local selected="${profiles[$idx]}"
+    local selected_name="${descriptions[$idx]}"
+
+    # Install font if missing
+    if ! fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font" && \
+       ! ls "$HOME/Library/Fonts"/JetBrainsMonoNerdFont* &>/dev/null && \
+       ! ls "/Library/Fonts"/JetBrainsMonoNerdFont* &>/dev/null; then
+        log_info "JetBrainsMono Nerd Font not found"
+        if confirm "Install font-jetbrains-mono-nerd-font via Homebrew?"; then
+            brew_install "font-jetbrains-mono-nerd-font" "cask"
+        else
+            log_warn "Profile may fall back to Menlo without the Nerd Font"
+        fi
+    fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install '$selected_name' to DynamicProfiles"
+        return
+    fi
+
+    mkdir -p "$dyn_dir"
+    cp "$selected" "$dyn_dir/macrift-$(basename "$selected")"
+    log_ok "'$selected_name' installed as Dynamic Profile"
+    log_info "Restart iTerm2 to apply"
+
+    # Set as default — iTerm2 overwrites defaults on quit,
+    # so a background process writes the GUID after iTerm2 exits
+    local guid
+    guid=$(grep -m1 '"Guid"' "$selected" | sed 's/.*"Guid"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
+    if [[ -n "$guid" ]]; then
+        defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
+        # Persist after iTerm2 quits (it overwrites defaults on exit)
+        (while pgrep -q "iTerm2"; do sleep 2; done
+         sleep 1
+         defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
+        ) &>/dev/null &
+        disown
+        log_ok "'$selected_name' set as default — restart iTerm2 to apply"
+    fi
+}
+
+_iterm2_system_tweaks() {
+    divider "iTerm2 Defaults"
+
+    log_info "This applies recommended system-level iTerm2 preferences:"
+    echo "  - Minimal UI chrome (no per-tab close, compact tabs)"
+    echo "  - GPU renderer enabled"
+    echo "  - Scroll wheel sends arrow keys in alternate screen"
+    echo "  - Quit prompt disabled (sessions auto-close)"
+    echo "  - Focus follows mouse"
+    echo ""
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply system tweaks"
+        return
+    fi
+
+    if ! confirm "Apply iTerm2 system tweaks?"; then return; fi
+
+    local domain="$ITERM2_DOMAIN"
+
+    # Appearance
+    defaults write "$domain" TabStyleWithAutomaticOption -int 5
+    defaults write "$domain" HideTab -bool false
+    defaults write "$domain" ShowFullScreenTabBar -bool false
+    defaults write "$domain" HideScrollbar -bool true
+    defaults write "$domain" HideMenuBarInFullscreen -bool true
+
+    # Performance
+    defaults write "$domain" GPURendering -bool true
+    defaults write "$domain" DisableWindowSizeSnap -bool true
+
+    # Behavior
+    defaults write "$domain" FocusFollowsMouse -bool true
+    defaults write "$domain" QuitWhenAllWindowsClosed -bool false
+    defaults write "$domain" PromptOnQuit -bool false
+    defaults write "$domain" OnlyWhenMoreTabs -bool false
+    defaults write "$domain" AlternateMouseScroll -bool true
+
+    # Window
+    defaults write "$domain" UseBorder -bool false
+    defaults write "$domain" HideFromDockAndAppSwitcher -bool false
+
+    log_ok "System tweaks applied — restart iTerm2"
 }
 
 setup_ghostty() {

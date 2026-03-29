@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 # macrift — macOS system customization tool
 #
 # Usage: macrift [--dry-run] [--no-confirm] [--log]
@@ -37,13 +38,18 @@ main_menu() {
         clear
         set_title "macrift"
 
-        # Show active flags in title
-        local title="macrift 26.03"
+        # Build title with version, update hint, and flags
+        local title="macrift $MACRIFT_VERSION"
+        [[ -n "$MACRIFT_UPDATE" ]] && title+=" → $MACRIFT_UPDATE"
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
         [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"
         [[ -n "$MACRIFT_LOG" ]] && flags+=" [log]"
         [[ -n "$flags" ]] && title+="$flags"
+
+        # Update menu label
+        local update_label="Update"
+        [[ -n "$MACRIFT_UPDATE" ]] && update_label="Update → $MACRIFT_UPDATE"
 
         local choice
         choice=$(show_menu "$title" \
@@ -52,24 +58,45 @@ main_menu() {
             "Customize" \
             "Security & Privacy" \
             "Cleanup" \
-            "Profile Backup" \
+            "---" \
+            "$update_label" \
             "Exit")
 
         case "$choice" in
             1) source "$MACRIFT_DIR/tweaks/tweaks_menu.sh" && tweaks_menu ;;
-            2) source "$MACRIFT_DIR/apps/apps_menu.sh" && apps_menu ;;
-            3) source "$MACRIFT_DIR/apps/customize_menu.sh" && customize_menu ;;
+            2)
+                if check_homebrew; then
+                    source "$MACRIFT_DIR/apps/apps_menu.sh" && apps_menu
+                else
+                    wait_enter
+                fi
+                ;;
+            3)
+                if check_homebrew; then
+                    source "$MACRIFT_DIR/apps/customize_menu.sh" && customize_menu
+                else
+                    wait_enter
+                fi
+                ;;
             4) source "$MACRIFT_DIR/security/privacy.sh" && privacy_menu ;;
             5) source "$MACRIFT_DIR/cleanup/cleanup.sh" && cleanup_menu ;;
-            6) source "$MACRIFT_DIR/apps/profile.sh" && profile_menu ;;
+            6)
+                if macrift_update; then
+                    log_info "Restarting..."
+                    sleep 1
+                    exec "$MACRIFT_DIR/macrift.sh"
+                else
+                    wait_enter
+                fi
+                ;;
             0) printf '\n  %bbye%b\n\n' "$DIM" "$RESET"; exit 0 ;;
             *) ;;
         esac
     done
 }
 
-# 
+#
 check_macos
-check_homebrew
+check_update
 
 main_menu

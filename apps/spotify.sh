@@ -43,7 +43,7 @@ install_spotx() {
         case "$choice" in
             y|Y)
                 log_info "Running SpotX..."
-                bash <(curl -sSL "$SPOTX_URL") --installmac -f < /dev/tty
+                bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty
                 log_ok "SpotX applied"
                 wait_enter
                 return

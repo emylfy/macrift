@@ -1,6 +1,46 @@
 # Changelog
 
-## 29.03.3
+## 26.03
+
+### New
+
+- **iTerm2 Dynamic Profiles** — 3 preset themes: Cyberdrift (neon), Nord Frost (minimal), Tokyo Night (balanced); installed via `DynamicProfiles` with auto-default and background GUID persistence
+- **iTerm2 system tweaks** — GPU renderer, compact tabs, hidden scrollbar, focus follows mouse, alternate mouse scroll
+- **Dock Layout rework** — config-file based (`config/dock.txt`), "Clear Dock" option, moved from Apps to Customize menu
+
+### Changed
+
+- **UI theme: Ice Blue** — gray box borders (`38;5;240`), blue accent numbers (`38;5;39`), ice title (`38;5;195`)
+- **Log symbols** — `✓ ✗ ! › -` replace `[ok] [err] [warn] [info] [skip]` across all scripts including `install.sh`
+- **Dividers removed** — `divider()` function and all call sites deleted for cleaner output
+- **Profile Backup removed** from main menu
+- **Brew bundles reordered** — Development > Utilities > Browsers > Communication > Media > Games > Fonts, with separator groups
+- **Fonts trimmed** — Fira Code, Maple Mono, JetBrains Mono only
+- **README.md** updated — restructured features, added iTerm2 profiles and Dock Layout sections
+- **Wallpaper link** updated to `raindrop.io` format
+- **Versioning** — CalVer `YY.0M`, previous releases tagged `0.1.0`–`0.4.0`
+- **Comment dashes** removed from `install.sh` and `.zshrc`
+
+### Fixed
+
+- **`$cmd` word-splitting** in `apply_audited_defaults` — replaced string with array prefix for safe sudo handling
+- **Hardcoded Caskroom path** (`/opt/homebrew/Caskroom`) to `$(brew --prefix)/Caskroom` for Intel compatibility
+- **`apply_all_tweaks` skipped Hot Corners** — now included
+- **SpotX curl** missing `-f` flag — HTTP errors now caught
+- **`wallpaper.sh`** "Cancel" to "Back" for consistency
+- **Missing `wait_enter`** after brew bundle install
+- **iTerm2 domain** hardcoded 8 times to `$ITERM2_DOMAIN` constant
+- **Python dependency removed** from iTerm2 profile installer — uses `grep`/`sed` instead
+
+### Removed
+
+- Unused `MACOS_VERSION`, `MACOS_MAJOR`, `BLUE` variables from `common.sh`
+- `divider()` function and all call sites
+- Extra fonts from `Brewfile.fonts` (Meslo, Cascadia Code, Hack)
+
+---
+
+## 0.4.0
 
 ### New
 
@@ -26,7 +66,7 @@
 
 ---
 
-## 29.03.2
+## 0.3.0
 
 ### New
 
@@ -55,7 +95,7 @@
 
 ---
 
-## 29.03
+## 0.2.0
 
 ### Features
 
@@ -69,12 +109,26 @@
 ### Changes
 
 - `setup_shell` renamed to `shell_menu` (persistent loop); FastFetch moved to its own menu
-- `config/shell/fastfetch.jsonc` → `config/shell/config.jsonc`
+- `config/shell/fastfetch.jsonc` renamed to `config/shell/config.jsonc`
 - `config/iterm2/profile.json` removed — replaced by plist-based export/import
 
 ---
 
-## 26.03
+## 0.1.1
+
+### Added
+
+- README with Catppuccin badges and collapsible sections
+- MIT LICENSE and CHANGELOG
+
+### Fixed
+
+- Resolve symlink before `dirname` so `macrift` command works via `/usr/local/bin`
+- Switch versioning to CalVer
+
+---
+
+## 0.1.0
 
 Initial release.
 

@@ -8,12 +8,13 @@ brew_menu() {
         local choice
         choice=$(show_menu "Homebrew Bundles" \
             "Development" \
-            "Browsers" \
             "Utilities" \
-            "Media" \
+            "Browsers" \
+            "---" \
             "Communication" \
-            "Fonts (Nerd Fonts)" \
+            "Media" \
             "Games" \
+            "Fonts (Nerd Fonts)" \
             "---" \
             "Install ALL bundles" \
             "Backup (.brewbak)" \
@@ -21,12 +22,12 @@ brew_menu() {
 
         case "$choice" in
             1) install_bundle "Brewfile.dev" ;;
-            2) install_bundle "Brewfile.browsers" ;;
-            3) install_bundle "Brewfile.utils" ;;
-            4) install_bundle "Brewfile.media" ;;
-            5) install_bundle "Brewfile.comm" ;;
-            6) install_bundle "Brewfile.fonts" ;;
-            7) install_bundle "Brewfile.games" ;;
+            2) install_bundle "Brewfile.utils" ;;
+            3) install_bundle "Brewfile.browsers" ;;
+            4) install_bundle "Brewfile.comm" ;;
+            5) install_bundle "Brewfile.media" ;;
+            6) install_bundle "Brewfile.games" ;;
+            7) install_bundle "Brewfile.fonts" ;;
             8) install_all_bundles ;;
             9) brewbak_menu ;;
             0) return ;;
@@ -90,7 +91,7 @@ install_bundle() {
             # For casks, verify the .app actually exists in /Applications
             if [[ "$line" =~ ^cask ]]; then
                 # || true prevents set -e from triggering if find exits non-zero
-                app_path=$(find /opt/homebrew/Caskroom/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
+                app_path=$(find "$(brew --prefix)/Caskroom"/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
                 if [[ -n "$app_path" ]]; then
                     appname=$(basename "$app_path")
                     if [[ ! -e "/Applications/$appname" ]]; then
@@ -181,6 +182,7 @@ install_bundle() {
         log_warn "Some packages failed to install"
     fi
     rm -f "$tmp"
+    wait_enter
 }
 
 install_all_bundles() {
@@ -249,7 +251,7 @@ import_brewbak() {
             # For casks, verify the .app actually exists in /Applications
             if [[ "$line" =~ ^cask ]]; then
                 # || true prevents set -e from triggering if find exits non-zero
-                app_path=$(find /opt/homebrew/Caskroom/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
+                app_path=$(find "$(brew --prefix)/Caskroom"/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
                 if [[ -n "$app_path" ]]; then
                     appname=$(basename "$app_path")
                     if [[ ! -e "/Applications/$appname" ]]; then

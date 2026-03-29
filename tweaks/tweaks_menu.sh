@@ -43,6 +43,7 @@ apply_all_tweaks() {
     source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
     source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
     source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
+    source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
     source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
 
     log_ok "All tweaks applied"

@@ -4,8 +4,6 @@
 set -euo pipefail
 
 #
-MACOS_VERSION=$(sw_vers -productVersion 2>/dev/null || echo "0")
-MACOS_MAJOR=$(echo "$MACOS_VERSION" | cut -d. -f1)
 ARCH=$(uname -m)
 
 #
@@ -34,30 +32,21 @@ RESET='\033[0m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[0;37m'
+GRAY='\033[38;5;240m'
+CYAN='\033[38;5;39m'
+ICE='\033[38;5;195m'
 
 # 
 set_title() { printf "\033]0;%s\007" "$1"; }
 
 #
-log_info()  { printf '%b  %s\n' "${CYAN}  [info]${RESET}" "$1"; _log_file "[info] $1"; }
-log_ok()    { printf '%b  %s\n' "${GREEN}  [  ok]${RESET}" "$1"; _log_file "[  ok] $1"; }
-log_err()   { printf '%b  %s\n' "${RED}  [ err]${RESET}" "$1"; _log_file "[ err] $1"; }
-log_warn()  { printf '%b  %s\n' "${YELLOW}  [warn]${RESET}" "$1"; _log_file "[warn] $1"; }
-log_skip()  { printf '%b  %s\n' "${DIM}  [skip]${RESET}" "$1"; _log_file "[skip] $1"; }
+log_info()  { printf '  %b›%b  %s\n' "${CYAN}" "${RESET}" "$1"; _log_file "[info] $1"; }
+log_ok()    { printf '  %b✓%b  %s\n' "${GREEN}" "${RESET}" "$1"; _log_file "[  ok] $1"; }
+log_err()   { printf '  %b✗%b  %s\n' "${RED}" "${RESET}" "$1"; _log_file "[ err] $1"; }
+log_warn()  { printf '  %b!%b  %s\n' "${YELLOW}" "${RESET}" "$1"; _log_file "[warn] $1"; }
+log_skip()  { printf '  %b-%b  %s\n' "${DIM}" "${RESET}" "$1"; _log_file "[skip] $1"; }
 
 # 
-divider() {
-    local label="$1"
-    local width=50
-    local pad=$(( (width - ${#label} - 2) / 2 ))
-    local line=""
-    for ((i=0; i<pad; i++)); do line+="─"; done
-    printf '\n%b%s %s %s%b\n\n' "${BOLD}${PURPLE}" "$line" "$label" "$line" "${RESET}"
-}
 
 # 
 show_menu() {
@@ -86,12 +75,12 @@ show_menu() {
 
     local top_fill=$((inner_w - ${#title} - 3))
 
-    local BP="${BOLD}${PURPLE}"
+    local BP="${BOLD}${GRAY}"
     local R="${RESET}"
 
     printf "\n" >&2
     # ╭─ Title ───╮
-    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
+    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
     printf '─%.0s' $(seq 1 $top_fill) >&2
     printf '╮%b\n' "$R" >&2
     # │ (empty)   │
@@ -163,11 +152,11 @@ show_info_box() {
 
     local top_fill=$((inner_w - ${#title} - 3))
 
-    local BP="${BOLD}${PURPLE}"
+    local BP="${BOLD}${GRAY}"
     local R="${RESET}"
 
     printf "\n" >&2
-    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
+    printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
     printf '─%.0s' $(seq 1 $top_fill) >&2
     printf '╮%b\n' "$R" >&2
 
@@ -227,12 +216,12 @@ show_multiselect() {
             printf "\033[%dA\033[J" "$redraw_lines" >&2
         fi
 
-        local BP="${BOLD}${PURPLE}"
+        local BP="${BOLD}${GRAY}"
         local R="${RESET}"
 
         printf "\n" >&2
         # ╭─ Title ───╮
-        printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${WHITE}" "$title" "${R}${BP}" >&2
+        printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
         printf '╮%b\n' "$R" >&2
         # │ (empty) │
@@ -381,16 +370,20 @@ check_homebrew() {
     if ! command -v brew &>/dev/null; then
         log_warn "Homebrew not found"
         if confirm "Install Homebrew?"; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
-                eval "$(/opt/homebrew/bin/brew shellenv)"
-            elif [[ -f /usr/local/bin/brew ]]; then
-                eval "$(/usr/local/bin/brew shellenv)"
+            if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+                if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
+                    eval "$(/opt/homebrew/bin/brew shellenv)"
+                elif [[ -f /usr/local/bin/brew ]]; then
+                    eval "$(/usr/local/bin/brew shellenv)"
+                fi
+                log_ok "Homebrew installed"
+            else
+                log_err "Homebrew installation failed"
+                return 1
             fi
-            log_ok "Homebrew installed"
         else
-            log_err "Homebrew is required. Exiting."
-            exit 1
+            log_warn "Some features require Homebrew"
+            return 1
         fi
     fi
 }
@@ -522,10 +515,10 @@ apply_audited_defaults() {
             continue
         fi
 
-        local cmd="defaults write"
-        [[ "${sudo_flag:-}" == "sudo" ]] && cmd="sudo defaults write"
+        local -a prefix=()
+        [[ "${sudo_flag:-}" == "sudo" ]] && prefix=(sudo)
 
-        if $cmd "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
+        if "${prefix[@]}" defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
             log_ok "$label → $new_val"
         else
             log_err "Failed: $label"
@@ -577,3 +570,47 @@ get_script_dir() {
 }
 
 MACRIFT_DIR="$(get_script_dir)"
+
+# Version & Updates
+MACRIFT_REPO_TAR="https://github.com/emylfy/macrift/archive/main.tar.gz"
+MACRIFT_VERSION_URL="https://raw.githubusercontent.com/emylfy/macrift/main/VERSION"
+MACRIFT_VERSION=$(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo "0")
+MACRIFT_UPDATE=""
+
+# Check for updates (2s timeout, silent on failure)
+check_update() {
+    local remote
+    remote=$(curl -fsSL --connect-timeout 2 --max-time 2 "$MACRIFT_VERSION_URL" 2>/dev/null) || return 0
+    if [[ -n "$remote" && "$remote" != "$MACRIFT_VERSION" ]]; then
+        MACRIFT_UPDATE="$remote"
+    fi
+}
+
+# Download and apply update (git pull or tarball re-download)
+macrift_update() {
+    if [[ -d "$MACRIFT_DIR/.git" ]]; then
+        log_info "Updating via git..."
+        if git -C "$MACRIFT_DIR" pull --rebase --autostash; then
+            log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
+        else
+            log_err "git pull failed"
+            return 1
+        fi
+    else
+        log_info "Downloading latest version..."
+        local tmp
+        tmp="$(mktemp -d)"
+        if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp"; then
+            rm -rf "$MACRIFT_DIR"
+            mv "$tmp/macrift-main" "$MACRIFT_DIR"
+            rm -rf "$tmp"
+            chmod +x "$MACRIFT_DIR/macrift.sh"
+            find "$MACRIFT_DIR" -name "*.sh" -exec chmod +x {} +
+            log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
+        else
+            log_err "Download failed"
+            rm -rf "$tmp"
+            return 1
+        fi
+    fi
+}

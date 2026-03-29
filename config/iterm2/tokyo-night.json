@@ -1,0 +1,88 @@
+{
+  "Profiles": [
+    {
+      "Name": "Tokyo Night",
+      "Guid": "macrift-tokyonight-001",
+
+      "Custom Directory": "No",
+
+      "Normal Font": "JetBrainsMonoNFM-Regular 13",
+      "Non Ascii Font": "JetBrainsMonoNFM-Regular 13",
+      "Horizontal Spacing": 1.0,
+      "Vertical Spacing": 1.1,
+      "Use Non-ASCII Font": false,
+      "ASCII Anti Aliased": true,
+      "Non-ASCII Anti Aliased": true,
+      "Use Ligatures": true,
+
+      "Rows": 35,
+      "Columns": 120,
+
+      "Background Color": { "Red Component": 0.098, "Green Component": 0.098, "Blue Component": 0.176, "Alpha Component": 1 },
+      "Foreground Color": { "Red Component": 0.659, "Green Component": 0.698, "Blue Component": 0.847, "Alpha Component": 1 },
+
+      "Ansi 0 Color":  { "Red Component": 0.094, "Green Component": 0.094, "Blue Component": 0.145, "Alpha Component": 1 },
+      "Ansi 1 Color":  { "Red Component": 0.969, "Green Component": 0.380, "Blue Component": 0.478, "Alpha Component": 1 },
+      "Ansi 2 Color":  { "Red Component": 0.616, "Green Component": 0.820, "Blue Component": 0.616, "Alpha Component": 1 },
+      "Ansi 3 Color":  { "Red Component": 0.882, "Green Component": 0.753, "Blue Component": 0.388, "Alpha Component": 1 },
+      "Ansi 4 Color":  { "Red Component": 0.486, "Green Component": 0.631, "Blue Component": 0.953, "Alpha Component": 1 },
+      "Ansi 5 Color":  { "Red Component": 0.733, "Green Component": 0.482, "Blue Component": 0.984, "Alpha Component": 1 },
+      "Ansi 6 Color":  { "Red Component": 0.486, "Green Component": 0.835, "Blue Component": 0.949, "Alpha Component": 1 },
+      "Ansi 7 Color":  { "Red Component": 0.659, "Green Component": 0.698, "Blue Component": 0.847, "Alpha Component": 1 },
+
+      "Ansi 8 Color":  { "Red Component": 0.267, "Green Component": 0.278, "Blue Component": 0.353, "Alpha Component": 1 },
+      "Ansi 9 Color":  { "Red Component": 0.969, "Green Component": 0.380, "Blue Component": 0.478, "Alpha Component": 1 },
+      "Ansi 10 Color": { "Red Component": 0.616, "Green Component": 0.820, "Blue Component": 0.616, "Alpha Component": 1 },
+      "Ansi 11 Color": { "Red Component": 0.882, "Green Component": 0.753, "Blue Component": 0.388, "Alpha Component": 1 },
+      "Ansi 12 Color": { "Red Component": 0.486, "Green Component": 0.631, "Blue Component": 0.953, "Alpha Component": 1 },
+      "Ansi 13 Color": { "Red Component": 0.733, "Green Component": 0.482, "Blue Component": 0.984, "Alpha Component": 1 },
+      "Ansi 14 Color": { "Red Component": 0.486, "Green Component": 0.835, "Blue Component": 0.949, "Alpha Component": 1 },
+      "Ansi 15 Color": { "Red Component": 0.659, "Green Component": 0.698, "Blue Component": 0.847, "Alpha Component": 1 },
+
+      "Cursor Color":         { "Red Component": 0.659, "Green Component": 0.698, "Blue Component": 0.847, "Alpha Component": 1 },
+      "Cursor Text Color":    { "Red Component": 0.098, "Green Component": 0.098, "Blue Component": 0.176, "Alpha Component": 1 },
+      "Cursor Guide Color":   { "Red Component": 0.486, "Green Component": 0.631, "Blue Component": 0.953, "Alpha Component": 0.05 },
+      "Selection Color":      { "Red Component": 0.180, "Green Component": 0.192, "Blue Component": 0.282, "Alpha Component": 1 },
+      "Selected Text Color":  { "Red Component": 0.659, "Green Component": 0.698, "Blue Component": 0.847, "Alpha Component": 1 },
+      "Bold Color":           { "Red Component": 0.780, "Green Component": 0.808, "Blue Component": 0.918, "Alpha Component": 1 },
+      "Link Color":           { "Red Component": 0.486, "Green Component": 0.631, "Blue Component": 0.953, "Alpha Component": 1 },
+      "Badge Color":          { "Red Component": 0.733, "Green Component": 0.482, "Blue Component": 0.984, "Alpha Component": 0.50 },
+
+      "Cursor Type": 1,
+      "Blinking Cursor": true,
+
+      "Transparency": 0.05,
+      "Blur": true,
+      "Blur Radius": 15,
+
+      "Use Cursor Guide": false,
+
+      "Minimum Contrast": 0.0,
+
+      "Scrollback Lines": 0,
+      "Unlimited Scrollback": true,
+      "Scrollback With Status Bar": true,
+      "Scrollback in Alternate Screen": true,
+
+      "Option Key Sends": 2,
+      "Right Option Key Sends": 2,
+
+      "Character Encoding": 4,
+      "Terminal Type": "xterm-256color",
+      "Set Local Environment Vars": true,
+      "Mouse Reporting": true,
+      "Mouse Reporting Allow Mouse Wheel": true,
+
+      "Silence Bell": true,
+      "Visual Bell": true,
+      "Flashing Bell": false,
+      "BM Growl": false,
+
+      "Close Sessions On End": true,
+      "Prompt Before Closing 2": 0,
+
+      "Tags": ["macrift", "tokyo-night", "dark"],
+      "Title Components": 514
+    }
+  ]
+}

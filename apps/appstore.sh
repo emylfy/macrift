@@ -88,6 +88,7 @@ install_appstore() {
         return 0
     fi
 
+    log_warn "VPN must be disabled for App Store downloads to work"
     printf "\n"
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install from App Store:"

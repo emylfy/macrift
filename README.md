@@ -42,11 +42,10 @@ Installs to `~/.macrift`, creates a global `macrift` command, and launches autom
 |     | Feature                  | What it does                                                            |
 | :-- | :----------------------- | :---------------------------------------------------------------------- |
 | ⚙️  | **System Tweaks**        | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc        |
-| 📦  | **Apps & Packages**      | 7 Homebrew bundles, Mac App Store, Dock Layout, .brewbak backup         |
-| 🎨  | **Customize**            | Terminal, shell, code editor, Spicetify marketplace, wallpapers         |
+| 📦  | **Apps & Packages**      | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup             |
+| 🎨  | **Customize**            | Terminal, Shell, Editor, Dock Layout, Spicetify, Wallpapers             |
 | 🛡️  | **Security & Privacy**   | privacy.sexy presets, hostname, encrypted DNS, analytics off            |
 | 🧹  | **Cleanup**              | System cleanup via Mole — caches, logs, leftovers                       |
-| 💾  | **Profile Backup**       | Full export/import — Brewfile, defaults, dotfiles, editors, iTerm2      |
 
 <br>
 
@@ -77,14 +76,14 @@ Every tweak shows a diff table before applying. Choose individually or apply all
 **Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
 
 - **Development** — git, gh, lazygit, node, python, go, rust, neovim, fzf, ripgrep, bat, eza, fd...
-- **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
 - **Utilities** — Raycast, Alfred, HiddenBar, Keka, AltTab, SoundSource...
-- **Media** — IINA, OBS, Spotify, Figma, ImageOptim
+- **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
 - **Communication** — Ayugram, Telegram, Discord, Slack, Zoom
-- **Fonts** — Nerd Fonts (Fira Code, JetBrains Mono, Meslo, Cascadia Code, Hack, Maple Mono)
-- **App Store** — install Mac App Store apps via `mas`
+- **Media** — IINA, OBS, Spotify, Figma, ImageOptim
+- **Games** — Steam, Heroic Games Launcher, Modrinth
+- **Fonts** — Fira Code, Maple Mono, JetBrains Mono (Nerd Fonts)
 
-**Dock Layout** — set up dock apps, add spacers, reset to default via `dockutil`.
+**Mac App Store** — install apps via `mas` with multiselect.
 
 Export/import your packages with `.brewbak` backup files.
 
@@ -128,7 +127,11 @@ Complete environment setup from one menu.
 
 <br>
 
-**Terminal** — install & configure [iTerm2](https://iterm2.com) or [Ghostty](https://ghostty.org) with opinionated configs (Catppuccin theme, FiraCode Nerd Font).
+**Terminal** — install & configure [iTerm2](https://iterm2.com) or [Ghostty](https://ghostty.org):
+
+- **iTerm2 Dynamic Profiles** — 3 presets (Cyberdrift, Nord Frost, Tokyo Night) with JetBrainsMono Nerd Font, auto-set as default
+- **iTerm2 Defaults** — GPU renderer, compact tabs, hidden scrollbar, focus follows mouse
+- **Ghostty** — config from `config/ghostty/`
 
 **Shell** — [Starship](https://starship.rs) prompt + [FastFetch](https://github.com/fastfetch-cli/fastfetch) + `.zshrc` with modern aliases:
 
@@ -156,6 +159,20 @@ FiraCode Nerd Font, format on save, ligatures, sidebar right, telemetry off.
 </details>
 
 <details>
+<summary><strong>🗂️ Dock Layout</strong></summary>
+
+<br>
+
+Config-file based dock management via [dockutil](https://github.com/kcrawford/dockutil):
+
+- **Apply layout** from `config/dock.txt` (one app name per line)
+- **Clear Dock** — remove all apps for a clean start
+- **Add spacer** — visual separator between groups
+- **Reset** — restore macOS default dock
+
+</details>
+
+<details>
 <summary><strong>🎵 Spicetify Marketplace</strong></summary>
 
 <br>
@@ -171,6 +188,7 @@ Restore your Spicetify marketplace setup from backup — extensions, themes, and
 
 Curated wallpaper links opened from the menu:
 
+- [Personal collection](https://raindrop.io/emalfai/wallpaper-69077386) (Raindrop)
 - [Catppuccin wallpapers](https://github.com/zhichaoh/catppuccin-wallpapers)
 - [Gruvbox wallpapers](https://github.com/AngelJumworworbo/gruvbox-wallpapers)
 - [wallhaven.cc](https://wallhaven.cc)

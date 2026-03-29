@@ -1,0 +1,88 @@
+{
+  "Profiles": [
+    {
+      "Name": "Cyberdrift",
+      "Guid": "macrift-cyberdrift-001",
+
+      "Custom Directory": "No",
+
+      "Normal Font": "JetBrainsMonoNFM-Regular 13",
+      "Non Ascii Font": "JetBrainsMonoNFM-Regular 13",
+      "Horizontal Spacing": 1.0,
+      "Vertical Spacing": 1.1,
+      "Use Non-ASCII Font": false,
+      "ASCII Anti Aliased": true,
+      "Non-ASCII Anti Aliased": true,
+      "Use Ligatures": true,
+
+      "Rows": 35,
+      "Columns": 120,
+
+      "Background Color": { "Red Component": 0.05, "Green Component": 0.05, "Blue Component": 0.08, "Alpha Component": 1 },
+      "Foreground Color": { "Red Component": 0.85, "Green Component": 0.90, "Blue Component": 0.92, "Alpha Component": 1 },
+
+      "Ansi 0 Color":  { "Red Component": 0.10, "Green Component": 0.10, "Blue Component": 0.14, "Alpha Component": 1 },
+      "Ansi 1 Color":  { "Red Component": 1.00, "Green Component": 0.22, "Blue Component": 0.35, "Alpha Component": 1 },
+      "Ansi 2 Color":  { "Red Component": 0.00, "Green Component": 1.00, "Blue Component": 0.65, "Alpha Component": 1 },
+      "Ansi 3 Color":  { "Red Component": 1.00, "Green Component": 0.85, "Blue Component": 0.00, "Alpha Component": 1 },
+      "Ansi 4 Color":  { "Red Component": 0.00, "Green Component": 0.75, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Ansi 5 Color":  { "Red Component": 0.85, "Green Component": 0.20, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Ansi 6 Color":  { "Red Component": 0.00, "Green Component": 0.95, "Blue Component": 0.95, "Alpha Component": 1 },
+      "Ansi 7 Color":  { "Red Component": 0.80, "Green Component": 0.82, "Blue Component": 0.85, "Alpha Component": 1 },
+
+      "Ansi 8 Color":  { "Red Component": 0.30, "Green Component": 0.30, "Blue Component": 0.35, "Alpha Component": 1 },
+      "Ansi 9 Color":  { "Red Component": 1.00, "Green Component": 0.40, "Blue Component": 0.50, "Alpha Component": 1 },
+      "Ansi 10 Color": { "Red Component": 0.20, "Green Component": 1.00, "Blue Component": 0.75, "Alpha Component": 1 },
+      "Ansi 11 Color": { "Red Component": 1.00, "Green Component": 0.92, "Blue Component": 0.30, "Alpha Component": 1 },
+      "Ansi 12 Color": { "Red Component": 0.30, "Green Component": 0.85, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Ansi 13 Color": { "Red Component": 0.92, "Green Component": 0.45, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Ansi 14 Color": { "Red Component": 0.30, "Green Component": 1.00, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Ansi 15 Color": { "Red Component": 0.95, "Green Component": 0.96, "Blue Component": 0.98, "Alpha Component": 1 },
+
+      "Cursor Color":         { "Red Component": 0.00, "Green Component": 1.00, "Blue Component": 0.65, "Alpha Component": 1 },
+      "Cursor Text Color":    { "Red Component": 0.05, "Green Component": 0.05, "Blue Component": 0.08, "Alpha Component": 1 },
+      "Cursor Guide Color":   { "Red Component": 0.00, "Green Component": 1.00, "Blue Component": 0.65, "Alpha Component": 0.06 },
+      "Selection Color":      { "Red Component": 0.00, "Green Component": 0.75, "Blue Component": 1.00, "Alpha Component": 0.30 },
+      "Selected Text Color":  { "Red Component": 0.95, "Green Component": 0.96, "Blue Component": 0.98, "Alpha Component": 1 },
+      "Bold Color":           { "Red Component": 0.00, "Green Component": 1.00, "Blue Component": 0.95, "Alpha Component": 1 },
+      "Link Color":           { "Red Component": 0.00, "Green Component": 0.75, "Blue Component": 1.00, "Alpha Component": 1 },
+      "Badge Color":          { "Red Component": 0.85, "Green Component": 0.20, "Blue Component": 1.00, "Alpha Component": 0.50 },
+
+      "Cursor Type": 1,
+      "Blinking Cursor": true,
+
+      "Transparency": 0.12,
+      "Blur": true,
+      "Blur Radius": 25,
+
+      "Use Cursor Guide": true,
+
+      "Minimum Contrast": 0.0,
+
+      "Scrollback Lines": 0,
+      "Unlimited Scrollback": true,
+      "Scrollback With Status Bar": true,
+      "Scrollback in Alternate Screen": true,
+
+      "Option Key Sends": 2,
+      "Right Option Key Sends": 2,
+
+      "Character Encoding": 4,
+      "Terminal Type": "xterm-256color",
+      "Set Local Environment Vars": true,
+      "Mouse Reporting": true,
+      "Mouse Reporting Allow Mouse Wheel": true,
+
+      "Silence Bell": true,
+      "Visual Bell": true,
+      "Flashing Bell": false,
+      "BM Growl": false,
+
+      "Close Sessions On End": true,
+      "Prompt Before Closing 2": 0,
+
+      "Tags": ["macrift", "cyberpunk", "dark"],
+      "Title Components": 514
+    }
+  ]
+}

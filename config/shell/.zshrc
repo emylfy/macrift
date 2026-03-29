@@ -1,12 +1,12 @@
 # macrift — zsh config
 
-# ── PATH ────────────────────────────────────────────────
+# PATH
 export PATH="$HOME/.local/bin:$PATH"
 
 # Homebrew
 eval "$(/opt/homebrew/bin/brew shellenv)" 2>/dev/null
 
-# ── Aliases ─────────────────────────────────────────────
+# Aliases
 if command -v eza &>/dev/null; then
     alias ls="eza --icons --group-directories-first"
     alias ll="eza -la --icons --group-directories-first"
@@ -21,7 +21,7 @@ alias c="clear"
 alias ..="cd .."
 alias ...="cd ../.."
 
-# ── History ─────────────────────────────────────────────
+# History
 HISTSIZE=10000
 SAVEHIST=10000
 HISTFILE=~/.zsh_history
@@ -30,21 +30,21 @@ setopt HIST_SAVE_NO_DUPS
 setopt SHARE_HISTORY
 setopt INC_APPEND_HISTORY
 
-# ── Options ─────────────────────────────────────────────
+# Options
 setopt AUTO_CD
 setopt CORRECT
 setopt NO_BEEP
 
-# ── Completions ─────────────────────────────────────────
+# Completions
 autoload -Uz compinit && compinit
 zstyle ':completion:*' menu select
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Z}'
 
-# ── FZF ─────────────────────────────────────────────────
+# FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
-# ── Starship prompt ────────────────────────────────────
+# Starship prompt
 eval "$(starship init zsh)" 2>/dev/null
 
-# ── FastFetch ───────────────────────────────────────────
+# FastFetch
 fastfetch 2>/dev/null

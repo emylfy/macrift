@@ -11,10 +11,10 @@ wallpaper_menu() {
             "Catppuccin wallpapers (GitHub)" \
             "Gruvbox wallpapers (GitHub)" \
             "wallhaven.cc (browse wallpapers)" \
-            "Cancel")
+            "Back")
 
         case "$choice" in
-            1) open "https://emalfai.raindrop.page/wallpaper-69077386" ;;
+            1) open "https://raindrop.io/emalfai/wallpaper-69077386" ;;
             2) open "https://github.com/zhichaoh/catppuccin-wallpapers" ;;
             3) open "https://github.com/AngelJumworworbo/gruvbox-wallpapers" ;;
             4) open "https://wallhaven.cc" ;;

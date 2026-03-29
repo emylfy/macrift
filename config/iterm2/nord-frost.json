@@ -1,0 +1,87 @@
+{
+  "Profiles": [
+    {
+      "Name": "Nord Frost",
+      "Guid": "macrift-nordfrost-001",
+
+      "Custom Directory": "No",
+
+      "Normal Font": "JetBrainsMonoNFM-Regular 13",
+      "Non Ascii Font": "JetBrainsMonoNFM-Regular 13",
+      "Horizontal Spacing": 1.0,
+      "Vertical Spacing": 1.1,
+      "Use Non-ASCII Font": false,
+      "ASCII Anti Aliased": true,
+      "Non-ASCII Anti Aliased": true,
+      "Use Ligatures": true,
+
+      "Rows": 35,
+      "Columns": 120,
+
+      "Background Color": { "Red Component": 0.180, "Green Component": 0.204, "Blue Component": 0.251, "Alpha Component": 1 },
+      "Foreground Color": { "Red Component": 0.847, "Green Component": 0.871, "Blue Component": 0.914, "Alpha Component": 1 },
+
+      "Ansi 0 Color":  { "Red Component": 0.231, "Green Component": 0.259, "Blue Component": 0.322, "Alpha Component": 1 },
+      "Ansi 1 Color":  { "Red Component": 0.749, "Green Component": 0.380, "Blue Component": 0.416, "Alpha Component": 1 },
+      "Ansi 2 Color":  { "Red Component": 0.639, "Green Component": 0.745, "Blue Component": 0.549, "Alpha Component": 1 },
+      "Ansi 3 Color":  { "Red Component": 0.922, "Green Component": 0.796, "Blue Component": 0.545, "Alpha Component": 1 },
+      "Ansi 4 Color":  { "Red Component": 0.506, "Green Component": 0.631, "Blue Component": 0.757, "Alpha Component": 1 },
+      "Ansi 5 Color":  { "Red Component": 0.706, "Green Component": 0.557, "Blue Component": 0.678, "Alpha Component": 1 },
+      "Ansi 6 Color":  { "Red Component": 0.533, "Green Component": 0.753, "Blue Component": 0.816, "Alpha Component": 1 },
+      "Ansi 7 Color":  { "Red Component": 0.898, "Green Component": 0.914, "Blue Component": 0.941, "Alpha Component": 1 },
+
+      "Ansi 8 Color":  { "Red Component": 0.298, "Green Component": 0.337, "Blue Component": 0.416, "Alpha Component": 1 },
+      "Ansi 9 Color":  { "Red Component": 0.749, "Green Component": 0.380, "Blue Component": 0.416, "Alpha Component": 1 },
+      "Ansi 10 Color": { "Red Component": 0.639, "Green Component": 0.745, "Blue Component": 0.549, "Alpha Component": 1 },
+      "Ansi 11 Color": { "Red Component": 0.922, "Green Component": 0.796, "Blue Component": 0.545, "Alpha Component": 1 },
+      "Ansi 12 Color": { "Red Component": 0.506, "Green Component": 0.631, "Blue Component": 0.757, "Alpha Component": 1 },
+      "Ansi 13 Color": { "Red Component": 0.706, "Green Component": 0.557, "Blue Component": 0.678, "Alpha Component": 1 },
+      "Ansi 14 Color": { "Red Component": 0.533, "Green Component": 0.753, "Blue Component": 0.816, "Alpha Component": 1 },
+      "Ansi 15 Color": { "Red Component": 0.898, "Green Component": 0.914, "Blue Component": 0.941, "Alpha Component": 1 },
+
+      "Cursor Color":         { "Red Component": 0.847, "Green Component": 0.871, "Blue Component": 0.914, "Alpha Component": 1 },
+      "Cursor Text Color":    { "Red Component": 0.180, "Green Component": 0.204, "Blue Component": 0.251, "Alpha Component": 1 },
+      "Cursor Guide Color":   { "Red Component": 0.847, "Green Component": 0.871, "Blue Component": 0.914, "Alpha Component": 0.04 },
+      "Selection Color":      { "Red Component": 0.298, "Green Component": 0.337, "Blue Component": 0.416, "Alpha Component": 1 },
+      "Selected Text Color":  { "Red Component": 0.898, "Green Component": 0.914, "Blue Component": 0.941, "Alpha Component": 1 },
+      "Bold Color":           { "Red Component": 0.898, "Green Component": 0.914, "Blue Component": 0.941, "Alpha Component": 1 },
+      "Link Color":           { "Red Component": 0.533, "Green Component": 0.753, "Blue Component": 0.816, "Alpha Component": 1 },
+      "Badge Color":          { "Red Component": 0.506, "Green Component": 0.631, "Blue Component": 0.757, "Alpha Component": 0.50 },
+
+      "Cursor Type": 1,
+      "Blinking Cursor": true,
+
+      "Transparency": 0.0,
+      "Blur": false,
+
+      "Use Cursor Guide": false,
+
+      "Minimum Contrast": 0.0,
+
+      "Scrollback Lines": 0,
+      "Unlimited Scrollback": true,
+      "Scrollback With Status Bar": true,
+      "Scrollback in Alternate Screen": true,
+
+      "Option Key Sends": 2,
+      "Right Option Key Sends": 2,
+
+      "Character Encoding": 4,
+      "Terminal Type": "xterm-256color",
+      "Set Local Environment Vars": true,
+      "Mouse Reporting": true,
+      "Mouse Reporting Allow Mouse Wheel": true,
+
+      "Silence Bell": true,
+      "Visual Bell": false,
+      "Flashing Bell": false,
+      "BM Growl": false,
+
+      "Close Sessions On End": true,
+      "Prompt Before Closing 2": 0,
+
+      "Tags": ["macrift", "nord", "minimal"],
+      "Title Components": 514
+    }
+  ]
+}

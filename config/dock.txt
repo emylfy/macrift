@@ -1,0 +1,12 @@
+# macrift — Dock layout
+# One app name per line (must match /Applications/*.app)
+# Lines starting with # are ignored
+
+Finder
+Safari
+Mail
+Notes
+iTerm
+Visual Studio Code
+Discord
+Spotify
