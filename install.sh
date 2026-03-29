@@ -57,7 +57,8 @@ fi
 # Download / Update
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     info "Updating macrift..."
-    git -C "$INSTALL_DIR" pull --rebase --autostash --quiet
+    git -C "$INSTALL_DIR" fetch --quiet
+    git -C "$INSTALL_DIR" reset --hard origin/main --quiet
     ok "Updated"
 elif command -v git &>/dev/null; then
     [[ -d "$INSTALL_DIR" ]] && rm -rf "$INSTALL_DIR"
