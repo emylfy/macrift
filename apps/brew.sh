@@ -201,7 +201,6 @@ install_all_bundles() {
 
 import_brewbak() {
     clear
-    divider "Import .brewbak"
 
     printf '  %bDrag file into terminal or type path%b\n' "$DIM" "$RESET"
     prompt_path
@@ -308,7 +307,6 @@ import_brewbak() {
 
 export_brewbak() {
     clear
-    divider "Export .brewbak"
 
     local default_path
     default_path="$HOME/Desktop/macrift-$(date +%Y%m%d).brewbak"

@@ -24,7 +24,6 @@ dock_tweaks() {
 
 hot_corners_tweaks() {
     clear
-    divider "Hot Corners"
 
     show_info_box "Corner Actions" \
         "0  — No action" \
@@ -46,7 +45,8 @@ hot_corners_tweaks() {
     cur_bl=$(defaults read com.apple.dock wvous-bl-corner 2>/dev/null || echo "not set")
     cur_br=$(defaults read com.apple.dock wvous-br-corner 2>/dev/null || echo "not set")
 
-    printf "\n  ${DIM}Current: TL=%s  TR=%s  BL=%s  BR=%s${RESET}\n\n" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br"
+    printf "\n  ${DIM}Current: TL=%s  TR=%s  BL=%s  BR=%s${RESET}\n" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br"
+    printf "  ${DIM}Press enter to keep current value${RESET}\n\n"
 
     printf "  ${CYAN}Top-left${RESET} [%s]: " "$cur_tl"
     read -r tl < /dev/tty
@@ -64,6 +64,11 @@ hot_corners_tweaks() {
     br="${br:-$cur_br}"
 
     printf "\n"
+    if [[ "$tl" == "$cur_tl" && "$tr" == "$cur_tr" && "$bl" == "$cur_bl" && "$br" == "$cur_br" ]]; then
+        log_info "No changes"
+        wait_enter
+        return
+    fi
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would set TL=$tl TR=$tr BL=$bl BR=$br"
     elif confirm "Apply corners: TL=$tl TR=$tr BL=$bl BR=$br?"; then

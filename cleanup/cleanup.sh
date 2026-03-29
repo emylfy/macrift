@@ -9,13 +9,59 @@ cleanup_menu() {
         clear
         set_title "macrift > cleanup"
 
-        show_info_box "External script execution" \
+        local choice
+        choice=$(show_menu "Cleanup" \
+            "Homebrew Cleanup" \
+            "Deep Clean (Mole)" \
+            "Back")
+
+        case "$choice" in
+            1) run_brew_cleanup ;;
+            2) run_mole_cleanup ;;
+            0) return ;;
+            *) ;;
+        esac
+    done
+}
+
+run_brew_cleanup() {
+    clear
+
+    if ! command -v brew &>/dev/null; then
+        log_err "Homebrew is not installed"
+        wait_enter
+        return
+    fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Would run: brew cleanup --prune=all && brew autoremove"
+    else
+        log_info "Running Homebrew cleanup..."
+        brew cleanup --prune=all
+        brew autoremove
+        log_ok "Homebrew cleanup complete"
+    fi
+
+    wait_enter
+}
+
+run_mole_cleanup() {
+    if command -v mole &>/dev/null; then
+        clear
+        mo clean
+        wait_enter
+        return
+    fi
+
+    while true; do
+        clear
+
+        show_info_box "Mole not installed" \
             "" \
-            "Tool:   Mole" \
+            "About:  removes caches, logs, Xcode/simulator/brew leftovers" \
             "URL:    $MOLE_REPO" \
-            "Source: install.sh from main branch" \
             "" \
-            "Y > Run   N > Cancel   R > Review source" \
+            "Y > Install & run   N > Cancel   R > Review source" \
             ""
 
         printf "\n"
@@ -24,16 +70,12 @@ cleanup_menu() {
 
         case "$choice" in
             y|Y)
-                if command -v mole &>/dev/null; then
+                log_info "Installing Mole..."
+                if curl -fsSL "$MOLE_INSTALL" | bash; then
+                    log_ok "Mole installed"
                     mole
                 else
-                    log_info "Installing Mole..."
-                    if curl -fsSL "$MOLE_INSTALL" | bash; then
-                        log_ok "Mole installed"
-                        mole
-                    else
-                        log_err "Failed to install Mole"
-                    fi
+                    log_err "Failed to install Mole"
                 fi
                 wait_enter
                 return

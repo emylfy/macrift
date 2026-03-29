@@ -1,5 +1,44 @@
 # Changelog
 
+## 26.03.1
+
+### New
+
+- **Extensions installer** — multi-select from `config/vscode/extensions.txt`; auto-detects `code`/`cursor`/`codium` CLI; dry-run aware
+- **System Security Status** — FileVault, Firewall, SIP, Gatekeeper at a glance; toggle Gatekeeper on/off from the status screen
+- **DNS provider menu** — 11 providers: Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, Comodo, ControlD (Ads/Family/Uncensored), Hagezi Pro Plus
+- **Homebrew Cleanup** — dedicated option in Cleanup menu: `brew cleanup --prune=all && brew autoremove`, dry-run aware
+- **Ghostty Catppuccin themes** — Mocha and Latte auto-downloaded from `catppuccin/ghostty` on config apply
+
+### Changed
+
+- **Spicetify Marketplace** moved from Customize menu → Spotify submenu ("Spicetify — restore marketplace")
+- **Menu cursor** hidden during display (`\033[?25l/h`) for cleaner rendering
+- **Menu number width** dynamic — aligns correctly for menus with 10+ items
+- **Audit table** — booleans normalized (1/0 → true/false); unset values shown as `default` (dim instead of red); cancel and no-change flows auto-`wait_enter`
+- **Hot Corners** — "Press enter to keep current" hint added; early return if nothing changed
+- **`apply_all_tweaks`** — confirmation prompt removed; function moved before `tweaks_menu`
+- **Label renames** — "Terminal" → "Terminal Emulator", "Install macrift profile" → "Apply theme profile", "Both" → "Starship + .zshrc", "Apply config from macrift" → "Apply config"
+- **Spotify menu item** relabeled to "Spotify (SpotX + Spicetify)"
+
+### Packages
+
+- **Dev** — added `fastfetch`, `macmon`, `mas`, `mole`, `t3-code`, `android-platform-tools`; replaced `docker` with `docker-desktop`
+- **Utils** — added `betterdisplay`, `logi-options+`, `macs-fan-control`, `supercorners`
+- **Media** — added `affinity`
+- **App Store** — removed CapCut, v2RayTun
+
+### VSCode settings
+
+- Complete overhaul with annotated sections: Workbench, Explorer, Tabbar, Cursor, Editor, Fonts & Lines
+- Sidebar left; status bar hidden; single active tab; compact tabs; `Maple Mono` UI font; `Fira Code` 16px; `source.organizeImports` on save; tabs (not spaces)
+
+### Removed
+
+- `stubs/status-bar.md`
+
+---
+
 ## 26.03
 
 ### New

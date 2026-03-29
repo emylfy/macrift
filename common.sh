@@ -66,8 +66,15 @@ show_menu() {
         fi
     done
 
-    # inner = "  " + "N" + " › " + item + "  "
-    local inner_w=$((2 + 1 + 3 + max_len + 2))
+    # Count real items (skip separators) to get max number width
+    local real_count=0
+    for ((i=0; i<last_idx; i++)); do
+        [[ "${items[$i]}" == "---" ]] && continue
+        real_count=$((real_count + 1))
+    done
+    local num_w=${#real_count}
+    # inner = "  " + num + " › " + item + "  "
+    local inner_w=$((2 + num_w + 3 + max_len + 2))
     local title_min=$((${#title} + 5))
     if [[ $title_min -gt $inner_w ]]; then
         inner_w=$title_min
@@ -77,6 +84,8 @@ show_menu() {
 
     local BP="${BOLD}${GRAY}"
     local R="${RESET}"
+
+    printf "\033[?25l" >&2
 
     printf "\n" >&2
     # ╭─ Title ───╮
@@ -93,16 +102,16 @@ show_menu() {
             continue
         fi
         num=$((num + 1))
-        local vis=$((2 + 1 + 3 + ${#items[$i]}))
+        local vis=$((2 + num_w + 3 + ${#items[$i]}))
         local pad=$((inner_w - vis))
-        printf '  %b│%b  %b%d%b %b›%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+        printf '  %b│%b  %b%*d%b %b›%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
     done
     # │ (empty)   │
     printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
     # │  0 › Back │  (last item = 0)
-    local vis=$((2 + 1 + 3 + ${#items[$last_idx]}))
+    local vis=$((2 + num_w + 3 + ${#items[$last_idx]}))
     local pad=$((inner_w - vis))
-    printf '  %b│%b  %b0 › %s%b%*s%b│%b\n' "$BP" "$R" "$DIM" "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+    printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' "$BP" "$R" "$DIM" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
     # │ (empty)   │
     printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
     # ╰───────────╯
@@ -125,6 +134,7 @@ show_menu() {
         printf "%s\n" "$key" >&2
         echo "$key"
     fi
+    printf "\033[?25h" >&2
 }
 
 # 
@@ -437,7 +447,13 @@ audit_default() {
     local label="${5:-$key}"
 
     local current
-    current=$(defaults read "$domain" "$key" 2>/dev/null || echo "not set")
+    current=$(defaults read "$domain" "$key" 2>/dev/null || echo "default")
+
+    # Normalize: defaults read returns 1/0 for bools
+    if [[ "$type" == "-bool" ]]; then
+        [[ "$current" == "1" ]] && current="true"
+        [[ "$current" == "0" ]] && current="false"
+    fi
 
     AUDIT_ENTRIES+=("${label}|${current}|${new_value}|${domain}|${key}|${type}")
 }
@@ -451,7 +467,12 @@ audit_default_sudo() {
     local label="${5:-$key}"
 
     local current
-    current=$(sudo defaults read "$domain" "$key" 2>/dev/null || echo "not set")
+    current=$(sudo defaults read "$domain" "$key" 2>/dev/null || echo "default")
+
+    if [[ "$type" == "-bool" ]]; then
+        [[ "$current" == "1" ]] && current="true"
+        [[ "$current" == "0" ]] && current="false"
+    fi
 
     AUDIT_ENTRIES+=("${label}|${current}|${new_value}|${domain}|${key}|${type}|sudo")
 }
@@ -470,13 +491,16 @@ show_audit_table() {
     printf '─%.0s' {1..35}
     printf '%b\n' "$RESET"
     printf '  %b%-28s %-15s %-15s%b\n' "$DIM" "Setting" "Current" "New" "$RESET"
-    printf '  %b%-28s %-15s %-15s%b\n' "$DIM" "───────" "───────" "───" "$RESET"
 
     local has_changes=false
     for entry in "${AUDIT_ENTRIES[@]}"; do
         IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
         if [[ "$current" != "$new_val" ]]; then
-            printf '  %-28s %b%-15s%b %b%-15s%b\n' "$label" "$RED" "$current" "$RESET" "$GREEN" "$new_val" "$RESET"
+            if [[ "$current" == "default" ]]; then
+                printf '  %-28s %b%-15s%b %b%-15s%b\n' "$label" "$DIM" "$current" "$RESET" "$GREEN" "$new_val" "$RESET"
+            else
+                printf '  %-28s %b%-15s%b %b%-15s%b\n' "$label" "$RED" "$current" "$RESET" "$GREEN" "$new_val" "$RESET"
+            fi
             has_changes=true
         else
             printf '  %-28s %b%-15s %-15s%b\n' "$label" "$DIM" "$current" "(no change)" "$RESET"
@@ -487,6 +511,7 @@ show_audit_table() {
 
     if ! $has_changes; then
         log_ok "Everything already set"
+        wait_enter
         audit_reset
         return 1
     fi
@@ -501,6 +526,8 @@ show_audit_table() {
     if confirm "Apply these changes?"; then
         return 0
     else
+        log_info "No changes applied"
+        wait_enter
         audit_reset
         return 1
     fi
@@ -515,10 +542,13 @@ apply_audited_defaults() {
             continue
         fi
 
-        local -a prefix=()
-        [[ "${sudo_flag:-}" == "sudo" ]] && prefix=(sudo)
+        if [[ "${sudo_flag:-}" == "sudo" ]]; then
+            sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null
+        else
+            defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null
+        fi
 
-        if "${prefix[@]}" defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
+        if [[ $? -eq 0 ]]; then
             log_ok "$label → $new_val"
         else
             log_err "Failed: $label"

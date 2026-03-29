@@ -7,7 +7,6 @@ SPICETIFY_EXT_DIR="$HOME/.config/spicetify/Extensions"
 
 restore_marketplace() {
     clear
-    divider "Spicetify Marketplace Restore"
 
     if ! command -v spicetify &>/dev/null; then
         log_err "Spicetify not installed — install it from Apps > Spotify first"

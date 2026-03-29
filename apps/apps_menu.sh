@@ -9,7 +9,7 @@ apps_menu() {
         choice=$(show_menu "Apps & Packages" \
             "Homebrew Bundles" \
             "Mac App Store" \
-            "Spotify" \
+            "Spotify (SpotX + Spicetify)" \
             "Back")
 
         case "$choice" in

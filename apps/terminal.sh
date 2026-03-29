@@ -8,7 +8,7 @@ terminal_menu() {
         clear
         set_title "macrift > terminal"
         local choice
-        choice=$(show_menu "Terminal" \
+        choice=$(show_menu "Terminal Emulator" \
             "iTerm2" \
             "Ghostty" \
             "Back")
@@ -33,7 +33,7 @@ setup_iterm2() {
 
     local choice
     choice=$(show_menu "iTerm2" \
-        "Install macrift profile" \
+        "Apply theme profile" \
         "Apply iTerm2 defaults" \
         "---" \
         "Export current settings to plist" \
@@ -138,8 +138,6 @@ _iterm2_install_profile() {
 }
 
 _iterm2_system_tweaks() {
-    divider "iTerm2 Defaults"
-
     log_info "This applies recommended system-level iTerm2 preferences:"
     echo "  - Minimal UI chrome (no per-tab close, compact tabs)"
     echo "  - GPU renderer enabled"
@@ -183,8 +181,6 @@ _iterm2_system_tweaks() {
 }
 
 setup_ghostty() {
-    divider "Ghostty"
-
     if ! brew_install "ghostty" "cask"; then return; fi
 
     local config_source="$MACRIFT_DIR/config/ghostty/config"
@@ -198,8 +194,32 @@ setup_ghostty() {
 
     if confirm "Copy Ghostty config?"; then
         copy_config "$config_source" "$config_target"
+        _ghostty_install_themes
         log_ok "Ghostty configured"
     fi
+}
+
+_ghostty_install_themes() {
+    local themes_dir="$HOME/.config/ghostty/themes"
+    local base_url="https://raw.githubusercontent.com/catppuccin/ghostty/main/themes"
+    local needed=(catppuccin-mocha catppuccin-latte)
+
+    mkdir -p "$themes_dir"
+
+    for theme in "${needed[@]}"; do
+        if [[ -f "$themes_dir/$theme" ]]; then
+            continue
+        fi
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Would download $theme"
+            continue
+        fi
+        if curl -fsSL "$base_url/${theme}.conf" -o "$themes_dir/$theme"; then
+            log_ok "Theme $theme installed"
+        else
+            log_err "Failed to download $theme"
+        fi
+    done
 }
 
 shell_menu() {
@@ -211,7 +231,7 @@ shell_menu() {
         choice=$(show_menu "Shell" \
             "Starship prompt" \
             "Copy .zshrc" \
-            "Both" \
+            "Starship + .zshrc" \
             "Back")
 
         case "$choice" in
@@ -269,7 +289,7 @@ fastfetch_menu() {
         local choice
         choice=$(show_menu "FastFetch" \
             "Install FastFetch" \
-            "Apply config from macrift" \
+            "Apply config" \
             "Back")
 
         case "$choice" in
@@ -282,8 +302,6 @@ fastfetch_menu() {
 }
 
 apply_fastfetch_config() {
-    divider "FastFetch Config"
-
     local config_source="$MACRIFT_DIR/config/shell/config.jsonc"
     local config_target="$HOME/.config/fastfetch/config.jsonc"
 

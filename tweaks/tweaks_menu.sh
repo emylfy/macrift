@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2218
 # macrift — tweaks menu
+
+apply_all_tweaks() {
+    source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
+    source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
+    source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
+    source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
+    source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
+    source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
+    source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
+
+    log_ok "All tweaks applied"
+    log_info "Some changes require logout or restart to take effect"
+}
 
 tweaks_menu() {
     while true; do
@@ -31,21 +45,4 @@ tweaks_menu() {
             *) ;;
         esac
     done
-}
-
-apply_all_tweaks() {
-    if ! confirm "Apply ALL tweaks at once?"; then
-        return
-    fi
-
-    source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
-    source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
-    source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
-    source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
-    source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
-    source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
-    source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
-
-    log_ok "All tweaks applied"
-    log_info "Some changes require logout or restart to take effect"
 }

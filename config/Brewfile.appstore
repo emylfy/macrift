@@ -1,6 +1,4 @@
 # Mac App Store (requires: brew install mas)
-mas "CapCut", id: 1500855883
 mas "Happ", id: 6746188973
 mas "HokusFokus", id: 1659087771
 mas "Telegram", id: 747648890
-mas "v2RayTun", id: 6476628951

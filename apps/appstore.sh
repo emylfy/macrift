@@ -115,7 +115,6 @@ install_appstore() {
 
 show_installed_apps() {
     clear
-    divider "Installed App Store Apps"
 
     _ensure_mas || return
 

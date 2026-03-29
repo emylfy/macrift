@@ -9,11 +9,13 @@ spotify_menu() {
         choice=$(show_menu "Spotify" \
             "SpotX — ad blocker (macOS)" \
             "Spicetify — customization framework" \
+            "Spicetify — restore marketplace" \
             "Back")
 
         case "$choice" in
             1) install_spotx ;;
             2) install_spicetify ;;
+            3) source "$MACRIFT_DIR/apps/spicetify.sh" && restore_marketplace ;;
             0) return ;;
             *) ;;
         esac
@@ -63,8 +65,6 @@ install_spotx() {
 }
 
 install_spicetify() {
-    divider "Spicetify"
-
     if command -v spicetify &>/dev/null; then
         log_ok "Spicetify installed"
         log_info "Checking for updates..."

@@ -7,10 +7,10 @@ dock_layout_menu() {
         set_title "macrift > dock layout"
         local choice
         choice=$(show_menu "Dock Layout" \
-            "Apply dock layout" \
+            "Apply layout" \
             "Clear Dock" \
             "Add spacer" \
-            "Reset Dock to macOS default" \
+            "Reset to default" \
             "Back")
 
         case "$choice" in

@@ -22,7 +22,6 @@ profile_menu() {
 
 export_profile() {
     clear
-    divider "Export Profile"
 
     local default_path
     default_path="$HOME/Desktop/macrift-profile-$(date +%Y%m%d)"
@@ -121,7 +120,6 @@ export_profile() {
 
 import_profile() {
     clear
-    divider "Import Profile"
 
     printf '  %bDrag profile folder or type path%b\n' "$DIM" "$RESET"
     prompt_path
