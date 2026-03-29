@@ -326,6 +326,7 @@ dns_benchmark() {
 
         local output clean avg_ms
         output=$(dnspyre -s "$primary" -n 50 -c 5 -t A example.com 2>&1)
+        # shellcheck disable=SC2001
         clean=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')
 
         avg_ms=$(echo "$clean" | awk '/mean:/{
