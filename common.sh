@@ -543,15 +543,17 @@ apply_audited_defaults() {
         fi
 
         if [[ "${sudo_flag:-}" == "sudo" ]]; then
-            sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null
+            if sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
+                log_ok "$label → $new_val"
+            else
+                log_err "Failed: $label"
+            fi
         else
-            defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null
-        fi
-
-        if [[ $? -eq 0 ]]; then
-            log_ok "$label → $new_val"
-        else
-            log_err "Failed: $label"
+            if defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
+                log_ok "$label → $new_val"
+            else
+                log_err "Failed: $label"
+            fi
         fi
     done
 
