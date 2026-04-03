@@ -35,9 +35,9 @@ _tweak_wizard() {
             [[ "$_l" == "---" ]] && continue
             sel_idx+=("$i")
             if [[ "$_c" != "$_n" ]]; then
-                state[$i]="1"; pending[$i]=1
+                state[i]="1"; pending[i]=1
             else
-                state[$i]="0"; pending[$i]=0
+                state[i]="0"; pending[i]=0
             fi
             cnt=$(( cnt + 1 ))
         done
@@ -45,7 +45,7 @@ _tweak_wizard() {
     done
 
     local cursors=()
-    for ((i=0; i<cat_count; i++)); do cursors[$i]=0; done
+    for ((i=0; i<cat_count; i++)); do cursors[i]=0; done
 
     local cat_idx=0 wizard_done=false
     local R="${RESET}"
@@ -61,16 +61,13 @@ _tweak_wizard() {
         local sel_off="${cat_sel_offsets[$cat_idx]}"
         local sel_cnt="${cat_sel_counts[$cat_idx]}"
 
-        local crumb_line=""
-        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && crumb_line=$(crumb_path)
-
         # Count extra warning lines in this category
         local warn_lines=0
         for ((i=cstart; i<cend; i++)); do
             IFS='|' read -r _l _rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$_l" == *"~"* ]] && warn_lines=$(( warn_lines + 1 ))
         done
-        local total_lines=$(( (${#crumb_line} > 0 ? 1 : 0) + 1 + 1 + csize + warn_lines + 1 ))
+        local total_lines=$(( 1 + 1 + csize + warn_lines + 1 ))
         local first_draw=true
 
         while true; do
@@ -81,7 +78,6 @@ _tweak_wizard() {
                 printf "\033[%dA\r" "$total_lines" >&2
             fi
 
-            [[ -n "$crumb_line" ]] && printf '  %b%s%b\033[K\n' "$DIM" "$crumb_line" "$R" >&2
             printf "\033[K\n" >&2
 
             # Progress dots — filled for visited/current, empty for remaining
@@ -110,8 +106,9 @@ _tweak_wizard() {
                     label="${label%%~*}"
                 fi
 
-                local fc=$(_friendly_val "$current")
-                local fn=$(_friendly_val "$new_val")
+                local fc fn
+                fc=$(_friendly_val "$current")
+                fn=$(_friendly_val "$new_val")
                 local s="${state[$i]}"
 
                 # Build display: "Label: value"
@@ -195,13 +192,13 @@ _tweak_wizard() {
                     '[A') [[ $cursor -gt 0 ]] && cursor=$(( cursor - 1 )) ;;
                     '[B') [[ $cursor -lt $(( sel_cnt - 1 )) ]] && cursor=$(( cursor + 1 )) ;;
                     '[C')
-                        cursors[$cat_idx]=$cursor
+                        cursors[cat_idx]=$cursor
                         if [[ $cat_idx -lt $(( cat_count - 1 )) ]]; then
                             cat_idx=$(( cat_idx + 1 ))
                         else wizard_done=true; fi
                         break ;;
                     '[D')
-                        cursors[$cat_idx]=$cursor
+                        cursors[cat_idx]=$cursor
                         if [[ $cat_idx -gt 0 ]]; then
                             cat_idx=$(( cat_idx - 1 ))
                             break
@@ -217,13 +214,13 @@ _tweak_wizard() {
                 local idx="${sel_idx[$gsi]}"
                 # Only toggle apply for entries with pending changes
                 if [[ "${pending[$idx]}" == 1 ]]; then
-                    if [[ "${state[$idx]}" == "1" ]]; then state[$idx]="0"; else state[$idx]="1"; fi
+                    if [[ "${state[$idx]}" == "1" ]]; then state[idx]="0"; else state[idx]="1"; fi
                 fi
             elif [[ "$key" == 'd' || "$key" == 'D' ]]; then
                 local gsi=$(( sel_off + cursor ))
                 local idx="${sel_idx[$gsi]}"
                 # Toggle: 0→2, 1→2, 2→0
-                if [[ "${state[$idx]}" == "2" ]]; then state[$idx]="0"; else state[$idx]="2"; fi
+                if [[ "${state[$idx]}" == "2" ]]; then state[idx]="0"; else state[idx]="2"; fi
             elif [[ "$key" == 'a' || "$key" == 'A' ]]; then
                 # Toggle all pending entries only
                 local all_apply=true k
@@ -236,10 +233,10 @@ _tweak_wizard() {
                 for ((k=0; k<sel_cnt; k++)); do
                     local idx="${sel_idx[$((sel_off + k))]}"
                     [[ "${pending[$idx]}" == 0 ]] && continue
-                    state[$idx]="$val"
+                    state[idx]="$val"
                 done
             elif [[ "$key" == '' ]]; then
-                cursors[$cat_idx]=$cursor
+                cursors[cat_idx]=$cursor
                 if [[ $cat_idx -lt $(( cat_count - 1 )) ]]; then
                     cat_idx=$(( cat_idx + 1 ))
                 else wizard_done=true; fi
@@ -347,14 +344,17 @@ select_tweaks() {
 
     MACRIFT_BATCH_TWEAKS=false
 
-    local cat_names=("Dock" "Finder" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc")
+    local cat_names=("Dock" "Finder" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc" "Hot Corners")
 
     while true; do
         MULTISELECT_HINT="↑↓ move  space toggle  a all  enter → view tweaks"
         local selected_cats
-        selected_cats=$(show_multiselect "Select Tweaks" "${cat_names[@]}")
+        selected_cats=$(show_multiselect "System Tweaks" "${cat_names[@]}")
         MULTISELECT_HINT=""
         [[ -z "$selected_cats" ]] && { audit_reset; return; }
+
+        local do_hot_corners=false
+        echo "$selected_cats" | grep -qxF "Hot Corners" && do_hot_corners=true
 
         local specs=()
         echo "$selected_cats" | grep -qxF "Dock"             && specs+=("Dock:${dock_s}:${dock_e}")
@@ -364,102 +364,62 @@ select_tweaks() {
         echo "$selected_cats" | grep -qxF "Screenshots"      && specs+=("Screenshots:${screenshots_s}:${screenshots_e}")
         echo "$selected_cats" | grep -qxF "Misc"             && specs+=("Misc:${misc_s}:${misc_e}")
 
-        [[ ${#specs[@]} -eq 0 ]] && continue
+        # Run tweak wizard if any defaults-based categories selected
+        if [[ ${#specs[@]} -gt 0 ]]; then
+            _tweak_wizard "${specs[@]}"
 
-        _tweak_wizard "${specs[@]}"
+            if [[ ${#TWEAK_SELECTION[@]} -gt 0 || ${#TWEAK_RESETS[@]} -gt 0 ]]; then
+                clear
 
-        if [[ ${#TWEAK_SELECTION[@]} -gt 0 || ${#TWEAK_RESETS[@]} -gt 0 ]]; then
-            clear
+                local need_dock=false need_finder=false
 
-            # Track domains that actually changed
-            local need_dock=false need_finder=false need_sysui=false
+                if [[ ${#TWEAK_SELECTION[@]} -gt 0 ]]; then
+                    AUDIT_ENTRIES=("${TWEAK_SELECTION[@]}")
+                    apply_audited_defaults
+                fi
 
-            if [[ ${#TWEAK_SELECTION[@]} -gt 0 ]]; then
-                AUDIT_ENTRIES=("${TWEAK_SELECTION[@]}")
-                apply_audited_defaults
+                if [[ ${#TWEAK_RESETS[@]} -gt 0 ]]; then
+                    RESET_ENTRIES=("${TWEAK_RESETS[@]}")
+                    apply_reset_defaults
+                fi
+
+                local domain
+                for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
+                    [[ "$domain" == *"dock"* ]]                                       && need_dock=true
+                    [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && need_finder=true
+                done
+                MACRIFT_CHANGED_DOMAINS=()
+
+                TWEAK_SELECTION=(); TWEAK_RESETS=()
+
+                if $need_dock || $need_finder; then
+                    printf '\n'
+                    if confirm "Restart affected services?"; then
+                        $need_dock   && { killall Dock 2>/dev/null || true;   log_ok "Dock restarted"; }
+                        $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
+                    else
+                        log_info "Restart skipped — changes apply after logout"
+                    fi
+                fi
+
+                wait_enter
             fi
-
-            if [[ ${#TWEAK_RESETS[@]} -gt 0 ]]; then
-                RESET_ENTRIES=("${TWEAK_RESETS[@]}")
-                apply_reset_defaults
-            fi
-
-            # Check which domains were actually modified
-            local domain
-            for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
-                [[ "$domain" == *"dock"* ]]                                       && need_dock=true
-                [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && need_finder=true
-                [[ "$domain" == "com.apple.screencapture" ]]                      && need_sysui=true
-            done
-            MACRIFT_CHANGED_DOMAINS=()
-
-            TWEAK_SELECTION=(); TWEAK_RESETS=()
-
-            $need_dock   && { killall Dock 2>/dev/null || true;           log_ok "Dock restarted"; }
-            $need_finder && { killall Finder 2>/dev/null || true;         log_ok "Finder restarted"; }
-            $need_sysui  && { killall SystemUIServer 2>/dev/null || true; log_ok "SystemUIServer restarted"; }
-
-            wait_enter
-            break
         fi
+
+        # Run Hot Corners if selected
+        if $do_hot_corners; then
+            source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
+        fi
+
         clear
     done
 
-    audit_reset
-}
-
-apply_all_tweaks() {
-    if ! confirm "Apply all tweaks?"; then return; fi
-
-    clear
-    audit_reset
-    MACRIFT_BATCH_TWEAKS=true
-
-    source "$MACRIFT_DIR/tweaks/dock.sh"        && dock_tweaks
-    source "$MACRIFT_DIR/tweaks/finder.sh"      && finder_tweaks
-    source "$MACRIFT_DIR/tweaks/keyboard.sh"    && keyboard_tweaks
-    source "$MACRIFT_DIR/tweaks/input.sh"       && input_tweaks
-    source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
-    source "$MACRIFT_DIR/tweaks/misc.sh"        && misc_tweaks
-
-    MACRIFT_BATCH_TWEAKS=false
-
-    apply_audited_defaults
-
-    for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
-        [[ "$domain" == *"dock"* ]]                                       && { killall Dock 2>/dev/null || true; log_ok "Dock restarted"; }
-        [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
-        [[ "$domain" == "com.apple.screencapture" ]]                      && { killall SystemUIServer 2>/dev/null || true; log_ok "SystemUIServer restarted"; }
-    done
-    MACRIFT_CHANGED_DOMAINS=()
-
-    chflags nohidden ~/Library 2>/dev/null || true
-
-    log_info "Some changes require logout or restart"
-    wait_enter
     audit_reset
 }
 
 tweaks_menu() {
     crumb_push "System Tweaks"
-    while true; do
-        clear
-        set_title "macrift > tweaks"
-        local choice
-        choice=$(show_menu "System Tweaks" \
-            "Select & Apply tweaks" \
-            "Hot Corners" \
-            "---" \
-            "Apply ALL tweaks" \
-            "Back")
-
-        case "$choice" in
-            1) select_tweaks ;;
-            2) source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks ;;
-            3) apply_all_tweaks ;;
-            0) break ;;
-            *) ;;
-        esac
-    done
+    set_title "macrift > tweaks"
+    select_tweaks
     crumb_pop
 }

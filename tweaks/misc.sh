@@ -17,6 +17,7 @@ misc_tweaks() {
 
     audit_default "NSGlobalDomain" "NSDocumentSaveNewDocumentsToCloud" "-bool" "false" "Save to iCloud"
     audit_default "NSGlobalDomain" "NSAutomaticWindowAnimationsEnabled" "-bool" "false" "Window animations"
+    audit_default "com.apple.WindowManager" "EnableStandardClickToShowDesktop" "-bool" "false" "Click wallpaper shows desktop"
 
     local boot_muted=false
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then

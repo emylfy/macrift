@@ -32,14 +32,13 @@ if [[ -n "$MACRIFT_LOG" ]]; then
     printf "\n── macrift session %s ──\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$MACRIFT_LOG"
 fi
 
-# Mouse reporting cleanup handled by global EXIT trap in common.sh EXIT
+
 
 main_menu() {
     crumb_push "macrift"
     while true; do
         clear
         set_title "macrift"
-
         # Build title with version, update hint, and flags
         local title="macrift $MACRIFT_VERSION"
         [[ -n "$MACRIFT_UPDATE" ]] && title+=" → $MACRIFT_UPDATE"
@@ -65,23 +64,23 @@ main_menu() {
             "Exit")
 
         case "$choice" in
-            1) source "$MACRIFT_DIR/tweaks/tweaks_menu.sh" && tweaks_menu ;;
+            1) source "$MACRIFT_DIR/tweaks/menu.sh" && tweaks_menu ;;
             2)
                 if check_homebrew; then
-                    source "$MACRIFT_DIR/apps/apps_menu.sh" && apps_menu
+                    source "$MACRIFT_DIR/apps/menu.sh" && apps_menu
                 else
                     wait_enter
                 fi
                 ;;
             3)
                 if check_homebrew; then
-                    source "$MACRIFT_DIR/apps/customize_menu.sh" && customize_menu
+                    source "$MACRIFT_DIR/customize/menu.sh" && customize_menu
                 else
                     wait_enter
                 fi
                 ;;
-            4) source "$MACRIFT_DIR/security/privacy.sh" && privacy_menu ;;
-            5) source "$MACRIFT_DIR/cleanup/cleanup.sh" && cleanup_menu ;;
+            4) source "$MACRIFT_DIR/security/menu.sh" && privacy_menu ;;
+            5) source "$MACRIFT_DIR/cleanup/menu.sh" && cleanup_menu ;;
             6)
                 if macrift_update; then
                     log_info "Restarting..."

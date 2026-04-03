@@ -14,8 +14,7 @@ MACRIFT_LOG="${MACRIFT_LOG:-}"
 #
 _macrift_cleanup() {
     cleanup_sudo
-    rm -f /tmp/macrift_* 2>/dev/null || true
-    printf "\033[?1006l\033[?25h" 2>/dev/null
+    printf "\033[?25h" 2>/dev/null
 }
 trap _macrift_cleanup EXIT
 trap 'exit 130' INT TERM
@@ -42,7 +41,7 @@ _friendly_val() {
         SCcf)    echo "current folder" ;;
         Nlsv)    echo "list" ;;
         PfHm)    echo "home" ;;
-        file://*) echo "~/" ;;
+        file://*) echo "$HOME/" ;;
         default) echo "not set" ;;
         *)       echo "$1" ;;
     esac
@@ -54,14 +53,6 @@ set_title() { printf "\033]0;%s\007" "$1"; }
 MACRIFT_CRUMBS=()
 crumb_push() { MACRIFT_CRUMBS+=("$1"); }
 crumb_pop()  { local _i=$(( ${#MACRIFT_CRUMBS[@]} - 1 )); [[ $_i -ge 0 ]] && unset "MACRIFT_CRUMBS[$_i]"; }
-crumb_path() {
-    local p=""
-    for c in "${MACRIFT_CRUMBS[@]}"; do
-        [[ -n "$p" ]] && p+=" › "
-        p+="$c"
-    done
-    echo "$p"
-}
 
 spinner() {
     local pid=$1 msg="${2:-}"
@@ -122,50 +113,19 @@ show_menu() {
         [[ ${#items[$i]} -gt $max_len ]] && max_len=${#items[$i]}
     done
     local real_count=$num
+    local no_nums="${MENU_NO_NUMBERS:-false}"
     local num_w=${#real_count}
-    local inner_w=$((2 + num_w + 3 + max_len + 2))
+    local num_pad=3
+    if [[ "$no_nums" == true ]]; then num_w=0; num_pad=2; fi
+    local inner_w=$((2 + num_w + num_pad + max_len + 2))
     local title_min=$((${#title} + 5))
     [[ $title_min -gt $inner_w ]] && inner_w=$title_min
     local top_fill=$((inner_w - ${#title} - 3))
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
     local total_lines=$((last_idx + 8))
-    local crumb_line=""
-    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-        crumb_line=$(crumb_path)
-        total_lines=$((total_lines + 1))
-    fi
+    [[ "$no_nums" == true ]] && total_lines=$((total_lines - 1))
     local sel=0 first_draw=true
-
-    # Query cursor row to map mouse clicks to menu items
-    local start_row=0
-    local _stty_save
-    _stty_save=$(stty -g 2>/dev/null)
-    stty -echo 2>/dev/null
-    printf "\033[6n" >&2
-    local _pos_r=""
-    IFS= read -rsn20 -t 1 -d 'R' _pos_r < /dev/tty 2>/dev/null || true
-    stty "$_stty_save" 2>/dev/null
-    [[ "$_pos_r" =~ \[([0-9]+)\; ]] && start_row="${BASH_REMATCH[1]}"
-
-    # Enable SGR mouse reporting
-    printf "\033[?1006h" >&2
-
-    # Pre-compute terminal row for each selectable item (stable across redraws)
-    local item_rows=()
-    local _base=$(( (${#crumb_line} > 0 ? 1 : 0) + 3 ))
-    local _ri=0 _si=0
-    for ((_ri=0; _ri<last_idx; _ri++)); do
-        if [[ "${items[_ri]}" == "---" ]]; then
-            _base=$((_base + 1))
-            continue
-        fi
-        item_rows[$_si]=$(( start_row + _base ))
-        _base=$((_base + 1))
-        _si=$((_si + 1))
-    done
-    # Back item: after items loop + one empty separator row
-    item_rows[$_si]=$(( start_row + _base + 1 ))
 
     printf "\033[?25l" >&2
 
@@ -176,50 +136,69 @@ show_menu() {
             printf "\033[%dA\r" "$total_lines" >&2
         fi
 
-        [[ -n "$crumb_line" ]] && printf '  %b%s%b\n' "$DIM" "$crumb_line" "$R" >&2
-        printf "\n" >&2
+        printf "\033[K\n" >&2
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
-        printf '╮%b\n' "$R" >&2
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        printf '╮%b\033[K\n' "$R" >&2
+        printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
 
         local num=0 sel_idx=0
         for ((i=0; i<last_idx; i++)); do
             if [[ "${items[$i]}" == "---" ]]; then
-                printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
                 continue
             fi
             num=$((num + 1))
-            local vis=$((2 + num_w + 3 + ${#items[$i]}))
+            local vis=$((2 + num_w + num_pad + ${#items[$i]}))
             local pad=$((inner_w - vis))
-            if [[ $sel_idx -eq $sel ]]; then
-                printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
-                    "$BP" "$R" "${BOLD}${ICE}" "$num_w" "$num" "${items[$i]}" "$R" "$pad" "" "$BP" "$R" >&2
+            if [[ "$no_nums" == true ]]; then
+                if [[ $sel_idx -eq $sel ]]; then
+                    printf '  %b│%b  %b› %s%b%*s%b│%b\033[K\n' \
+                        "$BP" "$R" "${BOLD}${ICE}" "${items[$i]}" "$R" "$pad" "" "$BP" "$R" >&2
+                else
+                    printf '  %b│%b  %b›%b %s%*s%b│%b\033[K\n' \
+                        "$BP" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                fi
             else
-                printf '  %b│%b  %b%*d%b %b›%b %s%*s%b│%b\n' \
-                    "$BP" "$R" "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                if [[ $sel_idx -eq $sel ]]; then
+                    printf '  %b│%b  %b%*d › %s%b%*s%b│%b\033[K\n' \
+                        "$BP" "$R" "${BOLD}${ICE}" "$num_w" "$num" "${items[$i]}" "$R" "$pad" "" "$BP" "$R" >&2
+                else
+                    printf '  %b│%b  %b%*d%b %b›%b %s%*s%b│%b\033[K\n' \
+                        "$BP" "$R" "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                fi
             fi
             ((sel_idx++))
         done
 
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-        local vis=$((2 + num_w + 3 + ${#items[$last_idx]}))
+        [[ "$no_nums" != true ]] && printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        local vis=$((2 + num_w + num_pad + ${#items[$last_idx]}))
         local pad=$((inner_w - vis))
-        if [[ $sel_idx -eq $sel ]]; then
-            printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
-                "$BP" "$R" "${BOLD}${ICE}" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+        if [[ "$no_nums" == true ]]; then
+            if [[ $sel_idx -eq $sel ]]; then
+                printf '  %b│%b  %b› %s%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "${BOLD}${ICE}" "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b  %b›%b %s%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$DIM" "$R" "${items[$last_idx]}" "$pad" "" "$BP" "$R" >&2
+            fi
         else
-            printf '  %b│%b  %b%*d › %s%b%*s%b│%b\n' \
-                "$BP" "$R" "$DIM" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+            if [[ $sel_idx -eq $sel ]]; then
+                printf '  %b│%b  %b%*d › %s%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "${BOLD}${ICE}" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b  %b%*d › %s%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$DIM" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
+            fi
         fi
 
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         printf '  %b╰' "$BP" >&2
         printf '─%.0s' $(seq 1 $inner_w) >&2
-        printf '╯%b\n' "$R" >&2
+        printf '╯%b\033[K\n' "$R" >&2
         local _nav_hint="↑↓ navigate  enter/→ select"
         [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && _nav_hint+="  ← back"
-        printf '  %b%s%b\n' "$DIM" "$_nav_hint" "$R" >&2
+        printf '  %b%s%b\033[K\n' "$DIM" "$_nav_hint" "$R" >&2
 
         local key=""
         IFS= read -rsn1 key < /dev/tty || true
@@ -230,47 +209,26 @@ show_menu() {
             case "$ansi" in
                 '[A') ((sel > 0)) && ((sel--)) ;;
                 '[B') ((sel < sel_total - 1)) && ((sel++)) ;;
-                '[C') printf "\033[?1006l\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
+                '[C') printf "\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
                 '[D')
                     if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-                        printf "\033[?1006l\033[?25h" >&2
+                        printf "\033[?25h" >&2
                         echo "0"
                         return
                     fi
                     ;;
-                '[<'*)
-                    # SGR mouse click: \033[<0;col;rowM (button 1 press)
-                    local mouse_tail="" _mc
-                    while IFS= read -rsn1 -t 1 _mc < /dev/tty 2>/dev/null; do
-                        mouse_tail+="${_mc}"
-                        [[ "$_mc" == 'M' || "$_mc" == 'm' ]] && break
-                    done
-                    if [[ "$mouse_tail" =~ ^0\;[0-9]+\;([0-9]+)M$ ]]; then
-                        local click_row="${BASH_REMATCH[1]}"
-                        local ci
-                        for ((ci=0; ci<sel_total; ci++)); do
-                            if [[ "${item_rows[$ci]}" == "$click_row" ]]; then
-                                sel=$ci
-                                printf "\033[?1006l\033[?25h" >&2
-                                echo "${sel_nums[$sel]}"
-                                return
-                            fi
-                        done
-                    fi
-                    ;;
             esac
         elif [[ "$key" == "" ]]; then
-            printf "\033[?1006l\033[?25h" >&2
+            printf "\033[?25h" >&2
             echo "${sel_nums[$sel]}"
             return
-        elif [[ "$key" =~ ^[0-9]$ ]]; then
+        elif [[ "$no_nums" != true && "$key" =~ ^[0-9]$ ]]; then
             printf "%s\n" "$key" >&2
-            printf "\033[?1006l\033[?25h" >&2
+            printf "\033[?25h" >&2
             echo "$key"
             return
         fi
     done
-    printf "\033[?1006l" >&2
 }
 
 # 
@@ -357,14 +315,8 @@ show_multiselect() {
     # Hide cursor
     printf "\033[?25l" >&2
 
-    local crumb_line=""
-    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-        crumb_line=$(crumb_path)
-    fi
     local first_draw=true
-    # lines: \n + top + empty + items + empty + back + empty + bottom + hint = count + 8
     local redraw_lines=$((count + 8))
-    [[ -n "$crumb_line" ]] && redraw_lines=$((redraw_lines + 1))
 
     while true; do
         if [[ "$first_draw" == true ]]; then
@@ -375,8 +327,6 @@ show_multiselect() {
 
         local BP="${BOLD}${GRAY}"
         local R="${RESET}"
-
-        [[ -n "$crumb_line" ]] && printf '  %b%s%b\n' "$DIM" "$crumb_line" "$R" >&2
         printf "\n" >&2
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
@@ -512,8 +462,8 @@ confirm() {
     local hint="y/n"
     [[ "$default" == "y" ]] && hint="Y/n"
     [[ "$default" == "n" ]] && hint="y/N"
+    printf '  %b%s%b %b[%s]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$hint" "$RESET"
     while true; do
-        printf '  %b%s%b %b[%s]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$hint" "$RESET"
         local key=""
         IFS= read -rsn1 key < /dev/tty || true
         case "$key" in
@@ -523,9 +473,8 @@ confirm() {
                 printf '\n'
                 [[ "$default" == "y" ]] && return 0
                 [[ "$default" == "n" ]] && return 1
-                log_err "Type y or n"
                 ;;
-            *) printf '%s\n' "$key"; log_err "Invalid option — use y or n" ;;
+            *) ;;
         esac
     done
 }
@@ -857,6 +806,7 @@ MACRIFT_UPDATE=""
 
 # Check for updates (2s timeout, silent on failure)
 check_update() {
+    [[ "${MACRIFT_NO_UPDATE:-}" == true ]] && return 0
     local remote
     remote=$(curl -fsSL --connect-timeout 2 --max-time 2 "$MACRIFT_VERSION_URL" 2>/dev/null) || return 0
     if [[ -n "$remote" && "$remote" != "$MACRIFT_VERSION" ]]; then

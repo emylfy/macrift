@@ -28,8 +28,8 @@
 
 Fresh Mac → full setup in minutes.
 
-- **See before you touch** — every system tweak shows a diff table before writing anything. 48 tweaks across 7 categories, all audited
-- **75 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
+- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 48 tweaks across 6 categories, all audited
+- **78 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
 - **11 bundled configs** — terminal profiles, shell aliases, editor settings, dock layout — ready to apply
 - **Profile export/import** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout) and restore it anywhere
 
@@ -79,12 +79,12 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 | ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc            |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                 |
 | 🎨  | **Customize**          | Terminal, Shell, Editor, Dock Layout, Wallpapers, Profile Backup            |
-| 🛡️  | **Security & Privacy** | Security status, privacy.sexy presets, hostname, encrypted DNS              |
+| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets                 |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                           |
 
 ### ⚙️ System Tweaks
 
-Every tweak shows a diff table before applying. Choose individually or apply all at once.
+Tweak wizard with per-item skip, apply, or reset to system default. Batch apply or pick individually.
 
 | Category         | What it does                                                                   |
 | :--------------- | :----------------------------------------------------------------------------- |
@@ -93,15 +93,15 @@ Every tweak shows a diff table before applying. Choose individually or apply all
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, drag windows anywhere               |
 | Screenshots      | Format, save location, shadow, date in filename                                |
-| Hot Corners      | Interactive corner action picker                                               |
+| Hot Corners      | Arrow-key menu per corner, no codes to memorize                                |
 | Misc             | Boot sound, app open dialog, save/print panels, window animations              |
 
 ### 📦 Apps & Packages
 
 **Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
 
-- **Development** — git, gh, lazygit, node, python, go, rust, neovim, fzf, ripgrep, bat, eza, fd, fastfetch, macmon, mas, mole, scrcpy, t3-code, android-platform-tools...
-- **Utilities** — Raycast, Alfred, HiddenBar, Keka, AltTab, SoundSource, BetterDisplay, Logi Options+, Macs Fan Control, SuperCorners...
+- **Development** — bash, git, gh, lazygit, node, python, go, rust, neovim, fzf, ripgrep, bat, eza, fd, fastfetch, macmon, mas, mole, scrcpy, t3-code, android-platform-tools...
+- **Utilities** — Raycast, Alfred, HiddenBar, Keka, AltTab, SoundSource, BetterDisplay, Cork, Logi Options+, Macs Fan Control, SuperCorners...
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
 - **Communication** — Ayugram, Telegram, Discord, Slack, Zoom
 - **Media** — IINA, OBS, Spotify, Figma, ImageOptim, Affinity
@@ -119,9 +119,9 @@ Export/import your packages with `.brewbak` backup files.
 | Tool                                     | Description                                                                                      |
 | :--------------------------------------- | :----------------------------------------------------------------------------------------------- |
 | **Security Status**                      | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off                    |
-| **[privacy.sexy](https://privacy.sexy)** | Custom or standard macOS hardening preset                                                        |
 | **Hostname**                             | Set custom hostname — hide your name from the network                                            |
-| **DNS Setup**                            | Choose from 11 providers: Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, ControlD, and more |
+| **DNS**                                  | 11 providers, benchmark with current DNS comparison, VPN detection                               |
+| **Hardening**                            | [privacy.sexy](https://privacy.sexy) — custom or standard macOS hardening preset                 |
 
 ### 🧹 Cleanup
 

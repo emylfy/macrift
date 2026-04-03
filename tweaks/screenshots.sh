@@ -18,7 +18,6 @@ screenshots_tweaks() {
 
     if show_audit_table "Screenshots"; then
         apply_audited_defaults
-        killall SystemUIServer 2>/dev/null || true
         log_ok "Screenshot settings applied"
         wait_enter
     fi

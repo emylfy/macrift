@@ -1,5 +1,36 @@
 # Changelog
 
+## 26.04.1
+
+### New
+
+- **Tweaks** — disable pointer acceleration (input), click wallpaper shows desktop (misc)
+
+### Changed
+
+- **Project structure** — `customize/` split from `apps/`; all menu files renamed to `menu.sh`
+- **Tweaks menu** — single-screen flow: multi-select categories (including Hot Corners), no submenu; `apply_all_tweaks` removed
+- **Hot Corners** — numberless menu per corner with visual status diagram (◤◥◣◢); "Keep current" first option; title shows current assignment
+- **Dock Layout** — removed "Apply layout" and `config/dock.txt`; menu now Clear/Spacer/Reset only
+- **Service restarts** — confirm before `killall Dock`/`Finder`; removed `killall SystemUIServer` for screenshots (applies instantly on modern macOS)
+- **Confirm prompt** — prompt prints once, silently ignores invalid keys
+- **Breadcrumb** — removed from display; `crumb_push`/`crumb_pop` kept for `←` navigation
+- **DNS benchmark** — current DNS included as `Current (ip)` option; VPN detection with warning
+- **Menu rendering** — `\033[K` on every line to prevent redraw artifacts; `MENU_NO_NUMBERS` mode
+- **Mouse click support** — removed SGR mouse reporting from menus
+- **Update check** — `MACRIFT_NO_UPDATE` env var to skip
+
+### Fixed
+
+- **ShellCheck** — SC2088 `"~/"` → `"$HOME/"`, SC2004 removed `$` in array subscripts, SC2155 split declare/assign
+
+### Removed
+
+- `config/dock.txt` — dock layout config file
+- `apply_all_tweaks` — replaced by unified wizard flow
+
+---
+
 ## 26.04
 
 ### New

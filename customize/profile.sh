@@ -185,7 +185,10 @@ import_profile() {
                 log_warn "Failed: $domain"
             fi
         done
-        killall Dock Finder SystemUIServer 2>/dev/null || true
+        if confirm "Restart Dock, Finder, SystemUIServer?"; then
+            killall Dock Finder SystemUIServer 2>/dev/null || true
+            log_ok "Services restarted"
+        fi
     fi
 
     # Dotfiles

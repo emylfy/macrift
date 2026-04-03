@@ -282,8 +282,17 @@ dns_menu() {
 
 # Benchmark
 
+_check_vpn() {
+    scutil --nwi 2>/dev/null | command grep -qiE 'utun|ipsec|tun[0-9]|ppp'
+}
+
 dns_benchmark() {
     clear
+
+    if _check_vpn; then
+        log_warn "VPN detected — results may be inaccurate (DNS cache on VPN server)"
+        printf '\n'
+    fi
 
     if ! _ensure_dnspyre; then
         log_info "Falling back to dig..."
@@ -291,7 +300,18 @@ dns_benchmark() {
         return
     fi
 
+    # Get current DNS for comparison
+    local cur_dns cur_primary
+    cur_dns=$(_current_dns)
+    cur_primary=$(echo "$cur_dns" | cut -d',' -f1 | tr -d ' ')
+
     local labels=()
+    # Add current DNS as first option if it's a valid IP
+    local has_current=false
+    if [[ "$cur_primary" =~ ^[0-9]+\.[0-9]+ ]]; then
+        labels+=("Current ($cur_primary)")
+        has_current=true
+    fi
     for entry in "${DNS_PROVIDERS[@]}"; do
         labels+=("$(_dns_label "$entry")")
     done
@@ -302,7 +322,11 @@ dns_benchmark() {
 
     clear
 
-    local count=0
+    local count=0 bench_current=false
+    if $has_current && echo "$selected" | grep -qxF "Current ($cur_primary)"; then
+        count=$((count + 1))
+        bench_current=true
+    fi
     for entry in "${DNS_PROVIDERS[@]}"; do
         if echo "$selected" | grep -qxF "$(_dns_label "$entry")"; then
             count=$((count + 1))
@@ -310,8 +334,6 @@ dns_benchmark() {
     done
 
     if [[ $count -eq 0 ]]; then
-        log_info "No providers selected"
-        wait_enter
         return
     fi
 
@@ -320,6 +342,35 @@ dns_benchmark() {
 
     local best_label="" best_avg=999999
     local idx=0
+
+    # Benchmark current DNS first
+    if $bench_current; then
+        idx=$((idx + 1))
+        printf '  %b[%d/%d]%b Current (%s)\n' "$DIM" "$idx" "$count" "$RESET" "$cur_primary"
+
+        local output clean avg_ms
+        output=$(dnspyre -s "$cur_primary" -n 50 -c 5 -t A example.com 2>&1)
+        # shellcheck disable=SC2001
+        clean=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')
+
+        avg_ms=$(echo "$clean" | awk '/mean:/{
+            for(i=1;i<=NF;i++) {
+                if($i ~ /^[0-9]+(\.[0-9]+)?ms$/) { gsub(/ms/,"",$i); printf "%.0f", $i; exit }
+                if($i ~ /^[0-9]+(\.[0-9]+)?s$/)  { gsub(/s/,"",$i); printf "%.0f", $i*1000; exit }
+                if($i ~ /^[0-9]+(\.[0-9]+)?µs$/) { gsub(/µs/,"",$i); printf "%.0f", $i/1000; exit }
+            }
+        }')
+
+        if [[ -n "$avg_ms" && "$avg_ms" =~ ^[0-9]+$ ]]; then
+            printf '  %b  → avg %dms%b\n\n' "$GREEN" "$avg_ms" "$RESET"
+            if [[ $avg_ms -lt $best_avg ]]; then
+                best_avg=$avg_ms
+                best_label="Current ($cur_primary)"
+            fi
+        else
+            printf '  %b  → could not parse latency%b\n\n' "$DIM" "$RESET"
+        fi
+    fi
 
     for entry in "${DNS_PROVIDERS[@]}"; do
         local label primary
@@ -366,10 +417,34 @@ dns_benchmark() {
 
 _dns_benchmark_dig() {
     clear
+    if _check_vpn; then
+        log_warn "VPN detected — results may be inaccurate (DNS cache on VPN server)"
+        printf '\n'
+    fi
+
     log_info "Testing latency with dig (3 queries per provider)..."
     printf "\n"
 
     local best_label="" best_avg=999999
+
+    # Benchmark current DNS
+    local cur_dns cur_primary
+    cur_dns=$(_current_dns)
+    cur_primary=$(echo "$cur_dns" | cut -d',' -f1 | tr -d ' ')
+    if [[ "$cur_primary" =~ ^[0-9]+\.[0-9]+ ]]; then
+        local total=0 ms
+        for _ in 1 2 3; do
+            ms=$(dig @"$cur_primary" example.com +noall +stats 2>/dev/null \
+                | awk '/Query time:/{print $4}')
+            total=$((total + ${ms:-999}))
+        done
+        local avg=$((total / 3))
+        printf '  %-14s %s  %dms avg  %b(current)%b\n' "Current" "$cur_primary" "$avg" "$DIM" "$RESET"
+        if [[ $avg -lt $best_avg ]]; then
+            best_avg=$avg
+            best_label="Current ($cur_primary)"
+        fi
+    fi
 
     for entry in "${DNS_PROVIDERS[@]}"; do
         local label primary total=0 ms

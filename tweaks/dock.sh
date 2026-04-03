@@ -25,8 +25,10 @@ dock_tweaks() {
 
     if show_audit_table "Dock"; then
         apply_audited_defaults
-        killall Dock 2>/dev/null || true
-        log_ok "Dock restarted"
+        if confirm "Restart Dock?"; then
+            killall Dock 2>/dev/null || true
+            log_ok "Dock restarted"
+        fi
         wait_enter
     fi
 }
@@ -53,25 +55,22 @@ _CORNER_IDS=(0 2 3 4 5 6 10 11 12 13 14)
 _pick_corner() {
     local label="$1" current="$2"
 
-    local actions=()
+    local actions=("Keep current")
     for id in "${_CORNER_IDS[@]}"; do
         local name
         name=$(_corner_name "$id")
-        if [[ "$id" == "$current" ]]; then
-            actions+=("$name (current)")
-        else
-            actions+=("$name")
-        fi
+        actions+=("$name")
     done
-    actions+=("Back")
 
     local choice
-    choice=$(show_menu "$label" "${actions[@]}")
+    MENU_NO_NUMBERS=true
+    choice=$(show_menu "$label — $(_corner_name "$current")" "${actions[@]}")
+    MENU_NO_NUMBERS=false
 
-    if [[ "$choice" == "0" ]]; then
+    if [[ "$choice" == "0" || "$choice" == "1" ]]; then
         echo "$current"
     else
-        echo "${_CORNER_IDS[$((choice - 1))]}"
+        echo "${_CORNER_IDS[$((choice - 2))]}"
     fi
 }
 
@@ -85,10 +84,32 @@ hot_corners_tweaks() {
     crumb_push "Hot Corners"
 
     local tl tr bl br
+    local _tl_name _tr_name _bl_name _br_name
+    _tl_name=$(_corner_name "$cur_tl")
+    _tr_name=$(_corner_name "$cur_tr")
+    _bl_name=$(_corner_name "$cur_bl")
+    _br_name=$(_corner_name "$cur_br")
+
+    _hot_corners_status() {
+        printf '\n  %b◤%b %-20s %b◥%b %s\n' "$CYAN" "$RESET" "$_tl_name" "$CYAN" "$RESET" "$_tr_name"
+        printf '  %b◣%b %-20s %b◢%b %s\n\n' "$CYAN" "$RESET" "$_bl_name" "$CYAN" "$RESET" "$_br_name"
+    }
+
+    clear; _hot_corners_status
     tl=$(_pick_corner "Top-left" "$cur_tl")
+    _tl_name=$(_corner_name "$tl")
+
+    clear; _hot_corners_status
     tr=$(_pick_corner "Top-right" "$cur_tr")
+    _tr_name=$(_corner_name "$tr")
+
+    clear; _hot_corners_status
     bl=$(_pick_corner "Bottom-left" "$cur_bl")
+    _bl_name=$(_corner_name "$bl")
+
+    clear; _hot_corners_status
     br=$(_pick_corner "Bottom-right" "$cur_br")
+    _br_name=$(_corner_name "$br")
 
     crumb_pop
 
@@ -130,7 +151,10 @@ hot_corners_tweaks() {
     defaults write com.apple.dock wvous-tr-modifier -int 0
     defaults write com.apple.dock wvous-bl-modifier -int 0
     defaults write com.apple.dock wvous-br-modifier -int 0
-    killall Dock 2>/dev/null || true
     log_ok "Hot corners applied"
+    if confirm "Restart Dock?"; then
+        killall Dock 2>/dev/null || true
+        log_ok "Dock restarted"
+    fi
     wait_enter
 }
