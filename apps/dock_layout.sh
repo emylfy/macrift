@@ -2,6 +2,7 @@
 # macrift — Dock layout management via dockutil
 
 dock_layout_menu() {
+    crumb_push "Dock Layout"
     while true; do
         clear
         set_title "macrift > dock layout"
@@ -18,10 +19,11 @@ dock_layout_menu() {
             2) clear_dock ;;
             3) add_dock_spacer ;;
             4) reset_dock ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 apply_dock_layout() {

@@ -5,6 +5,7 @@ MOLE_REPO="https://github.com/tw93/mole"
 MOLE_INSTALL="https://raw.githubusercontent.com/tw93/mole/main/install.sh"
 
 cleanup_menu() {
+    crumb_push "Cleanup"
     while true; do
         clear
         set_title "macrift > cleanup"
@@ -18,10 +19,11 @@ cleanup_menu() {
         case "$choice" in
             1) run_brew_cleanup ;;
             2) run_mole_cleanup ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 run_brew_cleanup() {
@@ -56,20 +58,14 @@ run_mole_cleanup() {
     while true; do
         clear
 
-        show_info_box "Mole not installed" \
-            "" \
-            "About:  removes caches, logs, Xcode/simulator/brew leftovers" \
-            "URL:    $MOLE_REPO" \
-            "" \
-            "Y > Install & run   N > Cancel   R > Review source" \
-            ""
-
-        printf "\n"
         local choice
-        read -r choice
+        choice=$(show_menu "Mole — system cleanup" \
+            "Install & run" \
+            "Review source" \
+            "Cancel")
 
         case "$choice" in
-            y|Y)
+            1)
                 log_info "Installing Mole..."
                 if curl -fsSL "$MOLE_INSTALL" | bash; then
                     log_ok "Mole installed"
@@ -80,16 +76,8 @@ run_mole_cleanup() {
                 wait_enter
                 return
                 ;;
-            r|R)
-                open "$MOLE_REPO"
-                ;;
-            n|N)
-                return
-                ;;
-            *)
-                log_err "Invalid option — use Y, N, or R"
-                wait_retry
-                ;;
+            2) open "$MOLE_REPO" ;;
+            0) return ;;
         esac
     done
 }

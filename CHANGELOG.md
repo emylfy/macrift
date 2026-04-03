@@ -1,5 +1,52 @@
 # Changelog
 
+## 26.04
+
+### New
+
+- **Tweak Wizard** — multi-category selection with per-item states: skip, apply, or reset to system default. Filled progress dots, live counter, summary screen with confirmation
+- **Breadcrumb navigation** — `macrift › Apps › Homebrew` path shown across all menus
+- **Mouse click support** — SGR mouse reporting in menus, click an item to select
+- **Reset to defaults** — `d` key deletes the key via `defaults delete`, restoring macOS default
+- **Spinner** — `spinner()` and `run_with_spinner()` for background operations
+- **Hardening submenu** — privacy.sexy custom/standard moved into dedicated submenu
+- **Hot Corners rework** — arrow-key menu per corner instead of number input; shows `(current)` marker
+
+### Changed
+
+- **Tweaks menu** simplified — 7 categories replaced with wizard + Hot Corners + Apply ALL
+- **Apply ALL tweaks** — now batch mode: one confirm, one apply pass, restarts only changed services
+- **Confirm** — single keypress (`y`/`n`), no Enter needed
+- **Ctrl+C** — instant exit everywhere, global EXIT trap restores terminal
+- **← arrow** — goes back from any menu; hidden from hint at root level
+- **Restarts** — only triggered for domains that actually changed, not all selected
+- **Friendly values** — `Nlsv → list`, `SCcf → current folder` in apply log; booleans stay `true`/`false` to avoid ambiguity on negated keys
+- **Tweak display** — `Label: value` format instead of separate columns; `not set` hidden when all values are new
+- **Warning hints** — `~` separator instead of `|` to avoid breaking audit entry parsing
+- **Info boxes** — automatic top/bottom padding, removed manual empty lines from all callers
+- **Wallpaper menu** — reordered (Wallhaven first), shortened labels, `log_ok` feedback on open
+- **Security menu** — reordered: Status, Hostname, DNS, Hardening; breadcrumb matches title
+- **Breadcrumb/title consistency** — all menus match: Terminal, Homebrew, App Store, Privacy & Security
+- **External script dialogs** — SpotX, privacy.sexy preset, Mole install now use arrow-key menus instead of Y/N/R text input
+- **iTerm2 menu** — now loops like all other submenus; fixed undefined `$domain` variable
+- **`wait_enter`** — added after every action that previously flashed output (brew, appstore, terminal, spotify, tweaks, privacy)
+- **`show_multiselect`** — right arrow works as confirm
+
+### Packages
+
+- **Dev** — added `bash` (bash 5 via Homebrew)
+- **Utils** — added `cork`
+- **App Store** — added TestFlight
+
+### Fixed
+
+- **`TWEAK_SELECTION[@]` unbound** — safe expansion with `${arr[@]:+${arr[@]}}`
+- **Hint `|` in label** broke audit parsing — `Press & hold accents` failed to apply
+- **`profile.sh`** — replaced `local -A` (bash 4+) with parallel arrays for bash 3.2 compatibility
+- **`apply_all_tweaks`** — was not batch mode, forced 7 separate confirm/apply rounds
+
+---
+
 ## 26.03.1
 
 ### New

@@ -2,6 +2,7 @@
 # macrift — customize menu
 
 customize_menu() {
+    crumb_push "Customize"
     while true; do
         clear
         set_title "macrift > customize"
@@ -23,8 +24,9 @@ customize_menu() {
             4) source "$MACRIFT_DIR/apps/editor.sh" && editor_menu ;;
             5) source "$MACRIFT_DIR/apps/dock_layout.sh" && dock_layout_menu ;;
             6) source "$MACRIFT_DIR/apps/wallpaper.sh" && wallpaper_menu ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }

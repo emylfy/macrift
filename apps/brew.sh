@@ -2,11 +2,12 @@
 # macrift — Homebrew bundle installer
 
 brew_menu() {
+    crumb_push "Homebrew"
     while true; do
         clear
         set_title "macrift > brew"
         local choice
-        choice=$(show_menu "Homebrew Bundles" \
+        choice=$(show_menu "Homebrew" \
             "Development" \
             "Utilities" \
             "Browsers" \
@@ -30,13 +31,15 @@ brew_menu() {
             7) install_bundle "Brewfile.fonts" ;;
             8) install_all_bundles ;;
             9) brewbak_menu ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 brewbak_menu() {
+    crumb_push "Backup"
     while true; do
         clear
         set_title "macrift > brew > backup"
@@ -49,10 +52,11 @@ brewbak_menu() {
         case "$choice" in
             1) import_brewbak ;;
             2) export_brewbak ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 install_bundle() {
@@ -142,8 +146,7 @@ install_bundle() {
 
     if [[ ${#new_labels[@]} -eq 0 ]]; then
         log_ok "Everything installed"
-        printf "\n"
-        confirm "Back" || true
+        wait_enter
         return 0
     fi
 
@@ -152,7 +155,6 @@ install_bundle() {
     selected=$(show_multiselect "$brewfile" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
-        log_info "Nothing selected"
         return 0
     fi
 
@@ -172,6 +174,7 @@ install_bundle() {
             printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"
         rm -f "$tmp"
+        wait_enter
         return 0
     fi
 
@@ -197,6 +200,7 @@ install_all_bundles() {
     done
 
     log_ok "All bundles done"
+    wait_enter
 }
 
 import_brewbak() {

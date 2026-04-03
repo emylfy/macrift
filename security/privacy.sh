@@ -3,33 +3,54 @@
 
 PRIVACY_SEXY_URL="https://privacy.sexy"
 PRIVACY_MACOS_PRESET="https://www.privacylearn.com/downloads/macos/standard.sh"
+PRIVACY_MACOS_REVIEW="https://www.privacylearn.com/macos?level=normal"
 
 privacy_menu() {
+    crumb_push "Privacy & Security"
     while true; do
         clear
         set_title "macrift > privacy"
 
         local choice
         choice=$(show_menu "Privacy & Security" \
-            "System Security Status" \
-            "---" \
-            "privacy.sexy — custom batch" \
-            "privacy.sexy — standard preset" \
-            "---" \
-            "Set hostname" \
-            "DNS setup" \
+            "Security Status" \
+            "Hostname" \
+            "DNS" \
+            "Hardening (privacy.sexy)" \
             "Back")
 
         case "$choice" in
             1) show_security_status ;;
-            2) open "$PRIVACY_SEXY_URL" ;;
-            3) run_standard_preset ;;
-            4) set_hostname ;;
-            5) dns_menu ;;
-            0) return ;;
+            2) set_hostname ;;
+            3) dns_menu ;;
+            4) hardening_menu ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
+}
+
+hardening_menu() {
+    crumb_push "Hardening"
+    while true; do
+        clear
+        set_title "macrift > privacy > hardening"
+
+        local choice
+        choice=$(show_menu "Hardening (privacy.sexy)" \
+            "Custom — open privacy.sexy" \
+            "Standard preset — run script" \
+            "Back")
+
+        case "$choice" in
+            1) open "$PRIVACY_SEXY_URL"; log_ok "Opened in browser"; wait_enter ;;
+            2) run_standard_preset ;;
+            0) break ;;
+            *) ;;
+        esac
+    done
+    crumb_pop
 }
 
 show_security_status() {
@@ -74,12 +95,10 @@ show_security_status() {
     fi
 
     show_info_box "System Security Status" \
-        "" \
         "FileVault:   $fv_status" \
         "Firewall:    $fw_status" \
         "SIP:         $sip_status" \
-        "Gatekeeper:  $gk_status" \
-        ""
+        "Gatekeeper:  $gk_status"
 
     printf "\n"
 
@@ -112,22 +131,14 @@ run_standard_preset() {
     while true; do
         clear
 
-        show_info_box "External script execution" \
-            "" \
-            "Tool:   privacy.sexy - standard macOS preset" \
-            "URL:    $PRIVACY_SEXY_URL" \
-            "Source: $PRIVACY_MACOS_PRESET" \
-            "" \
-            "Y > Run   N > Cancel   R > Review source" \
-            ""
-
-        printf "\n"
         local choice
-        read -r choice
+        choice=$(show_menu "privacy.sexy — standard preset" \
+            "Run preset" \
+            "Review source" \
+            "Cancel")
 
         case "$choice" in
-            n|N) return ;;
-            y|Y)
+            1)
                 log_info "Downloading preset..."
                 local tmp
                 tmp=$(mktemp /tmp/macrift_privacy_XXXXXX.sh)
@@ -140,15 +151,11 @@ run_standard_preset() {
                     log_err "Failed to download preset"
                 fi
                 rm -f "$tmp"
+                wait_enter
                 return
                 ;;
-            r|R)
-                open "$PRIVACY_SEXY_URL"
-                ;;
-            *)
-                log_err "Invalid option — use Y, N, or R"
-                wait_retry
-                ;;
+            2) open "$PRIVACY_MACOS_REVIEW" ;;
+            0) return ;;
         esac
     done
 }
@@ -160,13 +167,11 @@ set_hostname() {
     current=$(scutil --get ComputerName 2>/dev/null || echo "unknown")
     log_info "Current hostname: $current"
 
-    printf '\n  %bEnter new hostname (e.g. MacBook):%b ' "$DIM" "$RESET"
+    printf '\n  %bEnter new hostname (empty to cancel):%b ' "$DIM" "$RESET"
     local name
-    read -r name
+    if ! read -r name; then return; fi
 
     if [[ -z "$name" ]]; then
-        log_info "Cancelled"
-        wait_enter
         return
     fi
 
@@ -249,6 +254,7 @@ _ensure_dnspyre() {
 # DNS menu
 
 dns_menu() {
+    crumb_push "DNS"
     while true; do
         clear
         set_title "macrift > privacy > dns"
@@ -267,10 +273,11 @@ dns_menu() {
             1) dns_benchmark ;;
             2) dns_pick_provider ;;
             3) dns_custom ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 # Benchmark
@@ -471,19 +478,13 @@ dns_custom() {
     current=$(_current_dns)
     log_info "Current DNS: $current"
 
-    printf '\n  %bPrimary DNS (e.g. 1.1.1.1):%b ' "$DIM" "$RESET"
+    printf '\n  %bPrimary DNS (empty to cancel):%b ' "$DIM" "$RESET"
     local primary
-    read -r primary
-
-    if [[ -z "$primary" ]]; then
-        log_info "Cancelled"
-        wait_enter
-        return
-    fi
+    if ! read -r primary || [[ -z "$primary" ]]; then return; fi
 
     printf '  %bSecondary DNS (optional):%b ' "$DIM" "$RESET"
     local secondary
-    read -r secondary
+    if ! read -r secondary; then return; fi
 
     local svc
     svc=$(_active_service)

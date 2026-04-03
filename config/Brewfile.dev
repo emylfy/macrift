@@ -1,4 +1,5 @@
 # Development tools
+brew "bash"
 brew "git"
 brew "gh"
 brew "lazygit"

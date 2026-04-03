@@ -2,6 +2,7 @@
 # macrift — apps menu
 
 apps_menu() {
+    crumb_push "Apps & Packages"
     while true; do
         clear
         set_title "macrift > apps"
@@ -16,8 +17,9 @@ apps_menu() {
             1) source "$MACRIFT_DIR/apps/brew.sh" && brew_menu ;;
             2) source "$MACRIFT_DIR/apps/appstore.sh" && appstore_menu ;;
             3) source "$MACRIFT_DIR/apps/spotify.sh" && spotify_menu ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }

@@ -2,6 +2,7 @@
 # macrift — Spotify customization (SpotX + Spicetify)
 
 spotify_menu() {
+    crumb_push "Spotify"
     while true; do
         clear
         set_title "macrift > spotify"
@@ -16,10 +17,11 @@ spotify_menu() {
             1) install_spotx ;;
             2) install_spicetify ;;
             3) source "$MACRIFT_DIR/apps/spicetify.sh" && restore_marketplace ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 SPOTX_URL="https://spotx-official.github.io/run.sh"
@@ -29,37 +31,22 @@ install_spotx() {
     while true; do
         clear
 
-        show_info_box "External script execution" \
-            "" \
-            "Tool:   SpotX - Spotify ad blocker" \
-            "URL:    $SPOTX_REPO" \
-            "Source: $SPOTX_URL" \
-            "" \
-            "Y > Run   N > Cancel   R > Review source" \
-            ""
-
-        printf "\n"
         local choice
-        read -r choice
+        choice=$(show_menu "SpotX — Spotify ad blocker" \
+            "Install SpotX" \
+            "Review source" \
+            "Cancel")
 
         case "$choice" in
-            y|Y)
+            1)
                 log_info "Running SpotX..."
                 bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty
                 log_ok "SpotX applied"
                 wait_enter
                 return
                 ;;
-            n|N)
-                return
-                ;;
-            r|R)
-                open "$SPOTX_REPO"
-                ;;
-            *)
-                log_err "Invalid option — use Y, N, or R"
-                wait_retry
-                ;;
+            2) open "$SPOTX_REPO" ;;
+            0) return ;;
         esac
     done
 }
@@ -83,4 +70,5 @@ install_spicetify() {
         log_ok "Spicetify applied"
         log_info "Use 'spicetify' command to customize further"
     fi
+    wait_enter
 }

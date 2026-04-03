@@ -32,8 +32,10 @@ if [[ -n "$MACRIFT_LOG" ]]; then
     printf "\n── macrift session %s ──\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$MACRIFT_LOG"
 fi
 
-#
+# Mouse reporting cleanup handled by global EXIT trap in common.sh EXIT
+
 main_menu() {
+    crumb_push "macrift"
     while true; do
         clear
         set_title "macrift"

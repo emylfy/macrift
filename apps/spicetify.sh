@@ -32,12 +32,10 @@ restore_marketplace() {
     fi
 
     show_info_box "Restore Marketplace Settings" \
-        "" \
         "This will:" \
         "  1. Generate a temporary Spicetify extension" \
         "  2. Apply it to inject saved marketplace settings" \
-        "  3. Clean up after Spotify loads" \
-        ""
+        "  3. Clean up after Spotify loads"
 
     if ! confirm "Continue?"; then
         return

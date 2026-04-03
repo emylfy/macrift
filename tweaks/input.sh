@@ -2,23 +2,22 @@
 # macrift — Trackpad & Mouse tweaks
 
 input_tweaks() {
-    audit_reset
+    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
 
-    # Trackpad: tap to click
-    audit_default "com.apple.AppleMultitouchTrackpad" "Clicking" "-bool" "true" "Tap to click (trackpad)"
+    audit_default "com.apple.AppleMultitouchTrackpad" "Clicking" "-bool" "true" "Tap to click"
     audit_default "NSGlobalDomain" "com.apple.mouse.tapBehavior" "-int" "1" "Tap to click (global)"
-
-    # Trackpad: tracking speed
     audit_default "NSGlobalDomain" "com.apple.trackpad.scaling" "-float" "2.5" "Tracking speed"
 
-    # Enable secondary click (right-click)
-    audit_default "com.apple.AppleMultitouchTrackpad" "TrackpadRightClick" "-bool" "true" "Right-click"
+    audit_sep
 
-    # Drag windows from anywhere (Ctrl+Cmd)
+    audit_default "com.apple.AppleMultitouchTrackpad" "TrackpadRightClick" "-bool" "true" "Right-click"
     audit_default "NSGlobalDomain" "NSWindowShouldDragOnGesture" "-bool" "true" "Drag windows anywhere"
+
+    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 
     if show_audit_table "Trackpad & Mouse"; then
         apply_audited_defaults
         log_ok "Input settings applied"
+        wait_enter
     fi
 }

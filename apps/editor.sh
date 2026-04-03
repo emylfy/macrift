@@ -2,6 +2,7 @@
 # macrift — Code editor config
 
 editor_menu() {
+    crumb_push "Code Editor"
     while true; do
         clear
         set_title "macrift > editor"
@@ -24,10 +25,11 @@ editor_menu() {
             4) apply_editor_config "VSCodium" "$HOME/Library/Application Support/VSCodium/User/settings.json" ;;
             5) apply_editor_config "Zed" "$HOME/.config/zed/settings.json" ;;
             6) install_extensions ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 apply_editor_config() {

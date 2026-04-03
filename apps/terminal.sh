@@ -4,11 +4,12 @@
 ITERM2_DOMAIN="com.googlecode.iterm2"
 
 terminal_menu() {
+    crumb_push "Terminal"
     while true; do
         clear
         set_title "macrift > terminal"
         local choice
-        choice=$(show_menu "Terminal Emulator" \
+        choice=$(show_menu "Terminal" \
             "iTerm2" \
             "Ghostty" \
             "Back")
@@ -16,58 +17,71 @@ terminal_menu() {
         case "$choice" in
             1) setup_iterm2 ;;
             2) setup_ghostty ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 setup_iterm2() {
-    if ! brew_install "iterm2" "cask"; then return; fi
+    crumb_push "iTerm2"
+    if ! brew_install "iterm2" "cask"; then crumb_pop; return; fi
 
     local config_dir="$MACRIFT_DIR/config/iterm2"
     local config_plist="$config_dir/iterm2.plist"
     local dyn_profiles_dir="$HOME/Library/Application Support/iTerm2/DynamicProfiles"
+    local domain="$ITERM2_DOMAIN"
 
     mkdir -p "$config_dir"
 
-    local choice
-    choice=$(show_menu "iTerm2" \
-        "Apply theme profile" \
-        "Apply iTerm2 defaults" \
-        "---" \
-        "Export current settings to plist" \
-        "Import settings from plist" \
-        "Back")
+    while true; do
+        clear
+        set_title "macrift > terminal > iterm2"
 
-    case "$choice" in
-        1) _iterm2_install_profile "$config_dir" "$dyn_profiles_dir" ;;
-        2) _iterm2_system_tweaks ;;
-        3)
-            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Dry run — would export iTerm2 settings"
-            else
-                defaults export "$domain" "$config_plist"
-                log_ok "Settings exported to config/iterm2/iterm2.plist"
-            fi
-            ;;
-        4)
-            if [[ ! -f "$config_plist" ]]; then
-                log_err "No settings found in config/iterm2/iterm2.plist"
-                log_info "Run export first to save your current settings"
-                return
-            fi
-            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Dry run — would import iTerm2 settings"
-            elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
-                defaults import "$domain" "$config_plist"
-                defaults delete "$domain" PrefsCustomFolder 2>/dev/null || true
-                defaults delete "$domain" LoadPrefsFromCustomFolder 2>/dev/null || true
-                log_ok "Settings imported — restart iTerm2 to apply"
-            fi
-            ;;
-        0) return ;;
-    esac
+        local choice
+        choice=$(show_menu "iTerm2" \
+            "Apply theme profile" \
+            "Apply iTerm2 defaults" \
+            "---" \
+            "Export current settings to plist" \
+            "Import settings from plist" \
+            "Back")
+
+        case "$choice" in
+            1) _iterm2_install_profile "$config_dir" "$dyn_profiles_dir" ;;
+            2) _iterm2_system_tweaks; wait_enter ;;
+            3)
+                if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                    log_info "Dry run — would export iTerm2 settings"
+                else
+                    defaults export "$domain" "$config_plist"
+                    log_ok "Settings exported to config/iterm2/iterm2.plist"
+                fi
+                wait_enter
+                ;;
+            4)
+                if [[ ! -f "$config_plist" ]]; then
+                    log_err "No settings found in config/iterm2/iterm2.plist"
+                    log_info "Run export first to save your current settings"
+                    wait_enter
+                    continue
+                fi
+                if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                    log_info "Dry run — would import iTerm2 settings"
+                elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
+                    defaults import "$domain" "$config_plist"
+                    defaults delete "$domain" PrefsCustomFolder 2>/dev/null || true
+                    defaults delete "$domain" LoadPrefsFromCustomFolder 2>/dev/null || true
+                    log_ok "Settings imported — restart iTerm2 to apply"
+                fi
+                wait_enter
+                ;;
+            0) break ;;
+            *) ;;
+        esac
+    done
+    crumb_pop
 }
 
 _iterm2_install_profile() {
@@ -197,6 +211,7 @@ setup_ghostty() {
         _ghostty_install_themes
         log_ok "Ghostty configured"
     fi
+    wait_enter
 }
 
 _ghostty_install_themes() {
@@ -223,6 +238,7 @@ _ghostty_install_themes() {
 }
 
 shell_menu() {
+    crumb_push "Shell"
     while true; do
         clear
         set_title "macrift > shell"
@@ -238,10 +254,11 @@ shell_menu() {
             1) install_starship ;;
             2) install_zshrc ;;
             3) install_starship; install_zshrc ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 install_starship() {
@@ -283,6 +300,7 @@ install_fastfetch() {
 }
 
 fastfetch_menu() {
+    crumb_push "FastFetch"
     while true; do
         clear
         set_title "macrift > fastfetch"
@@ -295,10 +313,11 @@ fastfetch_menu() {
         case "$choice" in
             1) install_fastfetch ;;
             2) apply_fastfetch_config ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 apply_fastfetch_config() {

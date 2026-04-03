@@ -2,6 +2,7 @@
 # macrift — Full profile export/import
 
 profile_menu() {
+    crumb_push "Profile"
     while true; do
         clear
         set_title "macrift > profile"
@@ -14,10 +15,11 @@ profile_menu() {
         case "$choice" in
             1) export_profile ;;
             2) import_profile ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 export_profile() {
@@ -86,15 +88,15 @@ export_profile() {
     local editors_dir="$profile_dir/editors"
     mkdir -p "$editors_dir"
 
-    local -A editor_paths=(
-        ["vscode"]="$HOME/Library/Application Support/Code/User/settings.json"
-        ["cursor"]="$HOME/Library/Application Support/Cursor/User/settings.json"
-        ["zed"]="$HOME/.config/zed/settings.json"
+    local editor_names=("vscode" "cursor" "zed")
+    local editor_paths=(
+        "$HOME/Library/Application Support/Code/User/settings.json"
+        "$HOME/Library/Application Support/Cursor/User/settings.json"
+        "$HOME/.config/zed/settings.json"
     )
-    for editor in "${!editor_paths[@]}"; do
-        local epath="${editor_paths[$editor]}"
-        if [[ -f "$epath" ]]; then
-            cp "$epath" "$editors_dir/${editor}-settings.json"
+    for ((i=0; i<${#editor_names[@]}; i++)); do
+        if [[ -f "${editor_paths[$i]}" ]]; then
+            cp "${editor_paths[$i]}" "$editors_dir/${editor_names[$i]}-settings.json"
             exported=$((exported + 1))
         fi
     done
@@ -213,18 +215,18 @@ import_profile() {
     if echo "$selected" | grep -qF "Editor settings"; then
         log_info "Restoring editor settings..."
         local ed="$profile_dir/editors"
-        local -A editor_targets=(
-            ["vscode"]="$HOME/Library/Application Support/Code/User/settings.json"
-            ["cursor"]="$HOME/Library/Application Support/Cursor/User/settings.json"
-            ["zed"]="$HOME/.config/zed/settings.json"
+        local editor_names=("vscode" "cursor" "zed")
+        local editor_targets=(
+            "$HOME/Library/Application Support/Code/User/settings.json"
+            "$HOME/Library/Application Support/Cursor/User/settings.json"
+            "$HOME/.config/zed/settings.json"
         )
-        for editor in "${!editor_targets[@]}"; do
-            if [[ -f "$ed/${editor}-settings.json" ]]; then
-                local target="${editor_targets[$editor]}"
-                mkdir -p "$(dirname "$target")"
-                backup_file "$target"
-                cp "$ed/${editor}-settings.json" "$target"
-                log_ok "$editor settings restored"
+        for ((i=0; i<${#editor_names[@]}; i++)); do
+            if [[ -f "$ed/${editor_names[$i]}-settings.json" ]]; then
+                mkdir -p "$(dirname "${editor_targets[$i]}")"
+                backup_file "${editor_targets[$i]}"
+                cp "$ed/${editor_names[$i]}-settings.json" "${editor_targets[$i]}"
+                log_ok "${editor_names[$i]} settings restored"
                 restored=$((restored + 1))
             fi
         done

@@ -2,78 +2,135 @@
 # macrift — Dock tweaks
 
 dock_tweaks() {
-    audit_reset
+    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
 
-    audit_default "com.apple.dock" "autohide" "-bool" "true" "Autohide Dock"
+    audit_default "com.apple.dock" "autohide" "-bool" "true" "Autohide"
     audit_default "com.apple.dock" "autohide-delay" "-float" "0" "Autohide delay"
-    audit_default "com.apple.dock" "autohide-time-modifier" "-float" "0.3" "Autohide animation speed"
+    audit_default "com.apple.dock" "autohide-time-modifier" "-float" "0.3" "Animation speed"
+
+    audit_sep
+
     audit_default "com.apple.dock" "tilesize" "-int" "36" "Icon size"
-    audit_default "com.apple.dock" "minimize-to-application" "-bool" "true" "Minimize to app icon"
+    audit_default "com.apple.dock" "minimize-to-application" "-bool" "true" "Minimize to app"
     audit_default "com.apple.dock" "mineffect" "-string" "scale" "Minimize effect"
-    audit_default "com.apple.dock" "show-recents" "-bool" "false" "Show recent apps"
-    audit_default "com.apple.dock" "showhidden" "-bool" "true" "Show hidden apps dimmed"
-    audit_default "com.apple.dock" "mru-spaces" "-bool" "false" "Auto-rearrange Spaces"
-    audit_default "com.apple.dock" "static-only" "-bool" "false" "Show only running apps"
+
+    audit_sep
+
+    audit_default "com.apple.dock" "show-recents" "-bool" "false" "Recent apps"
+    audit_default "com.apple.dock" "showhidden" "-bool" "true" "Dim hidden apps"
+    audit_default "com.apple.dock" "mru-spaces" "-bool" "false" "Rearrange Spaces"
+    audit_default "com.apple.dock" "static-only" "-bool" "false" "Only running apps"
+
+    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 
     if show_audit_table "Dock"; then
         apply_audited_defaults
         killall Dock 2>/dev/null || true
         log_ok "Dock restarted"
+        wait_enter
+    fi
+}
+
+_corner_name() {
+    case "$1" in
+        0)  echo "None" ;;
+        2)  echo "Mission Control" ;;
+        3)  echo "App Windows" ;;
+        4)  echo "Desktop" ;;
+        5)  echo "Screen Saver" ;;
+        6)  echo "Disable Screen Saver" ;;
+        10) echo "Display Sleep" ;;
+        11) echo "Launchpad" ;;
+        12) echo "Notification Center" ;;
+        13) echo "Lock Screen" ;;
+        14) echo "Quick Note" ;;
+        *)  echo "$1" ;;
+    esac
+}
+
+_CORNER_IDS=(0 2 3 4 5 6 10 11 12 13 14)
+
+_pick_corner() {
+    local label="$1" current="$2"
+
+    local actions=()
+    for id in "${_CORNER_IDS[@]}"; do
+        local name
+        name=$(_corner_name "$id")
+        if [[ "$id" == "$current" ]]; then
+            actions+=("$name (current)")
+        else
+            actions+=("$name")
+        fi
+    done
+    actions+=("Back")
+
+    local choice
+    choice=$(show_menu "$label" "${actions[@]}")
+
+    if [[ "$choice" == "0" ]]; then
+        echo "$current"
+    else
+        echo "${_CORNER_IDS[$((choice - 1))]}"
     fi
 }
 
 hot_corners_tweaks() {
-    clear
-
-    show_info_box "Corner Actions" \
-        "0  — No action" \
-        "2  — Mission Control" \
-        "3  — Application Windows" \
-        "4  — Desktop" \
-        "5  — Start Screen Saver" \
-        "6  — Disable Screen Saver" \
-        "10 — Put Display to Sleep" \
-        "11 — Launchpad" \
-        "12 — Notification Center" \
-        "13 — Lock Screen" \
-        "14 — Quick Note"
-
-    local tl tr bl br
     local cur_tl cur_tr cur_bl cur_br
     cur_tl=$(defaults read com.apple.dock wvous-tl-corner 2>/dev/null || echo "0")
     cur_tr=$(defaults read com.apple.dock wvous-tr-corner 2>/dev/null || echo "0")
     cur_bl=$(defaults read com.apple.dock wvous-bl-corner 2>/dev/null || echo "0")
     cur_br=$(defaults read com.apple.dock wvous-br-corner 2>/dev/null || echo "0")
 
-    printf '\n  %bCurrent: TL=%s  TR=%s  BL=%s  BR=%s%b\n' "$DIM" "$cur_tl" "$cur_tr" "$cur_bl" "$cur_br" "$RESET"
-    printf '  %bPress enter to keep current value%b\n\n' "$DIM" "$RESET"
+    crumb_push "Hot Corners"
 
-    printf '  %bTop-left%b [%s]: ' "$CYAN" "$RESET" "$cur_tl"
-    read -r tl < /dev/tty
-    printf '  %bTop-right%b [%s]: ' "$CYAN" "$RESET" "$cur_tr"
-    read -r tr < /dev/tty
-    printf '  %bBottom-left%b [%s]: ' "$CYAN" "$RESET" "$cur_bl"
-    read -r bl < /dev/tty
-    printf '  %bBottom-right%b [%s]: ' "$CYAN" "$RESET" "$cur_br"
-    read -r br < /dev/tty
+    local tl tr bl br
+    tl=$(_pick_corner "Top-left" "$cur_tl")
+    tr=$(_pick_corner "Top-right" "$cur_tr")
+    bl=$(_pick_corner "Bottom-left" "$cur_bl")
+    br=$(_pick_corner "Bottom-right" "$cur_br")
 
-    tl="${tl:-$cur_tl}"
-    tr="${tr:-$cur_tr}"
-    bl="${bl:-$cur_bl}"
-    br="${br:-$cur_br}"
+    crumb_pop
 
-    audit_reset
-    audit_default "com.apple.dock" "wvous-tl-corner" "-int" "$tl" "Top-left corner"
-    audit_default "com.apple.dock" "wvous-tr-corner" "-int" "$tr" "Top-right corner"
-    audit_default "com.apple.dock" "wvous-bl-corner" "-int" "$bl" "Bottom-left corner"
-    audit_default "com.apple.dock" "wvous-br-corner" "-int" "$br" "Bottom-right corner"
+    # Summary
+    local corners=("Top-left:$cur_tl:$tl" "Top-right:$cur_tr:$tr" "Bottom-left:$cur_bl:$bl" "Bottom-right:$cur_br:$br")
+    local has_changes=false
+    for c in "${corners[@]}"; do
+        IFS=':' read -r _label cur new <<< "$c"
+        [[ "$cur" != "$new" ]] && has_changes=true
+    done
 
-    if show_audit_table "Hot Corners"; then
-        apply_audited_defaults
-        defaults write com.apple.dock wvous-tl-modifier -int 0
-        defaults write com.apple.dock wvous-tr-modifier -int 0
-        defaults write com.apple.dock wvous-bl-modifier -int 0
-        defaults write com.apple.dock wvous-br-modifier -int 0
-        log_ok "Hot corners applied"
+    if ! $has_changes; then
+        clear
+        printf '\n'
+        log_ok "Hot corners unchanged"
+        wait_enter
+        return
     fi
+
+    clear
+    printf '\n'
+    for c in "${corners[@]}"; do
+        IFS=':' read -r label cur new <<< "$c"
+        if [[ "$cur" == "$new" ]]; then
+            printf '    %-18s %b%s%b\n' "$label" "$DIM" "$(_corner_name "$cur")" "$RESET"
+        else
+            printf '    %-18s %b%s%b → %b%s%b\n' "$label" "$DIM" "$(_corner_name "$cur")" "$RESET" "$GREEN" "$(_corner_name "$new")" "$RESET"
+        fi
+    done
+    printf '\n'
+
+    if ! confirm "Apply?"; then return; fi
+
+    defaults write com.apple.dock wvous-tl-corner -int "$tl"
+    defaults write com.apple.dock wvous-tr-corner -int "$tr"
+    defaults write com.apple.dock wvous-bl-corner -int "$bl"
+    defaults write com.apple.dock wvous-br-corner -int "$br"
+    defaults write com.apple.dock wvous-tl-modifier -int 0
+    defaults write com.apple.dock wvous-tr-modifier -int 0
+    defaults write com.apple.dock wvous-bl-modifier -int 0
+    defaults write com.apple.dock wvous-br-modifier -int 0
+    killall Dock 2>/dev/null || true
+    log_ok "Hot corners applied"
+    wait_enter
 }

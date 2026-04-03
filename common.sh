@@ -15,9 +15,10 @@ MACRIFT_LOG="${MACRIFT_LOG:-}"
 _macrift_cleanup() {
     cleanup_sudo
     rm -f /tmp/macrift_* 2>/dev/null || true
-    tput cnorm 2>/dev/null || true  # restore cursor
+    printf "\033[?1006l\033[?25h" 2>/dev/null
 }
-trap _macrift_cleanup EXIT INT TERM
+trap _macrift_cleanup EXIT
+trap 'exit 130' INT TERM
 
 # Strip ANSI escape codes and append to log file
 _log_file() {
@@ -36,10 +37,55 @@ GRAY='\033[38;5;240m'
 CYAN='\033[38;5;39m'
 ICE='\033[38;5;195m'
 
-# 
-set_title() { printf "\033]0;%s\007" "$1"; }
+_friendly_val() {
+    case "$1" in
+        SCcf)    echo "current folder" ;;
+        Nlsv)    echo "list" ;;
+        PfHm)    echo "home" ;;
+        file://*) echo "~/" ;;
+        default) echo "not set" ;;
+        *)       echo "$1" ;;
+    esac
+}
 
 #
+set_title() { printf "\033]0;%s\007" "$1"; }
+
+MACRIFT_CRUMBS=()
+crumb_push() { MACRIFT_CRUMBS+=("$1"); }
+crumb_pop()  { local _i=$(( ${#MACRIFT_CRUMBS[@]} - 1 )); [[ $_i -ge 0 ]] && unset "MACRIFT_CRUMBS[$_i]"; }
+crumb_path() {
+    local p=""
+    for c in "${MACRIFT_CRUMBS[@]}"; do
+        [[ -n "$p" ]] && p+=" › "
+        p+="$c"
+    done
+    echo "$p"
+}
+
+spinner() {
+    local pid=$1 msg="${2:-}"
+    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    tput civis 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null; do
+        printf '\r  %b%s%b  %s' "$CYAN" "${frames:i%10:1}" "$RESET" "$msg" >&2
+        sleep 0.08
+        ((i++))
+    done
+    printf '\r\033[K' >&2
+    tput cnorm 2>/dev/null || true
+}
+
+run_with_spinner() {
+    local msg="$1"
+    shift
+    "$@" &>/dev/null &
+    spinner $! "$msg"
+    wait $! 2>/dev/null
+    return $?
+}
+
 log_info()  { printf '  %b›%b  %s\n' "${CYAN}" "${RESET}" "$1"; _log_file "[info] $1"; }
 log_ok()    { printf '  %b✓%b  %s\n' "${GREEN}" "${RESET}" "$1"; _log_file "[  ok] $1"; }
 log_err()   { printf '  %b✗%b  %s\n' "${RED}" "${RESET}" "$1"; _log_file "[ err] $1"; }
@@ -84,7 +130,42 @@ show_menu() {
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
     local total_lines=$((last_idx + 8))
+    local crumb_line=""
+    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+        crumb_line=$(crumb_path)
+        total_lines=$((total_lines + 1))
+    fi
     local sel=0 first_draw=true
+
+    # Query cursor row to map mouse clicks to menu items
+    local start_row=0
+    local _stty_save
+    _stty_save=$(stty -g 2>/dev/null)
+    stty -echo 2>/dev/null
+    printf "\033[6n" >&2
+    local _pos_r=""
+    IFS= read -rsn20 -t 1 -d 'R' _pos_r < /dev/tty 2>/dev/null || true
+    stty "$_stty_save" 2>/dev/null
+    [[ "$_pos_r" =~ \[([0-9]+)\; ]] && start_row="${BASH_REMATCH[1]}"
+
+    # Enable SGR mouse reporting
+    printf "\033[?1006h" >&2
+
+    # Pre-compute terminal row for each selectable item (stable across redraws)
+    local item_rows=()
+    local _base=$(( (${#crumb_line} > 0 ? 1 : 0) + 3 ))
+    local _ri=0 _si=0
+    for ((_ri=0; _ri<last_idx; _ri++)); do
+        if [[ "${items[_ri]}" == "---" ]]; then
+            _base=$((_base + 1))
+            continue
+        fi
+        item_rows[$_si]=$(( start_row + _base ))
+        _base=$((_base + 1))
+        _si=$((_si + 1))
+    done
+    # Back item: after items loop + one empty separator row
+    item_rows[$_si]=$(( start_row + _base + 1 ))
 
     printf "\033[?25l" >&2
 
@@ -95,6 +176,7 @@ show_menu() {
             printf "\033[%dA\r" "$total_lines" >&2
         fi
 
+        [[ -n "$crumb_line" ]] && printf '  %b%s%b\n' "$DIM" "$crumb_line" "$R" >&2
         printf "\n" >&2
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
@@ -135,7 +217,9 @@ show_menu() {
         printf '  %b╰' "$BP" >&2
         printf '─%.0s' $(seq 1 $inner_w) >&2
         printf '╯%b\n' "$R" >&2
-        printf "\n" >&2
+        local _nav_hint="↑↓ navigate  enter/→ select"
+        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && _nav_hint+="  ← back"
+        printf '  %b%s%b\n' "$DIM" "$_nav_hint" "$R" >&2
 
         local key=""
         IFS= read -rsn1 key < /dev/tty || true
@@ -146,20 +230,47 @@ show_menu() {
             case "$ansi" in
                 '[A') ((sel > 0)) && ((sel--)) ;;
                 '[B') ((sel < sel_total - 1)) && ((sel++)) ;;
-                '[C'|'[M') printf "\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
-                '[D') printf "‹\n" >&2; printf "\033[?25h" >&2; echo "0"; return ;;
+                '[C') printf "\033[?1006l\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
+                '[D')
+                    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+                        printf "\033[?1006l\033[?25h" >&2
+                        echo "0"
+                        return
+                    fi
+                    ;;
+                '[<'*)
+                    # SGR mouse click: \033[<0;col;rowM (button 1 press)
+                    local mouse_tail="" _mc
+                    while IFS= read -rsn1 -t 1 _mc < /dev/tty 2>/dev/null; do
+                        mouse_tail+="${_mc}"
+                        [[ "$_mc" == 'M' || "$_mc" == 'm' ]] && break
+                    done
+                    if [[ "$mouse_tail" =~ ^0\;[0-9]+\;([0-9]+)M$ ]]; then
+                        local click_row="${BASH_REMATCH[1]}"
+                        local ci
+                        for ((ci=0; ci<sel_total; ci++)); do
+                            if [[ "${item_rows[$ci]}" == "$click_row" ]]; then
+                                sel=$ci
+                                printf "\033[?1006l\033[?25h" >&2
+                                echo "${sel_nums[$sel]}"
+                                return
+                            fi
+                        done
+                    fi
+                    ;;
             esac
         elif [[ "$key" == "" ]]; then
-            printf "\033[?25h" >&2
+            printf "\033[?1006l\033[?25h" >&2
             echo "${sel_nums[$sel]}"
             return
         elif [[ "$key" =~ ^[0-9]$ ]]; then
             printf "%s\n" "$key" >&2
-            printf "\033[?25h" >&2
+            printf "\033[?1006l\033[?25h" >&2
             echo "$key"
             return
         fi
     done
+    printf "\033[?1006l" >&2
 }
 
 # 
@@ -195,11 +306,17 @@ show_info_box() {
     printf '─%.0s' $(seq 1 $top_fill) >&2
     printf '╮%b\n' "$R" >&2
 
+    # Top padding
+    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+
     for ((i=0; i<count; i++)); do
         local line="${lines[$i]}"
         local pad=$((inner_w - ${#line} - 2))
         printf '  %b│%b  %s%*s%b│%b\n' "$BP" "$R" "$line" "$pad" "" "$BP" "$R" >&2
     done
+
+    # Bottom padding
+    printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
 
     printf '  %b╰' "$BP" >&2
     printf '─%.0s' $(seq 1 $inner_w) >&2
@@ -240,9 +357,14 @@ show_multiselect() {
     # Hide cursor
     printf "\033[?25l" >&2
 
+    local crumb_line=""
+    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+        crumb_line=$(crumb_path)
+    fi
     local first_draw=true
     # lines: \n + top + empty + items + empty + back + empty + bottom + hint = count + 8
     local redraw_lines=$((count + 8))
+    [[ -n "$crumb_line" ]] && redraw_lines=$((redraw_lines + 1))
 
     while true; do
         if [[ "$first_draw" == true ]]; then
@@ -254,8 +376,8 @@ show_multiselect() {
         local BP="${BOLD}${GRAY}"
         local R="${RESET}"
 
+        [[ -n "$crumb_line" ]] && printf '  %b%s%b\n' "$DIM" "$crumb_line" "$R" >&2
         printf "\n" >&2
-        # ╭─ Title ───╮
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
         printf '╮%b\n' "$R" >&2
@@ -296,7 +418,8 @@ show_multiselect() {
         printf '─%.0s' $(seq 1 $inner_w) >&2
         printf '╯%b\n' "$R" >&2
         # hint below box
-        printf '  %b↑↓ move  space toggle  a all  enter confirm%b\n' "$DIM" "$R" >&2
+        local _ms_hint="${MULTISELECT_HINT:-↑↓ move  space toggle  a all  enter confirm}"
+        printf '  %b%s%b\n' "$DIM" "$_ms_hint" "$R" >&2
 
         # Read keypress
         IFS= read -rsn1 key < /dev/tty || true
@@ -312,6 +435,12 @@ show_multiselect() {
                 if [[ $cursor -lt $((total - 1)) ]]; then
                     cursor=$((cursor + 1))
                 fi
+            elif [[ "$seq" == '[C' ]]; then
+                if [[ $cursor -eq $count ]]; then
+                    printf "\033[?25h" >&2
+                    return 0
+                fi
+                break
             elif [[ "$seq" == '[D' ]]; then
                 printf "\033[?25h" >&2
                 return 0
@@ -357,21 +486,48 @@ show_multiselect() {
 }
 
 # Reusable prompts
-wait_enter() { printf '\n  %bpress enter to continue%b ' "$DIM" "$RESET"; read -r < /dev/tty || true; }
-wait_retry()  { printf '  %bpress enter to retry%b ' "$DIM" "$RESET"; read -r < /dev/tty || true; }
+wait_enter() {
+    printf '\n  %bpress enter to continue%b ' "$DIM" "$RESET"
+    local _k=""
+    IFS= read -rsn1 _k < /dev/tty || true
+    printf '\n'
+}
+wait_retry() {
+    printf '  %bpress enter to retry%b ' "$DIM" "$RESET"
+    local _k=""
+    IFS= read -rsn1 _k < /dev/tty || true
+    printf '\n'
+}
 prompt_path() { printf '  %bpath:%b ' "$CYAN" "$RESET"; }
 
 #
 confirm() {
     local msg="${1:-Continue?}"
+    local default="${2:-}"
     if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
         printf '  %b%s%b %b[auto: y]%b\n' "$YELLOW" "$msg" "$RESET" "$DIM" "$RESET"
         _log_file "[auto] $msg → y"
         return 0
     fi
-    printf '  %b%s%b %b[y/n]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$RESET"
-    read -r answer
-    [[ "$answer" =~ ^[Yy]$ ]]
+    local hint="y/n"
+    [[ "$default" == "y" ]] && hint="Y/n"
+    [[ "$default" == "n" ]] && hint="y/N"
+    while true; do
+        printf '  %b%s%b %b[%s]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$hint" "$RESET"
+        local key=""
+        IFS= read -rsn1 key < /dev/tty || true
+        case "$key" in
+            [Yy]) printf '%s\n' "$key"; return 0 ;;
+            [Nn]) printf '%s\n' "$key"; return 1 ;;
+            "")
+                printf '\n'
+                [[ "$default" == "y" ]] && return 0
+                [[ "$default" == "n" ]] && return 1
+                log_err "Type y or n"
+                ;;
+            *) printf '%s\n' "$key"; log_err "Invalid option — use y or n" ;;
+        esac
+    done
 }
 
 # 
@@ -460,6 +616,10 @@ declare -a AUDIT_ENTRIES=()
 
 audit_reset() {
     AUDIT_ENTRIES=()
+}
+
+audit_sep() {
+    AUDIT_ENTRIES+=("---|---|---|---|---|---")
 }
 
 # Queue a defaults write for audit
@@ -558,34 +718,95 @@ show_audit_table() {
     fi
 }
 
+# Domains that were actually modified (used to decide which services to restart)
+declare -a MACRIFT_CHANGED_DOMAINS=()
+
 # Apply all queued defaults writes
 apply_audited_defaults() {
+    local applied=0 skipped=0 failed=0
+
     for entry in "${AUDIT_ENTRIES[@]}"; do
         IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
+        label="${label%%~*}"
 
         if [[ "$current" == "$new_val" ]]; then
+            ((skipped++))
             continue
         fi
 
+        local friendly
+        friendly=$(_friendly_val "$new_val")
+
         if [[ "${sudo_flag:-}" == "sudo" ]]; then
             if sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
-                log_ok "$label → $new_val"
+                log_ok "$label → $friendly"
+                ((applied++))
+                MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
-                log_err "Failed: $label"
+                log_err "Failed: $label → $friendly"
+                ((failed++))
             fi
         else
             if defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
-                log_ok "$label → $new_val"
+                log_ok "$label → $friendly"
+                ((applied++))
+                MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
-                log_err "Failed: $label"
+                log_err "Failed: $label → $friendly"
+                ((failed++))
             fi
         fi
     done
 
+    local summary="${applied} applied"
+    [[ $skipped -gt 0 ]] && summary+=", ${skipped} skipped"
+    [[ $failed -gt 0 ]]  && summary+=", ${failed} failed"
+    printf '\n'
+    log_info "$summary"
+
     audit_reset
 }
 
-# 
+# Reset queued defaults (delete keys to restore system defaults)
+# RESET_ENTRIES format: same as AUDIT_ENTRIES
+declare -a RESET_ENTRIES=()
+
+apply_reset_defaults() {
+    local reset=0 failed=0
+
+    for entry in "${RESET_ENTRIES[@]}"; do
+        IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
+
+        if [[ "${sudo_flag:-}" == "sudo" ]]; then
+            if sudo defaults delete "$domain" "$key" 2>/dev/null; then
+                log_ok "$label → system default"
+                ((reset++))
+                MACRIFT_CHANGED_DOMAINS+=("$domain")
+            else
+                log_err "Failed to reset: $label"
+                ((failed++))
+            fi
+        else
+            if defaults delete "$domain" "$key" 2>/dev/null; then
+                log_ok "$label → system default"
+                ((reset++))
+                MACRIFT_CHANGED_DOMAINS+=("$domain")
+            else
+                log_err "Failed to reset: $label"
+                ((failed++))
+            fi
+        fi
+    done
+
+    local summary="${reset} reset"
+    if [[ $failed -gt 0 ]]; then summary+=", ${failed} failed"; fi
+    printf '\n'
+    log_info "$summary"
+
+    RESET_ENTRIES=()
+}
+
+#
 backup_file() {
     local target="$1"
     if [[ -f "$target" ]]; then

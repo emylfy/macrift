@@ -2,35 +2,32 @@
 # macrift — Misc system tweaks
 
 misc_tweaks() {
-    audit_reset
+    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
 
-    # Speed up "Are you sure you want to open this app?" dialog
     audit_default "com.apple.LaunchServices" "LSQuarantine" "-bool" "false" "App open warning"
 
-    # Expand save panel by default
+    audit_sep
+
     audit_default "NSGlobalDomain" "NSNavPanelExpandedStateForSaveMode" "-bool" "true" "Expand save panel"
     audit_default "NSGlobalDomain" "NSNavPanelExpandedStateForSaveMode2" "-bool" "true" "Expand save panel 2"
-
-    # Expand print panel by default
     audit_default "NSGlobalDomain" "PMPrintingExpandedStateForPrint" "-bool" "true" "Expand print panel"
     audit_default "NSGlobalDomain" "PMPrintingExpandedStateForPrint2" "-bool" "true" "Expand print panel 2"
 
-    # Save to disk by default (not iCloud)
-    audit_default "NSGlobalDomain" "NSDocumentSaveNewDocumentsToCloud" "-bool" "false" "Save to iCloud"
+    audit_sep
 
-    # Disable window opening animations
+    audit_default "NSGlobalDomain" "NSDocumentSaveNewDocumentsToCloud" "-bool" "false" "Save to iCloud"
     audit_default "NSGlobalDomain" "NSAutomaticWindowAnimationsEnabled" "-bool" "false" "Window animations"
 
-    # Check boot sound status (nvram, not defaults — handled separately)
     local boot_muted=false
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then
         boot_muted=true
     fi
 
+    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
+
     if show_audit_table "Misc"; then
         apply_audited_defaults
 
-        # Mute boot sound via nvram (not a defaults command)
         if [[ "$boot_muted" == false ]]; then
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                 log_info "Dry run — would mute boot sound (nvram)"
@@ -47,5 +44,6 @@ misc_tweaks() {
         fi
 
         log_ok "Misc tweaks applied"
+        wait_enter
     fi
 }

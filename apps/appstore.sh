@@ -2,11 +2,12 @@
 # macrift — Mac App Store installer via mas
 
 appstore_menu() {
+    crumb_push "App Store"
     while true; do
         clear
         set_title "macrift > app store"
         local choice
-        choice=$(show_menu "Mac App Store" \
+        choice=$(show_menu "App Store" \
             "Install from list" \
             "Show installed" \
             "Back")
@@ -14,10 +15,11 @@ appstore_menu() {
         case "$choice" in
             1) install_appstore ;;
             2) show_installed_apps ;;
-            0) return ;;
+            0) break ;;
             *) ;;
         esac
     done
+    crumb_pop
 }
 
 _ensure_mas() {
@@ -84,7 +86,6 @@ install_appstore() {
     selected=$(show_multiselect "App Store" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
-        log_info "Nothing selected"
         return 0
     fi
 
