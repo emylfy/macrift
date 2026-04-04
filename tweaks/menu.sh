@@ -31,6 +31,7 @@ _tweak_wizard() {
         cat_sel_offsets+=("${#sel_idx[@]}")
         local cs="${cat_starts[$c]}" ce="${cat_ends[$c]}" cnt=0
         for ((i=cs; i<ce; i++)); do
+            [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
             IFS='|' read -r _l _c _n _rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$_l" == "---" ]] && continue
             sel_idx+=("$i")
@@ -50,6 +51,7 @@ _tweak_wizard() {
     local cat_idx=0 wizard_done=false
     local R="${RESET}"
 
+    stty -echo 2>/dev/null
     printf "\033[?25l" >&2
 
     while ! $wizard_done; do
@@ -64,6 +66,7 @@ _tweak_wizard() {
         # Count extra warning lines in this category
         local warn_lines=0
         for ((i=cstart; i<cend; i++)); do
+            [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
             IFS='|' read -r _l _rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$_l" == *"~"* ]] && warn_lines=$(( warn_lines + 1 ))
         done
@@ -71,6 +74,7 @@ _tweak_wizard() {
         local first_draw=true
 
         while true; do
+            printf "\033[?2026h" >&2
             if $first_draw; then
                 first_draw=false
                 clear
@@ -92,6 +96,7 @@ _tweak_wizard() {
 
             local si=0
             for ((i=cstart; i<cend; i++)); do
+                [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
                 IFS='|' read -r label current new_val _rest <<< "${AUDIT_ENTRIES[$i]}"
 
                 if [[ "$label" == "---" ]]; then
@@ -182,6 +187,8 @@ _tweak_wizard() {
                 printf '  %b%s%b\033[K\n' "$DIM" "$hint" "$R" >&2
             fi
 
+            printf "\033[?2026l" >&2
+
             local key=""
             IFS= read -rsn1 key < /dev/tty || true
 
@@ -203,9 +210,9 @@ _tweak_wizard() {
                             cat_idx=$(( cat_idx - 1 ))
                             break
                         else
-                            printf "\033[?25h" >&2
+                            stty echo 2>/dev/null; printf "\033[?25h" >&2
                             TWEAK_SELECTION=(); TWEAK_RESETS=()
-                            return
+                            return 1
                         fi
                         ;;
                 esac
@@ -245,6 +252,7 @@ _tweak_wizard() {
         done
     done
 
+    stty echo 2>/dev/null
     printf "\033[?25h" >&2
 
     # Summary
@@ -304,6 +312,7 @@ _tweak_wizard() {
         local bounds="${ci#*:}"
         local cs="${bounds%%:*}" ce="${bounds#*:}"
         for ((i=cs; i<ce; i++)); do
+            [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
             IFS='|' read -r _l _rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$_l" == "---" ]] && continue
             if [[ "${state[$i]}" == "1" ]]; then TWEAK_SELECTION+=("${AUDIT_ENTRIES[$i]}"); fi
@@ -366,7 +375,10 @@ select_tweaks() {
 
         # Run tweak wizard if any defaults-based categories selected
         if [[ ${#specs[@]} -gt 0 ]]; then
-            _tweak_wizard "${specs[@]}"
+            if ! _tweak_wizard "${specs[@]}"; then
+                clear
+                continue
+            fi
 
             if [[ ${#TWEAK_SELECTION[@]} -gt 0 || ${#TWEAK_RESETS[@]} -gt 0 ]]; then
                 clear

@@ -28,10 +28,10 @@
 
 Fresh Mac → full setup in minutes.
 
-- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 48 tweaks across 6 categories, all audited
+- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 56 tweaks across 7 categories, all audited
 - **78 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
-- **11 bundled configs** — terminal profiles, shell aliases, editor settings, dock layout — ready to apply
-- **Profile export/import** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout) and restore it anywhere
+- **12 bundled configs** — terminal profiles, shell aliases, Catppuccin theme, editor settings, dock layout — ready to apply
+- **Profile save/restore** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout, Raycast) to Desktop, Documents, or iCloud Drive and restore it anywhere
 
 ---
 
@@ -78,7 +78,7 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 | :-- | :--------------------- | :-------------------------------------------------------------------------- |
 | ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc            |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                 |
-| 🎨  | **Customize**          | Terminal, Shell, Editor, Dock Layout, Wallpapers, Profile Backup            |
+| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Dock Layout, Wallpapers                   |
 | 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets                 |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                           |
 
@@ -89,7 +89,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | Category         | What it does                                                                   |
 | :--------------- | :----------------------------------------------------------------------------- |
 | Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
-| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store |
+| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders |
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, drag windows anywhere               |
 | Screenshots      | Format, save location, shadow, date in filename                                |
@@ -144,18 +144,24 @@ Complete environment setup from one menu.
 - **iTerm2 Defaults** — GPU renderer, compact tabs, hidden scrollbar, focus follows mouse
 - **Ghostty** — config from `config/ghostty/`; Catppuccin Mocha and Latte themes downloaded automatically
 
-**Shell** — [Starship](https://starship.rs) prompt + [FastFetch](https://github.com/fastfetch-cli/fastfetch) + `.zshrc` with modern aliases:
+**Shell** — [Zinit](https://github.com/zdharma-continuum/zinit) plugin manager + [Starship](https://starship.rs) prompt + [FastFetch](https://github.com/fastfetch-cli/fastfetch) + `.zshrc` with modern aliases:
+
+- **Zinit plugins** — fast-syntax-highlighting, zsh-autosuggestions, zsh-completions, fzf-tab (turbo/async)
+- **Catppuccin Mocha** — one-click theme for fzf, bat, eza, autosuggestions, syntax highlighting, starship
 
 <details>
 <summary>Shell aliases</summary>
 
-| Alias          | Tool                                                                 |
-| :------------- | :------------------------------------------------------------------- |
-| `ls` `ll` `lt` | [eza](https://github.com/eza-community/eza) with icons and tree view |
-| `cat`          | [bat](https://github.com/sharkdp/bat) with syntax highlighting       |
-| `grep`         | [ripgrep](https://github.com/BurntSushi/ripgrep)                     |
-| `find`         | [fd](https://github.com/sharkdp/fd)                                  |
-| `g` `lg`       | git, [lazygit](https://github.com/jesseduffield/lazygit)             |
+| Alias              | Tool                                                                 |
+| :----------------- | :------------------------------------------------------------------- |
+| `ls` `ll` `lt`     | [eza](https://github.com/eza-community/eza) with icons and tree view |
+| `cat`              | [bat](https://github.com/sharkdp/bat) with syntax highlighting       |
+| `grep`             | [ripgrep](https://github.com/BurntSushi/ripgrep)                     |
+| `find`             | [fd](https://github.com/sharkdp/fd)                                  |
+| `g` `gs` `ga` `gc` | git shortcuts (status, add, commit, push, log, diff, checkout, branch) |
+| `lg`               | [lazygit](https://github.com/jesseduffield/lazygit)                  |
+| `..` `...` `....`  | quick directory navigation                                            |
+| `reload` `ip` `ports` | shell reload, public IP, listening ports                          |
 
 </details>
 
@@ -172,9 +178,8 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 <details>
 <summary>🗂️ Dock Layout</summary>
 
-Config-file based dock management via [dockutil](https://github.com/kcrawford/dockutil):
+Dock management via [dockutil](https://github.com/kcrawford/dockutil):
 
-- **Apply layout** from `config/dock.txt` (one app name per line)
 - **Clear Dock** — remove all apps for a clean start
 - **Add spacer** — visual separator between groups
 - **Reset** — restore macOS default dock
@@ -192,11 +197,11 @@ Config-file based dock management via [dockutil](https://github.com/kcrawford/do
 </details>
 
 <details>
-<summary>📦 Profile Backup & Restore</summary>
+<summary>📦 Profile Save & Restore</summary>
 
-Export your entire environment to a folder, import it on another Mac or after a clean install.
+Save your entire environment to Desktop, Documents, or iCloud Drive. Restore on another Mac or after a clean install with multiselect.
 
-Includes: Brewfile, macOS defaults (Dock, Finder, Keyboard, Screenshots), dotfiles (.zshrc, Starship, FastFetch, Ghostty), editor settings (VSCode, Cursor, Zed), iTerm2 config, and dock layout.
+Includes: Brewfile, macOS defaults (Dock, Finder, Keyboard, Screenshots), dotfiles (.zshrc, Starship, FastFetch, Ghostty), editor settings (VSCode, Cursor, Zed), iTerm2 config, dock layout, and Raycast extensions.
 
 </details>
 

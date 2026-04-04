@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+trap 'stty echo 2>/dev/null; printf "\033[?25h"' EXIT
+
 # Parse flags before sourcing (exports to common.sh)
 for arg in "$@"; do
     case "$arg" in

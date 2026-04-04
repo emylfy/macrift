@@ -1,5 +1,34 @@
 # Changelog
 
+## 26.04.2
+
+### New
+
+- **Light/dark theme** — auto-detect via OSC 11 terminal query, `AppleInterfaceStyle` fallback, `MACRIFT_THEME` env override; UI colors adapt for light terminals
+- **Zinit** — `.zshrc` bootstraps zinit with fast-syntax-highlighting, zsh-autosuggestions, zsh-completions, fzf-tab
+- **Catppuccin shell theme** — one-click theme for fzf, bat, eza, autosuggestions, fast-syntax-highlighting, starship palette
+- **Finder tweaks** — 6 new: Hide Recent Tags, Quit Finder menu, No empty trash warn, Disable Finder sounds, Instant spring folders, Folders on top (Desktop)
+- **Sudo fallback** — `apply_audited_defaults` / `apply_reset_defaults` auto-escalate to `sudo` when a domain is protected
+- **Raycast** in profile backup — export/import `.rayconfig` files
+- **Synchronized updates** — `DEC 2026` (`\033[?2026h/l`) around menu redraws to prevent flicker on fast terminals
+
+### Changed
+
+- **Profile** — Export/Import → Save/Restore; menu-driven location picker (Desktop / Documents / iCloud Drive); detection screen; no manual path entry
+- **Profile** moved to top of Customize menu, above separator
+- **Shell menu** — "Full setup" (Zinit + Starship + .zshrc); individual items renamed; Catppuccin theme option
+- **.zshrc** — zinit bootstrap, fzf-tab completions, key bindings (history-search, Alt+→ word accept), expanded git/nav/quick aliases, Catppuccin theme source
+- **`wait_enter` / `wait_retry` / `confirm`** — ignore arrow key sequences, only react to Enter/y/n
+- **Multiselect redraw** — `\r` cursor reset instead of `\033[J` erase-below
+- **Hot Corners** — Back cancels the whole flow instead of keeping current value
+- **`stty echo`** — disabled during menus to prevent key echo; restored on exit via EXIT trap
+
+### Fixed
+
+- **Tweak wizard** — `AUDIT_ENTRIES` index gaps caused errors on sparse arrays
+
+---
+
 ## 26.04.1
 
 ### New

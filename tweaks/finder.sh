@@ -9,6 +9,7 @@ finder_tweaks() {
     audit_default "com.apple.finder" "ShowPathbar" "-bool" "true" "Path bar"
     audit_default "com.apple.finder" "ShowStatusBar" "-bool" "true" "Status bar"
     audit_default "com.apple.finder" "_FXShowPosixPathInTitle" "-bool" "true" "Full path in title"
+    audit_default "com.apple.finder" "ShowRecentTags" "-bool" "false" "Hide Recent Tags"
 
     audit_sep
 
@@ -21,12 +22,17 @@ finder_tweaks() {
 
     audit_default "com.apple.finder" "FXEnableExtensionChangeWarning" "-bool" "false" "Extension change warn"
     audit_default "com.apple.finder" "DisableAllAnimations" "-bool" "true" "Disable animations"
+    audit_default "com.apple.finder" "QuitMenuItem" "-bool" "true" "Quit Finder menu"
+    audit_default "com.apple.finder" "WarnOnEmptyTrash" "-bool" "false" "No empty trash warn"
+    audit_default "com.apple.finder" "FinderSounds" "-bool" "false" "Disable Finder sounds"
+    audit_default "NSGlobalDomain" "com.apple.springing.delay" "-float" "0" "Instant spring folders"
 
     audit_sep
 
     audit_default "com.apple.desktopservices" "DSDontWriteNetworkStores" "-bool" "true" ".DS_Store on network"
     audit_default "com.apple.desktopservices" "DSDontWriteUSBStores" "-bool" "true" ".DS_Store on USB"
     audit_default "com.apple.finder" "_FXSortFoldersFirst" "-bool" "true" "Folders on top"
+    audit_default "com.apple.finder" "_FXSortFoldersFirstOnDesktop" "-bool" "true" "Folders on top (Desktop)"
 
     [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 

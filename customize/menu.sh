@@ -8,6 +8,8 @@ customize_menu() {
         set_title "macrift > customize"
         local choice
         choice=$(show_menu "Customize" \
+            "Profile" \
+            "---" \
             "Terminal Emulator" \
             "Shell" \
             "FastFetch" \
@@ -18,12 +20,13 @@ customize_menu() {
             "Back")
 
         case "$choice" in
-            1) source "$MACRIFT_DIR/customize/terminal.sh" && terminal_menu ;;
-            2) source "$MACRIFT_DIR/customize/terminal.sh" && shell_menu ;;
-            3) source "$MACRIFT_DIR/customize/terminal.sh" && fastfetch_menu ;;
-            4) source "$MACRIFT_DIR/customize/editor.sh" && editor_menu ;;
-            5) source "$MACRIFT_DIR/customize/dock_layout.sh" && dock_layout_menu ;;
-            6) source "$MACRIFT_DIR/customize/wallpaper.sh" && wallpaper_menu ;;
+            1) source "$MACRIFT_DIR/customize/profile.sh" && profile_menu ;;
+            2) source "$MACRIFT_DIR/customize/terminal.sh" && terminal_menu ;;
+            3) source "$MACRIFT_DIR/customize/terminal.sh" && shell_menu ;;
+            4) source "$MACRIFT_DIR/customize/terminal.sh" && fastfetch_menu ;;
+            5) source "$MACRIFT_DIR/customize/editor.sh" && editor_menu ;;
+            6) source "$MACRIFT_DIR/customize/dock_layout.sh" && dock_layout_menu ;;
+            7) source "$MACRIFT_DIR/customize/wallpaper.sh" && wallpaper_menu ;;
             0) break ;;
             *) ;;
         esac

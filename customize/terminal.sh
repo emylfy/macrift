@@ -245,20 +245,49 @@ shell_menu() {
 
         local choice
         choice=$(show_menu "Shell" \
-            "Starship prompt" \
-            "Copy .zshrc" \
-            "Starship + .zshrc" \
+            "Full setup (Zinit + Starship + .zshrc)" \
+            "---" \
+            "Starship prompt only" \
+            "Copy .zshrc only" \
+            "Catppuccin theme" \
             "Back")
 
         case "$choice" in
-            1) install_starship ;;
-            2) install_zshrc ;;
-            3) install_starship; install_zshrc ;;
+            1) install_zinit; install_starship; install_zshrc ;;
+            2) install_starship ;;
+            3) install_zshrc ;;
+            4) apply_catppuccin ;;
             0) break ;;
             *) ;;
         esac
     done
     crumb_pop
+}
+
+install_zinit() {
+    local zinit_dir="${XDG_DATA_HOME:-$HOME/.local/share}/zinit/zinit.git"
+
+    if [[ -d "$zinit_dir" ]]; then
+        log_skip "Zinit already installed"
+        return
+    fi
+
+    log_info "Zinit — fast Zsh plugin manager"
+    log_info "Manages autosuggestions, syntax highlighting, and completions"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install Zinit"
+        return
+    fi
+
+    if ! confirm "Install Zinit?"; then return; fi
+
+    mkdir -p "$(dirname "$zinit_dir")"
+    if run_with_spinner "Installing Zinit..." git clone https://github.com/zdharma-continuum/zinit.git "$zinit_dir"; then
+        log_ok "Zinit installed"
+    else
+        log_err "Zinit installation failed"
+    fi
 }
 
 install_starship() {
@@ -370,4 +399,106 @@ install_zshrc() {
         copy_config "$config_source" "$config_target"
         log_ok ".zshrc installed (restart shell to apply)"
     fi
+}
+
+apply_catppuccin() {
+    crumb_push "Catppuccin"
+    clear
+    printf '\n'
+    printf '  %bApply Catppuccin Mocha to shell tools:%b\n\n' "$BOLD" "$RESET"
+    printf '  %b›%b  Starship prompt colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  bat syntax highlighting\n' "$CYAN" "$RESET"
+    printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
+    printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '\n'
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply Catppuccin theme"
+        wait_enter; crumb_pop; return
+    fi
+
+    if ! confirm "Apply Catppuccin Mocha?"; then crumb_pop; return; fi
+
+    local applied=0
+
+    # Shell colors (fzf, bat, autosuggestions, eza)
+    local theme_source="$MACRIFT_DIR/config/shell/catppuccin.zsh"
+    local theme_target="$HOME/.config/zsh/catppuccin.zsh"
+    if [[ -f "$theme_source" ]]; then
+        mkdir -p "$HOME/.config/zsh"
+        copy_config "$theme_source" "$theme_target"
+        log_ok "Shell colors (fzf, bat, autosuggestions, eza)"
+        applied=$((applied + 1))
+    else
+        log_err "catppuccin.zsh not found in config/shell/"
+    fi
+
+    # Starship palette
+    local starship_target="$HOME/.config/starship.toml"
+    if [[ -f "$starship_target" ]]; then
+        if grep -q 'catppuccin_mocha' "$starship_target"; then
+            log_skip "Starship already has Catppuccin palette"
+        else
+            _starship_apply_catppuccin "$starship_target"
+            log_ok "Starship prompt"
+            applied=$((applied + 1))
+        fi
+    else
+        log_warn "No starship.toml found — install Starship first"
+    fi
+
+    printf '\n'
+    log_ok "Catppuccin applied to $applied components (restart shell)"
+    wait_enter
+    crumb_pop
+}
+
+_starship_apply_catppuccin() {
+    local target="$1"
+
+    # Set palette directive
+    if grep -q '^palette' "$target"; then
+        sed -i '' 's/^palette.*/palette = "catppuccin_mocha"/' "$target"
+    else
+        sed -i '' '1s/^/palette = "catppuccin_mocha"\n/' "$target"
+    fi
+
+    # Update module styles
+    sed -i '' 's/style = "bold cyan"/style = "bold lavender"/' "$target"
+    sed -i '' 's/style = "bold purple"/style = "bold mauve"/' "$target"
+    sed -i '' 's/style = "bold red"/style = "bold maroon"/' "$target"
+    sed -i '' 's/style = "bold yellow"/style = "bold peach"/' "$target"
+
+    # Append palette if not present
+    cat >> "$target" << 'PALETTE'
+
+[palettes.catppuccin_mocha]
+rosewater = "#f5e0dc"
+flamingo = "#f2cdcd"
+pink = "#f5c2e7"
+mauve = "#cba6f7"
+red = "#f38ba8"
+maroon = "#eba0ac"
+peach = "#fab387"
+yellow = "#f9e2af"
+green = "#a6e3a1"
+teal = "#94e2d5"
+sky = "#89dceb"
+sapphire = "#74c7ec"
+blue = "#89b4fa"
+lavender = "#b4befe"
+text = "#cdd6f4"
+subtext1 = "#bac2de"
+subtext0 = "#a6adc8"
+overlay2 = "#9399b2"
+overlay1 = "#7f849c"
+overlay0 = "#6c7086"
+surface2 = "#585b70"
+surface1 = "#45475a"
+surface0 = "#313244"
+base = "#1e1e2e"
+mantle = "#181825"
+crust = "#11111b"
+PALETTE
 }

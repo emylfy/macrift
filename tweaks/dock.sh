@@ -67,7 +67,9 @@ _pick_corner() {
     choice=$(show_menu "$label — $(_corner_name "$current")" "${actions[@]}")
     MENU_NO_NUMBERS=false
 
-    if [[ "$choice" == "0" || "$choice" == "1" ]]; then
+    if [[ "$choice" == "0" ]]; then
+        return 1
+    elif [[ "$choice" == "1" ]]; then
         echo "$current"
     else
         echo "${_CORNER_IDS[$((choice - 2))]}"
@@ -96,19 +98,19 @@ hot_corners_tweaks() {
     }
 
     clear; _hot_corners_status
-    tl=$(_pick_corner "Top-left" "$cur_tl")
+    if ! tl=$(_pick_corner "Top-left" "$cur_tl"); then crumb_pop; return; fi
     _tl_name=$(_corner_name "$tl")
 
     clear; _hot_corners_status
-    tr=$(_pick_corner "Top-right" "$cur_tr")
+    if ! tr=$(_pick_corner "Top-right" "$cur_tr"); then crumb_pop; return; fi
     _tr_name=$(_corner_name "$tr")
 
     clear; _hot_corners_status
-    bl=$(_pick_corner "Bottom-left" "$cur_bl")
+    if ! bl=$(_pick_corner "Bottom-left" "$cur_bl"); then crumb_pop; return; fi
     _bl_name=$(_corner_name "$bl")
 
     clear; _hot_corners_status
-    br=$(_pick_corner "Bottom-right" "$cur_br")
+    if ! br=$(_pick_corner "Bottom-right" "$cur_br"); then crumb_pop; return; fi
     _br_name=$(_corner_name "$br")
 
     crumb_pop

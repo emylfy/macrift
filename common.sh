@@ -32,9 +32,47 @@ RESET='\033[0m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
-GRAY='\033[38;5;240m'
-CYAN='\033[38;5;39m'
-ICE='\033[38;5;195m'
+
+_detect_theme() {
+    # 1. Explicit override
+    if [[ "${MACRIFT_THEME:-}" == "light" ]]; then echo "light"; return; fi
+    if [[ "${MACRIFT_THEME:-}" == "dark" ]]; then echo "dark"; return; fi
+
+    # 2. Query terminal background via OSC 11 (iTerm2, Ghostty, Kitty, WezTerm)
+    if [[ -t 2 ]]; then
+        local old_stty response=""
+        old_stty=$(stty -g 2>/dev/null) || true
+        stty raw -echo min 0 time 1 2>/dev/null
+        printf '\033]11;?\a' > /dev/tty 2>/dev/null
+        response=$(dd bs=1 count=30 </dev/tty 2>/dev/null) || true
+        stty "$old_stty" 2>/dev/null
+        if [[ "$response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
+            local r=$((16#${BASH_REMATCH[1]:0:2}))
+            local g=$((16#${BASH_REMATCH[2]:0:2}))
+            local b=$((16#${BASH_REMATCH[3]:0:2}))
+            local lum=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+            if [[ $lum -gt 128 ]]; then echo "light"; else echo "dark"; fi
+            return
+        fi
+    fi
+
+    # 3. Fall back to system theme
+    if defaults read -g AppleInterfaceStyle 2>/dev/null | grep -q Dark; then
+        echo "dark"
+    else
+        echo "light"
+    fi
+}
+
+if [[ "$(_detect_theme)" == "dark" ]]; then
+    GRAY='\033[38;5;240m'
+    CYAN='\033[38;5;39m'
+    ICE='\033[38;5;195m'
+else
+    GRAY='\033[38;5;245m'
+    CYAN='\033[38;5;25m'
+    ICE='\033[38;5;24m'
+fi
 
 _friendly_val() {
     case "$1" in
@@ -127,9 +165,11 @@ show_menu() {
     [[ "$no_nums" == true ]] && total_lines=$((total_lines - 1))
     local sel=0 first_draw=true
 
+    stty -echo 2>/dev/null
     printf "\033[?25l" >&2
 
     while true; do
+        printf "\033[?2026h" >&2
         if $first_draw; then
             first_draw=false
         else
@@ -199,6 +239,7 @@ show_menu() {
         local _nav_hint="↑↓ navigate  enter/→ select"
         [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && _nav_hint+="  ← back"
         printf '  %b%s%b\033[K\n' "$DIM" "$_nav_hint" "$R" >&2
+        printf "\033[?2026l" >&2
 
         local key=""
         IFS= read -rsn1 key < /dev/tty || true
@@ -209,22 +250,22 @@ show_menu() {
             case "$ansi" in
                 '[A') ((sel > 0)) && ((sel--)) ;;
                 '[B') ((sel < sel_total - 1)) && ((sel++)) ;;
-                '[C') printf "\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
+                '[C') stty echo 2>/dev/null; printf "\033[?25h" >&2; echo "${sel_nums[$sel]}"; return ;;
                 '[D')
                     if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-                        printf "\033[?25h" >&2
+                        stty echo 2>/dev/null; printf "\033[?25h" >&2
                         echo "0"
                         return
                     fi
                     ;;
             esac
         elif [[ "$key" == "" ]]; then
-            printf "\033[?25h" >&2
+            stty echo 2>/dev/null; printf "\033[?25h" >&2
             echo "${sel_nums[$sel]}"
             return
         elif [[ "$no_nums" != true && "$key" =~ ^[0-9]$ ]]; then
             printf "%s\n" "$key" >&2
-            printf "\033[?25h" >&2
+            stty echo 2>/dev/null; printf "\033[?25h" >&2
             echo "$key"
             return
         fi
@@ -312,22 +353,24 @@ show_multiselect() {
     if [[ $title_min -gt $inner_w ]]; then inner_w=$title_min; fi
     local top_fill=$((inner_w - ${#title} - 3))
 
-    # Hide cursor
+    # Hide cursor & disable echo
+    stty -echo 2>/dev/null
     printf "\033[?25l" >&2
 
     local first_draw=true
     local redraw_lines=$((count + 8))
 
     while true; do
+        printf "\033[?2026h" >&2
         if [[ "$first_draw" == true ]]; then
             first_draw=false
         else
-            printf "\033[%dA\033[J" "$redraw_lines" >&2
+            printf "\033[%dA\r" "$redraw_lines" >&2
         fi
 
         local BP="${BOLD}${GRAY}"
         local R="${RESET}"
-        printf "\n" >&2
+        printf "\033[K\n" >&2
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
         printf '╮%b\n' "$R" >&2
@@ -369,7 +412,8 @@ show_multiselect() {
         printf '╯%b\n' "$R" >&2
         # hint below box
         local _ms_hint="${MULTISELECT_HINT:-↑↓ move  space toggle  a all  enter confirm}"
-        printf '  %b%s%b\n' "$DIM" "$_ms_hint" "$R" >&2
+        printf '  %b%s%b\033[K\n' "$DIM" "$_ms_hint" "$R" >&2
+        printf "\033[?2026l" >&2
 
         # Read keypress
         IFS= read -rsn1 key < /dev/tty || true
@@ -387,12 +431,12 @@ show_multiselect() {
                 fi
             elif [[ "$seq" == '[C' ]]; then
                 if [[ $cursor -eq $count ]]; then
-                    printf "\033[?25h" >&2
+                    stty echo 2>/dev/null; printf "\033[?25h" >&2
                     return 0
                 fi
                 break
             elif [[ "$seq" == '[D' ]]; then
-                printf "\033[?25h" >&2
+                stty echo 2>/dev/null; printf "\033[?25h" >&2
                 return 0
             fi
         elif [[ "$key" == ' ' ]]; then
@@ -417,14 +461,15 @@ show_multiselect() {
             for ((i=0; i<count; i++)); do selected[i]="$val"; done
         elif [[ "$key" == '' ]]; then
             if [[ $cursor -eq $count ]]; then
-                printf "\033[?25h" >&2
+                stty echo 2>/dev/null; printf "\033[?25h" >&2
                 return 0
             fi
             break
         fi
     done
 
-    # Show cursor
+    # Show cursor & restore echo
+    stty echo 2>/dev/null
     printf "\033[?25h" >&2
 
     # Output selected items to stdout
@@ -438,14 +483,28 @@ show_multiselect() {
 # Reusable prompts
 wait_enter() {
     printf '\n  %bpress enter to continue%b ' "$DIM" "$RESET"
-    local _k=""
-    IFS= read -rsn1 _k < /dev/tty || true
+    while true; do
+        local _k=""
+        IFS= read -rsn1 _k < /dev/tty || true
+        if [[ "$_k" == $'\x1b' ]]; then
+            read -rsn2 -t 1 _ < /dev/tty || true
+            continue
+        fi
+        [[ "$_k" == "" ]] && break
+    done
     printf '\n'
 }
 wait_retry() {
     printf '  %bpress enter to retry%b ' "$DIM" "$RESET"
-    local _k=""
-    IFS= read -rsn1 _k < /dev/tty || true
+    while true; do
+        local _k=""
+        IFS= read -rsn1 _k < /dev/tty || true
+        if [[ "$_k" == $'\x1b' ]]; then
+            read -rsn2 -t 1 _ < /dev/tty || true
+            continue
+        fi
+        [[ "$_k" == "" ]] && break
+    done
     printf '\n'
 }
 prompt_path() { printf '  %bpath:%b ' "$CYAN" "$RESET"; }
@@ -466,6 +525,10 @@ confirm() {
     while true; do
         local key=""
         IFS= read -rsn1 key < /dev/tty || true
+        if [[ "$key" == $'\x1b' ]]; then
+            read -rsn2 -t 1 _ < /dev/tty || true
+            continue
+        fi
         case "$key" in
             [Yy]) printf '%s\n' "$key"; return 0 ;;
             [Nn]) printf '%s\n' "$key"; return 1 ;;
@@ -701,8 +764,15 @@ apply_audited_defaults() {
                 ((applied++))
                 MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
-                log_err "Failed: $label → $friendly"
-                ((failed++))
+                log_warn "$label needs sudo ($domain is protected)"
+                if sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
+                    log_ok "$label → $friendly"
+                    ((applied++))
+                    MACRIFT_CHANGED_DOMAINS+=("$domain")
+                else
+                    log_err "Failed: $label → $friendly"
+                    ((failed++))
+                fi
             fi
         fi
     done
@@ -741,8 +811,15 @@ apply_reset_defaults() {
                 ((reset++))
                 MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
-                log_err "Failed to reset: $label"
-                ((failed++))
+                log_warn "$label needs sudo ($domain is protected)"
+                if sudo defaults delete "$domain" "$key" 2>/dev/null; then
+                    log_ok "$label → system default"
+                    ((reset++))
+                    MACRIFT_CHANGED_DOMAINS+=("$domain")
+                else
+                    log_err "Failed to reset: $label"
+                    ((failed++))
+                fi
             fi
         fi
     done
