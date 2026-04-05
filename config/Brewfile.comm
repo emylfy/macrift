@@ -1,6 +1,8 @@
-# Communication
+# Messengers
 cask "ayugram"
 cask "telegram"
+
+# Voice & Teams
 cask "discord"
 cask "vesktop"
 cask "slack"

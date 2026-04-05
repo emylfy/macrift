@@ -62,7 +62,7 @@ run_mole_cleanup() {
         choice=$(show_menu "Mole — system cleanup" \
             "Install & run" \
             "Review source" \
-            "Cancel")
+            "Back")
 
         case "$choice" in
             1)
@@ -76,7 +76,7 @@ run_mole_cleanup() {
                 wait_enter
                 return
                 ;;
-            2) open "$MOLE_REPO" ;;
+            2) open "$MOLE_REPO"; log_ok "Opened in browser" ;;
             0) return ;;
         esac
     done

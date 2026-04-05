@@ -1,17 +1,32 @@
-# Utilities
+# Homebrew GUI
+cask "cork"
+
+# Launchers
 cask "raycast"
 cask "alfred"
+
+# Menu bar & Window management
 cask "hiddenbar"
+cask "alt-tab"
+cask "supercorners"
+cask "keyboard-cowboy"
+
+# Files & Downloads
 cask "keka"
 cask "motrix"
+
+# Audio & Display
 cask "soundsource"
-cask "alt-tab"
+cask "betterdisplay"
+
+# Passwords & Security
 cask "proton-pass"
 cask "1password"
+
+# Remote & Peripherals
 cask "rustdesk"
-cask "todoist"
-cask "betterdisplay"
 cask "logi-options+"
 cask "macs-fan-control"
-cask "supercorners"
-cask "cork"
+
+# Productivity
+cask "todoist"

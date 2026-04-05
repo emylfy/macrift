@@ -1,7 +1,10 @@
-# Media
+# Video & Streaming
 cask "iina"
 cask "obs"
+
+# Music
 cask "spotify"
+
+# Design
 cask "figma"
-cask "imageoptim"
 cask "affinity"

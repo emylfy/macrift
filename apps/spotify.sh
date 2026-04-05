@@ -35,7 +35,7 @@ install_spotx() {
         choice=$(show_menu "SpotX — Spotify ad blocker" \
             "Install SpotX" \
             "Review source" \
-            "Cancel")
+            "Back")
 
         case "$choice" in
             1)
@@ -45,7 +45,7 @@ install_spotx() {
                 wait_enter
                 return
                 ;;
-            2) open "$SPOTX_REPO" ;;
+            2) open "$SPOTX_REPO"; log_ok "Opened in browser" ;;
             0) return ;;
         esac
     done
@@ -64,11 +64,18 @@ install_spicetify() {
         fi
     fi
 
-    if confirm "Apply Spicetify to Spotify?"; then
-        spicetify restore 2>/dev/null || true
-        spicetify backup apply
-        log_ok "Spicetify applied"
-        log_info "Use 'spicetify' command to customize further"
+    log_info "Applying Spicetify..."
+    spicetify restore &>/dev/null || true
+    spicetify backup apply &>/dev/null
+
+    # Install Marketplace if not present
+    local mp_dir="$HOME/.config/spicetify/CustomApps/marketplace"
+    if [[ ! -d "$mp_dir" ]]; then
+        log_info "Installing Marketplace..."
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh < /dev/tty
     fi
+    spicetify config custom_apps marketplace &>/dev/null
+    spicetify apply &>/dev/null
+    log_ok "Spicetify + Marketplace applied"
     wait_enter
 }

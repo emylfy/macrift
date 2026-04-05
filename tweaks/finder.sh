@@ -34,14 +34,19 @@ finder_tweaks() {
     audit_default "com.apple.finder" "_FXSortFoldersFirst" "-bool" "true" "Folders on top"
     audit_default "com.apple.finder" "_FXSortFoldersFirstOnDesktop" "-bool" "true" "Folders on top (Desktop)"
 
+    # ~/Library visibility: add to audit table
+    local lib_visible="false"
+    if ! ls -lOd ~/Library 2>/dev/null | grep -q "hidden"; then
+        lib_visible="true"
+    fi
+    AUDIT_ENTRIES+=("Show Library folder|${lib_visible}|true|chflags|nohidden|-bool")
+
     [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 
     if show_audit_table "Finder"; then
         apply_audited_defaults
 
-        chflags nohidden ~/Library 2>/dev/null || true
-        log_ok "$HOME/Library unhidden"
-
+        printf "\n"
         if confirm "Restart Finder?"; then
             killall Finder 2>/dev/null || true
             log_ok "Finder restarted"

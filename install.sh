@@ -25,7 +25,7 @@ err()   { printf '  %b✗%b  %s\n' "$RED"    "$RESET" "$1"; }
 
 ask() {
     printf '  %b%s%b %b[y/n]%b ' "$YELLOW" "$1" "$RESET" "$DIM" "$RESET"
-    read -r answer
+    read -r answer </dev/tty
     [[ "$answer" =~ ^[Yy]$ ]]
 }
 

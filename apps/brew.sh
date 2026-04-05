@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # macrift — Homebrew bundle installer
 
+# Speed up brew: skip auto-update, analytics, cleanup, dependents check
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+export HOMEBREW_NO_ENV_HINTS=1
+export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
+
 brew_menu() {
     crumb_push "Homebrew"
     while true; do
@@ -79,15 +86,35 @@ install_bundle() {
     local new_labels=()
     local broken_casks=()
     local installed_count=0
+    local had_items=false
     while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*#.*$ ]] && continue
+        if [[ -z "${line// /}" ]]; then
+            if $had_items; then
+                new_lines+=("")
+                new_labels+=("---")
+            fi
+            continue
+        fi
+        had_items=true
         local name="" label=""
         if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
             label="$name"
         elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
-            label="$name (cask)"
+            label="$name"
+        elif [[ "$line" =~ ^mas[[:space:]]+\"([^\"]+)\",[[:space:]]*id:[[:space:]]*([0-9]+) ]]; then
+            name="${BASH_REMATCH[1]}"
+            local mas_id="${BASH_REMATCH[2]}"
+            label="$name"
+            if mas list 2>/dev/null | awk '{print $1}' | grep -qx "$mas_id"; then
+                installed_count=$((installed_count + 1))
+            else
+                new_lines+=("$line")
+                new_labels+=("$label")
+            fi
+            continue
         else
             continue
         fi
@@ -111,6 +138,27 @@ install_bundle() {
             new_labels+=("$label")
         fi
     done < "$path"
+
+    # Clean up separators: remove leading, trailing, and consecutive
+    local clean_lines=() clean_labels=()
+    local prev_sep=true
+    for ((i=0; i<${#new_labels[@]}; i++)); do
+        if [[ "${new_labels[$i]}" == "---" ]]; then
+            $prev_sep && continue
+            prev_sep=true
+        else
+            prev_sep=false
+        fi
+        clean_lines+=("${new_lines[$i]}")
+        clean_labels+=("${new_labels[$i]}")
+    done
+    # Remove trailing separator
+    while [[ ${#clean_labels[@]} -gt 0 && "${clean_labels[-1]}" == "---" ]]; do
+        unset 'clean_lines[-1]'
+        unset 'clean_labels[-1]'
+    done
+    new_lines=("${clean_lines[@]}")
+    new_labels=("${clean_labels[@]}")
 
     if [[ $installed_count -gt 0 ]]; then
         log_ok "$installed_count already installed"
@@ -144,7 +192,12 @@ install_bundle() {
         printf "\n"
     fi
 
-    if [[ ${#new_labels[@]} -eq 0 ]]; then
+    # Check if there are any real (non-separator) items
+    local has_real=false
+    for lbl in "${new_labels[@]}"; do
+        [[ "$lbl" != "---" ]] && { has_real=true; break; }
+    done
+    if ! $has_real; then
         log_ok "Everything installed"
         wait_enter
         return 0
@@ -162,29 +215,66 @@ install_bundle() {
     local tmp
     tmp=$(mktemp /tmp/macrift_brew_XXXXXX)
 
+    local mas_install_lines=()
     for ((i=0; i<${#new_labels[@]}; i++)); do
+        [[ "${new_labels[$i]}" == "---" ]] && continue
         if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
-            echo "${new_lines[$i]}" >> "$tmp"
+            if [[ "${new_lines[$i]}" =~ ^mas[[:space:]] ]]; then
+                mas_install_lines+=("${new_lines[$i]}")
+            else
+                echo "${new_lines[$i]}" >> "$tmp"
+            fi
         fi
     done
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install:"
-        while IFS= read -r line; do
+        [[ -s "$tmp" ]] && while IFS= read -r line; do
             printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"
+        for mas_line in "${mas_install_lines[@]}"; do
+            if [[ "$mas_line" =~ ^mas[[:space:]]+\"([^\"]+)\" ]]; then
+                printf '  %b· %s (App Store)%b\n' "$DIM" "${BASH_REMATCH[1]}" "$RESET"
+            fi
+        done
         rm -f "$tmp"
         wait_enter
         return 0
     fi
 
-    log_info "Installing selected packages..."
-    if brew bundle --file="$tmp"; then
+    local all_ok=true
+
+    if [[ -s "$tmp" ]]; then
+        log_info "Installing selected packages..."
+        brew bundle --quiet --no-upgrade --file="$tmp" || all_ok=false
+    fi
+    rm -f "$tmp"
+
+    for mas_line in "${mas_install_lines[@]}"; do
+        if [[ "$mas_line" =~ ^mas[[:space:]]+\"([^\"]+)\",[[:space:]]*id:[[:space:]]*([0-9]+) ]]; then
+            local mas_name="${BASH_REMATCH[1]}"
+            local mas_id="${BASH_REMATCH[2]}"
+            log_info "Installing $mas_name..."
+            local mas_out
+            mas_out=$(mas install "$mas_id" 2>&1)
+            if [[ $? -eq 0 ]]; then
+                log_ok "$mas_name installed"
+            elif echo "$mas_out" | grep -qi "Redownload Unavailable"; then
+                log_warn "$mas_name: not purchased with this account — opening App Store"
+                open "https://apps.apple.com/app/id$mas_id"
+                all_ok=false
+            else
+                log_warn "Failed to install $mas_name"
+                all_ok=false
+            fi
+        fi
+    done
+
+    if $all_ok; then
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
     fi
-    rm -f "$tmp"
     wait_enter
 }
 
@@ -240,7 +330,7 @@ import_brewbak() {
             label="$name"
         elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
-            label="$name (cask)"
+            label="$name"
         elif [[ "$line" =~ ^tap[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
             label="$name (tap)"
@@ -300,7 +390,7 @@ import_brewbak() {
     done
 
     log_info "Installing selected packages..."
-    if brew bundle --file="$tmp"; then
+    if brew bundle --quiet --no-upgrade --file="$tmp"; then
         log_ok "Import complete"
     else
         log_warn "Some packages failed to install"

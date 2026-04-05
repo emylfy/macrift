@@ -69,6 +69,8 @@ show_security_status() {
     fi
 
     fw_raw=$(defaults read /Library/Preferences/com.apple.alf globalstate 2>/dev/null || echo "unknown")
+    fw_raw="${fw_raw// /}"
+    fw_raw="${fw_raw%%$'\n'*}"
     case "$fw_raw" in
         0) fw_status="Off" ;;
         1) fw_status="On" ;;
@@ -108,8 +110,15 @@ show_security_status() {
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                 log_info "Would run: sudo spctl --master-disable"
             else
-                sudo spctl --master-disable
-                log_ok "Gatekeeper disabled"
+                sudo spctl --master-disable 2>&1 || true
+                # On macOS 15+ (Sequoia) this requires manual confirmation
+                if spctl --status 2>/dev/null | grep -qi "assessments enabled"; then
+                    log_warn "Gatekeeper requires manual confirmation"
+                    log_info "System Settings > Privacy & Security > Allow apps from Anywhere"
+                    open "x-apple.systempreferences:com.apple.preference.security?General"
+                else
+                    log_ok "Gatekeeper disabled"
+                fi
             fi
         fi
     elif [[ "$gk_status" == "Disabled" ]]; then
@@ -135,7 +144,7 @@ run_standard_preset() {
         choice=$(show_menu "privacy.sexy — standard preset" \
             "Run preset" \
             "Review source" \
-            "Cancel")
+            "Back")
 
         case "$choice" in
             1)
@@ -154,7 +163,7 @@ run_standard_preset() {
                 wait_enter
                 return
                 ;;
-            2) open "$PRIVACY_MACOS_REVIEW" ;;
+            2) open "$PRIVACY_MACOS_REVIEW"; log_ok "Opened in browser" ;;
             0) return ;;
         esac
     done
@@ -237,8 +246,10 @@ _apply_dns() {
 
 _ensure_dnspyre() {
     if command -v dnspyre &>/dev/null; then
+        DNSPYRE_WAS_INSTALLED=true
         return 0
     fi
+    DNSPYRE_WAS_INSTALLED=false
     log_warn "dnspyre not found"
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install dnspyre"
@@ -249,6 +260,13 @@ _ensure_dnspyre() {
         log_err "Failed to install dnspyre"
     fi
     return 1
+}
+
+_cleanup_dnspyre() {
+    if [[ "${DNSPYRE_WAS_INSTALLED:-true}" == false ]] && command -v dnspyre &>/dev/null; then
+        brew uninstall tantalor93/dnspyre/dnspyre &>/dev/null
+        log_info "Removed dnspyre"
+    fi
 }
 
 # DNS menu
@@ -412,6 +430,7 @@ dns_benchmark() {
     fi
 
     _dns_offer_apply "$best_label"
+    _cleanup_dnspyre
     wait_enter
 }
 
@@ -503,7 +522,9 @@ _dns_offer_apply() {
     done
 
     local pick
-    pick=$(show_menu "Apply DNS" "${labels[@]}" "Cancel")
+    MENU_NO_NUMBERS=true
+    pick=$(show_menu "Apply DNS" "${labels[@]}" "Back")
+    MENU_NO_NUMBERS=false
 
     local idx=0
     for entry in "${DNS_PROVIDERS[@]}"; do

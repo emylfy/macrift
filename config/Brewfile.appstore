@@ -1,5 +1,7 @@
 # Mac App Store (requires: brew install mas)
 mas "Happ", id: 6746188973
+mas "v2RayTun", id: 6476628951
 mas "HokusFokus", id: 1659087771
+mas "New File Menu Lite", id: 1066302071
 mas "Telegram", id: 747648890
 mas "TestFlight", id: 899247664

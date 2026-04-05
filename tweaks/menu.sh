@@ -174,8 +174,8 @@ _tweak_wizard() {
             local _ta=0 _tr=0 _ti
             for ((_ti=0; _ti<${#sel_idx[@]}; _ti++)); do
                 local _si_idx="${sel_idx[$_ti]}"
-                [[ "${state[$_si_idx]}" == "1" && "${pending[$_si_idx]}" == "1" ]] && ((_ta++))
-                [[ "${state[$_si_idx]}" == "2" ]] && ((_tr++))
+                [[ "${state[$_si_idx]}" == "1" && "${pending[$_si_idx]}" == "1" ]] && _ta=$((_ta + 1))
+                [[ "${state[$_si_idx]}" == "2" ]] && _tr=$((_tr + 1))
             done
             local _count=""
             [[ $_ta -gt 0 ]] && _count="${_ta} apply"
@@ -324,38 +324,38 @@ _tweak_wizard() {
 select_tweaks() {
     clear
 
-    audit_reset
-    MACRIFT_BATCH_TWEAKS=true
-
-    local dock_s=0
-    source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
-    local dock_e=${#AUDIT_ENTRIES[@]}
-
-    local finder_s=$dock_e
-    source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
-    local finder_e=${#AUDIT_ENTRIES[@]}
-
-    local keyboard_s=$finder_e
-    source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
-    local keyboard_e=${#AUDIT_ENTRIES[@]}
-
-    local input_s=$keyboard_e
-    source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
-    local input_e=${#AUDIT_ENTRIES[@]}
-
-    local screenshots_s=$input_e
-    source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
-    local screenshots_e=${#AUDIT_ENTRIES[@]}
-
-    local misc_s=$screenshots_e
-    source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
-    local misc_e=${#AUDIT_ENTRIES[@]}
-
-    MACRIFT_BATCH_TWEAKS=false
-
     local cat_names=("Dock" "Finder" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc" "Hot Corners")
 
     while true; do
+        audit_reset
+        MACRIFT_BATCH_TWEAKS=true
+
+        local dock_s=0
+        source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
+        local dock_e=${#AUDIT_ENTRIES[@]}
+
+        local finder_s=$dock_e
+        source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
+        local finder_e=${#AUDIT_ENTRIES[@]}
+
+        local keyboard_s=$finder_e
+        source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
+        local keyboard_e=${#AUDIT_ENTRIES[@]}
+
+        local input_s=$keyboard_e
+        source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
+        local input_e=${#AUDIT_ENTRIES[@]}
+
+        local screenshots_s=$input_e
+        source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
+        local screenshots_e=${#AUDIT_ENTRIES[@]}
+
+        local misc_s=$screenshots_e
+        source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
+        local misc_e=${#AUDIT_ENTRIES[@]}
+
+        MACRIFT_BATCH_TWEAKS=false
+
         MULTISELECT_HINT="↑↓ move  space toggle  a all  enter → view tweaks"
         local selected_cats
         selected_cats=$(show_multiselect "System Tweaks" "${cat_names[@]}")

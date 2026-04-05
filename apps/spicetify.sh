@@ -23,8 +23,7 @@ restore_marketplace() {
     if [[ ! -d "$HOME/.config/spicetify/CustomApps/marketplace" ]]; then
         log_warn "Marketplace custom app not found"
         if confirm "Install marketplace?"; then
-            spicetify config custom_apps marketplace
-            spicetify apply
+            curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
             log_ok "Marketplace installed"
         else
             return

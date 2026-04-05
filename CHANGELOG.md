@@ -1,5 +1,51 @@
 # Changelog
 
+## 26.04.3
+
+### New
+
+- **Unified App Store installs** — `mas` entries in Brewfiles handled natively with per-app install, "not purchased" detection and App Store redirect
+- **Multiselect separators** — `---` items render as visual dividers, skipped in navigation and toggle-all
+- **Brewfile section headers** — all bundles reorganized with category comments and blank-line groups (Shell & Git, Languages, Containers, Launchers, etc.)
+- **Tweak: three-finger drag** — trackpad option added to Input tweaks
+- **Tweak: tiled window margins** — disable Window Manager tile gaps
+- **Tweak: Show ~/Library** — `chflags nohidden` handled natively via audit table instead of hardcoded call
+- **Tweak: boot sound** — `nvram StartupMute` handled natively via audit table instead of special-case block
+- **`chflags` / `nvram` support** in `apply_audited_defaults` — no more per-tweak custom logic
+- **Gatekeeper Sequoia fallback** — if `spctl --master-disable` requires manual confirmation on macOS 15+, opens System Settings automatically
+- **dnspyre auto-cleanup** — uninstalled after DNS benchmark if it was installed on the fly
+
+### Changed
+
+- **Homebrew speed** — `HOMEBREW_NO_AUTO_UPDATE`, `NO_ANALYTICS`, `NO_INSTALL_CLEANUP`, `NO_ENV_HINTS`, `NO_INSTALLED_DEPENDENTS_CHECK` set at brew.sh load
+- **`brew bundle`** — runs with `--quiet --no-upgrade` to skip noisy output and avoid upgrading existing packages
+- **Cask labels** — removed `(cask)` suffix from multiselect items
+- **Spicetify Marketplace** — installed via official curl script; auto-installed during Spicetify setup flow
+- **Sudo** — removed keep-alive background process (`cleanup_sudo`); simpler `sudo -v -p` prompt
+- **Tweak wizard** — re-audits defaults on every category-select loop so values stay fresh
+- **Catppuccin apply** — simplified control flow, single `crumb_pop` exit point
+- **Firewall status** — trim whitespace/newlines from `com.apple.alf` read before matching
+- **DNS apply menu** — rendered without numbers (`MENU_NO_NUMBERS`)
+- **Zinit bootstrap** — guarded with `command -v git` in `.zshrc` and install function
+- **`install.sh`** — `read` from `/dev/tty` for pipe compatibility
+- **`macrift_update`** — git availability check before pull
+- **Arithmetic** — `(( ))` replaced with `$(( ))` across tweaks and common for safer evaluation
+- **"Cancel" → "Back"** — consistent label in SpotX, Mole, privacy.sexy, DNS menus
+- **"Opened in browser"** — `log_ok` feedback after opening external URLs
+
+### Packages
+
+- **Dev** — added `claude`, `claude-code`, `zed`
+- **Utils** — added `keyboard-cowboy`
+- **App Store** — added v2RayTun, New File Menu Lite
+- **Media** — removed `imageoptim`
+
+### Removed
+
+- **SketchyBar** — menu entry, setup script (`customize/sketchybar.sh`), and config (`config/sketchybar/`) removed
+
+---
+
 ## 26.04.2
 
 ### New

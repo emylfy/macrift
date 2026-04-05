@@ -11,6 +11,7 @@ input_tweaks() {
     audit_sep
 
     audit_default "com.apple.AppleMultitouchTrackpad" "TrackpadRightClick" "-bool" "true" "Right-click"
+    audit_default "com.apple.AppleMultitouchTrackpad" "TrackpadThreeFingerDrag" "-bool" "true" "Three-finger drag"
     audit_default "NSGlobalDomain" "NSWindowShouldDragOnGesture" "-bool" "true" "Drag windows anywhere"
     audit_default "NSGlobalDomain" "com.apple.mouse.linear" "-bool" "true" "Disable pointer acceleration"
 

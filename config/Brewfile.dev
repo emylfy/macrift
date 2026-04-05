@@ -1,14 +1,20 @@
-# Development tools
+# Shell & Git
 brew "bash"
 brew "git"
 brew "gh"
 brew "lazygit"
+
+# Languages & Runtimes
 brew "node"
 brew "python"
 brew "go"
 brew "rust"
+
+# Containers
 brew "docker"
 brew "docker-compose"
+
+# Terminal tools
 brew "neovim"
 brew "tmux"
 brew "fzf"
@@ -17,22 +23,36 @@ brew "fd"
 brew "bat"
 brew "eza"
 brew "jq"
+
+# Network & Media
 brew "httpie"
 brew "wget"
-brew "tree"
 brew "ffmpeg"
 brew "scrcpy"
+
+# System utilities
+brew "tree"
 brew "fastfetch"
 brew "macmon"
 brew "mas"
 brew "mole"
 
+# AI
+cask "claude"
+cask "claude-code"
+
+# Editors
 cask "visual-studio-code"
 cask "cursor"
 cask "t3-code"
+cask "zed"
 cask "github"
+
+# Terminals
 cask "warp"
-cask "docker-desktop"
 cask "ghostty"
 cask "iterm2"
+
+# Desktop apps
+cask "docker-desktop"
 cask "android-platform-tools"

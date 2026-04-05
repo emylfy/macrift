@@ -18,32 +18,19 @@ misc_tweaks() {
     audit_default "NSGlobalDomain" "NSDocumentSaveNewDocumentsToCloud" "-bool" "false" "Save to iCloud"
     audit_default "NSGlobalDomain" "NSAutomaticWindowAnimationsEnabled" "-bool" "false" "Window animations"
     audit_default "com.apple.WindowManager" "EnableStandardClickToShowDesktop" "-bool" "false" "Click wallpaper shows desktop"
+    audit_default "com.apple.WindowManager" "EnableTiledWindowMargins" "-bool" "false" "Tiled window margins"
 
-    local boot_muted=false
+    # Boot sound: read current state and add to audit table
+    local boot_current="true"
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then
-        boot_muted=true
+        boot_current="false"
     fi
+    AUDIT_ENTRIES+=("Startup sound|${boot_current}|false|nvram|StartupMute|-bool")
 
     [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 
     if show_audit_table "Misc"; then
         apply_audited_defaults
-
-        if [[ "$boot_muted" == false ]]; then
-            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Dry run — would mute boot sound (nvram)"
-            else
-                require_sudo
-                if sudo nvram StartupMute=%01 2>/dev/null; then
-                    log_ok "Boot sound muted"
-                else
-                    log_warn "Could not mute boot sound"
-                fi
-            fi
-        else
-            log_skip "Boot sound already muted"
-        fi
-
         log_ok "Misc tweaks applied"
         wait_enter
     fi

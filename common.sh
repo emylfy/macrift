@@ -13,7 +13,6 @@ MACRIFT_LOG="${MACRIFT_LOG:-}"
 
 #
 _macrift_cleanup() {
-    cleanup_sudo
     printf "\033[?25h" 2>/dev/null
 }
 trap _macrift_cleanup EXIT
@@ -336,12 +335,21 @@ show_multiselect() {
     declare -a selected
     local i
     for ((i=0; i<count; i++)); do
-        selected[i]="1"
+        if [[ "${items[$i]}" == "---" ]]; then
+            selected[i]="-"
+        else
+            selected[i]="1"
+        fi
+    done
+    # Ensure cursor starts on a real item
+    while [[ $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+        cursor=$((cursor + 1))
     done
 
     # Calculate box width: "  › [*] item  " = 8 + item_len + 2
     local max_len=0
     for ((i=0; i<count; i++)); do
+        [[ "${items[$i]}" == "---" ]] && continue
         if [[ ${#items[$i]} -gt $max_len ]]; then
             max_len=${#items[$i]}
         fi
@@ -379,6 +387,10 @@ show_multiselect() {
 
         # │ items │
         for ((i=0; i<count; i++)); do
+            if [[ "${items[$i]}" == "---" ]]; then
+                printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                continue
+            fi
             local pad=$((inner_w - 8 - ${#items[$i]}))
             if [[ $i -eq $cursor ]]; then
                 if [[ "${selected[i]}" == "1" ]]; then
@@ -424,10 +436,16 @@ show_multiselect() {
             if [[ "$seq" == '[A' ]]; then
                 if [[ $cursor -gt 0 ]]; then
                     cursor=$((cursor - 1))
+                    while [[ $cursor -gt 0 && $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+                        cursor=$((cursor - 1))
+                    done
                 fi
             elif [[ "$seq" == '[B' ]]; then
                 if [[ $cursor -lt $((total - 1)) ]]; then
                     cursor=$((cursor + 1))
+                    while [[ $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+                        cursor=$((cursor + 1))
+                    done
                 fi
             elif [[ "$seq" == '[C' ]]; then
                 if [[ $cursor -eq $count ]]; then
@@ -448,9 +466,10 @@ show_multiselect() {
                 fi
             fi
         elif [[ "$key" == 'a' || "$key" == 'A' ]]; then
-            # Toggle all non-installed items
+            # Toggle all non-separator items
             local all_on=true
             for ((i=0; i<count; i++)); do
+                [[ "${items[$i]}" == "---" ]] && continue
                 if [[ "${selected[$i]}" == "0" ]]; then
                     all_on=false
                     break
@@ -458,7 +477,10 @@ show_multiselect() {
             done
             local val="1"
             if $all_on; then val="0"; fi
-            for ((i=0; i<count; i++)); do selected[i]="$val"; done
+            for ((i=0; i<count; i++)); do
+                [[ "${items[$i]}" == "---" ]] && continue
+                selected[i]="$val"
+            done
         elif [[ "$key" == '' ]]; then
             if [[ $cursor -eq $count ]]; then
                 stty echo 2>/dev/null; printf "\033[?25h" >&2
@@ -472,8 +494,9 @@ show_multiselect() {
     stty echo 2>/dev/null
     printf "\033[?25h" >&2
 
-    # Output selected items to stdout
+    # Output selected items to stdout (skip separators)
     for ((i=0; i<count; i++)); do
+        [[ "${items[$i]}" == "---" ]] && continue
         if [[ "${selected[i]}" == "1" ]]; then
             echo "${items[$i]}"
         fi
@@ -546,16 +569,7 @@ confirm() {
 require_sudo() {
     if ! sudo -n true 2>/dev/null; then
         printf '\n  %bSudo access needed for system tweaks%b\n' "$YELLOW" "$RESET"
-        sudo -v
-    fi
-    # keep-alive: update existing sudo timestamp in background
-    while true; do sudo -n true; sleep 50; kill -0 "$$" || exit; done 2>/dev/null &
-    SUDO_KEEPALIVE_PID=$!
-}
-
-cleanup_sudo() {
-    if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]]; then
-        kill "$SUDO_KEEPALIVE_PID" 2>/dev/null || true
+        sudo -v -p "  Password: "
     fi
 }
 
@@ -742,36 +756,65 @@ apply_audited_defaults() {
         label="${label%%~*}"
 
         if [[ "$current" == "$new_val" ]]; then
-            ((skipped++))
+            skipped=$((skipped + 1))
             continue
         fi
 
         local friendly
         friendly=$(_friendly_val "$new_val")
 
+        # Handle chflags entries (e.g. ~/Library)
+        if [[ "$domain" == "chflags" ]]; then
+            local flag="$key"
+            [[ "$new_val" == "false" ]] && flag="hidden"
+            if chflags "$flag" ~/Library 2>/dev/null; then
+                log_ok "$label → $friendly"
+                applied=$((applied + 1))
+            else
+                log_err "Failed: $label → $friendly"
+                failed=$((failed + 1))
+            fi
+            continue
+        fi
+
+        # Handle nvram entries (e.g. StartupMute)
+        if [[ "$domain" == "nvram" ]]; then
+            local nvram_val="%01"
+            [[ "$new_val" == "true" ]] && nvram_val="%00"
+            require_sudo
+            if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
+                log_ok "$label → $friendly"
+                applied=$((applied + 1))
+            else
+                log_err "Failed: $label → $friendly"
+                failed=$((failed + 1))
+            fi
+            continue
+        fi
+
         if [[ "${sudo_flag:-}" == "sudo" ]]; then
             if sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
                 log_ok "$label → $friendly"
-                ((applied++))
+                applied=$((applied + 1))
                 MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
                 log_err "Failed: $label → $friendly"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         else
             if defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
                 log_ok "$label → $friendly"
-                ((applied++))
+                applied=$((applied + 1))
                 MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
                 log_warn "$label needs sudo ($domain is protected)"
                 if sudo defaults write "$domain" "$key" "$type" "$new_val" 2>/dev/null; then
                     log_ok "$label → $friendly"
-                    ((applied++))
+                    applied=$((applied + 1))
                     MACRIFT_CHANGED_DOMAINS+=("$domain")
                 else
                     log_err "Failed: $label → $friendly"
-                    ((failed++))
+                    failed=$((failed + 1))
                 fi
             fi
         fi
@@ -803,7 +846,7 @@ apply_reset_defaults() {
                 MACRIFT_CHANGED_DOMAINS+=("$domain")
             else
                 log_err "Failed to reset: $label"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         else
             if defaults delete "$domain" "$key" 2>/dev/null; then
@@ -818,7 +861,7 @@ apply_reset_defaults() {
                     MACRIFT_CHANGED_DOMAINS+=("$domain")
                 else
                     log_err "Failed to reset: $label"
-                    ((failed++))
+                    failed=$((failed + 1))
                 fi
             fi
         fi
@@ -893,7 +936,7 @@ check_update() {
 
 # Download and apply update (git pull or tarball re-download)
 macrift_update() {
-    if [[ -d "$MACRIFT_DIR/.git" ]]; then
+    if [[ -d "$MACRIFT_DIR/.git" ]] && command -v git &>/dev/null; then
         log_info "Updating via git..."
         if git -C "$MACRIFT_DIR" pull --rebase --autostash; then
             log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
