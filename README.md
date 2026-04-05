@@ -28,8 +28,8 @@
 
 Fresh Mac → full setup in minutes.
 
-- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 56 tweaks across 7 categories, all audited
-- **78 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
+- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 60+ tweaks across 7 categories, all audited
+- **83 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
 - **12 bundled configs** — terminal profiles, shell aliases, Catppuccin theme, editor settings, dock layout — ready to apply
 - **Profile save/restore** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout, Raycast) to Desktop, Documents, or iCloud Drive and restore it anywhere
 
@@ -91,24 +91,24 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
 | Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders |
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
-| Trackpad & Mouse | Tap to click, tracking speed, right-click, drag windows anywhere               |
+| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere |
 | Screenshots      | Format, save location, shadow, date in filename                                |
 | Hot Corners      | Arrow-key menu per corner, no codes to memorize                                |
-| Misc             | Boot sound, app open dialog, save/print panels, window animations              |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled window margins |
 
 ### 📦 Apps & Packages
 
 **Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
 
-- **Development** — bash, git, gh, lazygit, node, python, go, rust, neovim, fzf, ripgrep, bat, eza, fd, fastfetch, macmon, mas, mole, scrcpy, t3-code, android-platform-tools...
-- **Utilities** — Raycast, Alfred, HiddenBar, Keka, AltTab, SoundSource, BetterDisplay, Cork, Logi Options+, Macs Fan Control, SuperCorners...
+- **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, neovim, tmux, fzf, ripgrep, bat, eza, fd, fastfetch, claude, claude-code, zed, t3-code...
+- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keka, SoundSource, BetterDisplay, Cork, Keyboard Cowboy, SuperCorners, Logi Options+...
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
-- **Communication** — Ayugram, Telegram, Discord, Slack, Zoom
-- **Media** — IINA, OBS, Spotify, Figma, ImageOptim, Affinity
+- **Communication** — Ayugram, Telegram, Discord, Vesktop, Slack, Zoom
+- **Media** — IINA, OBS, Spotify, Figma, Affinity
 - **Games** — Steam, Heroic Games Launcher, Modrinth
 - **Fonts** — Fira Code, Maple Mono, JetBrains Mono (Nerd Fonts)
 
-**Mac App Store** — install apps via `mas` with multiselect.
+**Mac App Store** — `mas` entries in Brewfiles installed individually with App Store redirect for unpurchased apps.
 
 Export/import your packages with `.brewbak` backup files.
 

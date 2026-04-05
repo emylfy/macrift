@@ -256,8 +256,7 @@ install_bundle() {
             local mas_id="${BASH_REMATCH[2]}"
             log_info "Installing $mas_name..."
             local mas_out
-            mas_out=$(mas install "$mas_id" 2>&1)
-            if [[ $? -eq 0 ]]; then
+            if mas_out=$(mas install "$mas_id" 2>&1); then
                 log_ok "$mas_name installed"
             elif echo "$mas_out" | grep -qi "Redownload Unavailable"; then
                 log_warn "$mas_name: not purchased with this account — opening App Store"

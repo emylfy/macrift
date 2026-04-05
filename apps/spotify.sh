@@ -72,7 +72,7 @@ install_spicetify() {
     local mp_dir="$HOME/.config/spicetify/CustomApps/marketplace"
     if [[ ! -d "$mp_dir" ]]; then
         log_info "Installing Marketplace..."
-        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh < /dev/tty
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
     fi
     spicetify config custom_apps marketplace &>/dev/null
     spicetify apply &>/dev/null

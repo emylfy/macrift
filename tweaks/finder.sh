@@ -36,7 +36,9 @@ finder_tweaks() {
 
     # ~/Library visibility: add to audit table
     local lib_visible="false"
-    if ! ls -lOd ~/Library 2>/dev/null | grep -q "hidden"; then
+    local lib_flags
+    lib_flags=$(stat -f "%Sf" ~/Library 2>/dev/null || echo "hidden")
+    if [[ "$lib_flags" != *hidden* ]]; then
         lib_visible="true"
     fi
     AUDIT_ENTRIES+=("Show Library folder|${lib_visible}|true|chflags|nohidden|-bool")

@@ -38,13 +38,15 @@ _detect_theme() {
     if [[ "${MACRIFT_THEME:-}" == "dark" ]]; then echo "dark"; return; fi
 
     # 2. Query terminal background via OSC 11 (iTerm2, Ghostty, Kitty, WezTerm)
-    if [[ -t 2 ]]; then
+    if [[ -t 2 ]] && [[ -r /dev/tty ]]; then
         local old_stty response=""
-        old_stty=$(stty -g 2>/dev/null) || true
-        stty raw -echo min 0 time 1 2>/dev/null
+        old_stty=$(stty -g </dev/tty 2>/dev/null) || true
+        stty raw -echo min 0 time 2 </dev/tty 2>/dev/null
         printf '\033]11;?\a' > /dev/tty 2>/dev/null
         response=$(dd bs=1 count=30 </dev/tty 2>/dev/null) || true
-        stty "$old_stty" 2>/dev/null
+        # Drain any leftover bytes from terminal response
+        dd bs=1 count=64 </dev/tty >/dev/null 2>&1 || true
+        stty "$old_stty" </dev/tty 2>/dev/null
         if [[ "$response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
             local r=$((16#${BASH_REMATCH[1]:0:2}))
             local g=$((16#${BASH_REMATCH[2]:0:2}))
