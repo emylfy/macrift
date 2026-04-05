@@ -1,5 +1,28 @@
 # Changelog
 
+## 26.04.5
+
+### New
+
+- **Claude Code module** — full setup menu in Customize: user/project settings, hooks (stop-verify, post-compact, pre-commit guard), agents (debugger, reviewer, security-checker), slash commands (/review, /audit, /debug), rules, env vars with .zshrc marker-block injection
+- **Starship presets** — 12 official presets (Nerd Font, Bracketed Segments, Tokyo Night, Gruvbox Rainbow, Catppuccin Powerline, etc.) selectable from Shell menu; preset choice integrated into Full Setup flow
+- **Progress bar** — `show_progress` for batch operations: broken cask reinstall, App Store installs, mas installs
+- **Scrollable viewport** — `show_menu` and `show_multiselect` auto-scroll when items exceed terminal height; `▲ ···` / `▼ ···` indicators; Back always visible
+- **Tweak: disable Dictation** — `com.apple.HIToolbox AppleDictationAutoEnable` added to Keyboard tweaks
+- **Active flags in menu footer** — `[dry-run]` `[auto]` `[log]` shown inline with nav hints when active
+
+### Changed
+
+- **Starship config** — removed bundled `starship.toml`; config now applied via `starship preset` CLI
+- **Extensions install** — per-item `✓/✗` output preserved; tracks failed count in summary
+- **CI** — removed `starship.toml` from config existence check
+
+### Removed
+
+- **`config/shell/starship.toml`** — replaced by `starship preset` CLI integration
+
+---
+
 ## 26.04.3
 
 ### New

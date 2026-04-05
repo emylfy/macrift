@@ -19,6 +19,10 @@ keyboard_tweaks() {
     audit_default "NSGlobalDomain" "NSAutomaticQuoteSubstitutionEnabled" "-bool" "false" "Smart quotes"
     audit_default "NSGlobalDomain" "NSAutomaticPeriodSubstitutionEnabled" "-bool" "false" "Double-space period"
 
+    audit_sep
+
+    audit_default "com.apple.HIToolbox" "AppleDictationAutoEnable" "-bool" "false" "Dictation"
+
     [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
 
     if show_audit_table "Keyboard & Text"; then

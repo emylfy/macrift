@@ -11,12 +11,20 @@ privacy_menu() {
         clear
         set_title "macrift > privacy"
 
+        local defender_label="Remove Microsoft Defender"
+        if [[ -d "/Applications/Microsoft Defender Shim.app" ]]; then
+            defender_label="Remove Microsoft Defender  (found)"
+        else
+            defender_label="Remove Microsoft Defender  (not found)"
+        fi
+
         local choice
         choice=$(show_menu "Privacy & Security" \
             "Security Status" \
             "Hostname" \
             "DNS" \
             "Hardening (privacy.sexy)" \
+            "$defender_label" \
             "Back")
 
         case "$choice" in
@@ -24,6 +32,7 @@ privacy_menu() {
             2) set_hostname ;;
             3) dns_menu ;;
             4) hardening_menu ;;
+            5) remove_defender ;;
             0) break ;;
             *) ;;
         esac
@@ -167,6 +176,28 @@ run_standard_preset() {
             0) return ;;
         esac
     done
+}
+
+remove_defender() {
+    clear
+
+    if [[ ! -d "/Applications/Microsoft Defender Shim.app" ]]; then
+        log_info "Microsoft Defender Shim not found"
+        wait_enter
+        return
+    fi
+
+    log_info "Found: /Applications/Microsoft Defender Shim.app"
+    if confirm "Remove Microsoft Defender Shim?"; then
+        require_sudo
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Would run: sudo rm -rf /Applications/Microsoft Defender Shim.app"
+        else
+            sudo rm -rf "/Applications/Microsoft Defender Shim.app"
+            log_ok "Microsoft Defender Shim removed"
+        fi
+    fi
+    wait_enter
 }
 
 set_hostname() {

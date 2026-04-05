@@ -114,12 +114,12 @@ _iterm2_install_profile() {
     local selected_name="${descriptions[$idx]}"
 
     # Install font if missing
-    if ! fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd Font" && \
-       ! ls "$HOME/Library/Fonts"/JetBrainsMonoNerdFont* &>/dev/null && \
-       ! ls "/Library/Fonts"/JetBrainsMonoNerdFont* &>/dev/null; then
-        log_info "JetBrainsMono Nerd Font not found"
-        if confirm "Install font-jetbrains-mono-nerd-font via Homebrew?"; then
-            brew_install "font-jetbrains-mono-nerd-font" "cask"
+    if ! fc-list 2>/dev/null | grep -qi "FiraCode Nerd Font" && \
+       ! ls "$HOME/Library/Fonts"/FiraCodeNerdFont* &>/dev/null && \
+       ! ls "/Library/Fonts"/FiraCodeNerdFont* &>/dev/null; then
+        log_info "FiraCode Nerd Font not found"
+        if confirm "Install font-fira-code-nerd-font via Homebrew?"; then
+            brew_install "font-fira-code-nerd-font" "cask"
         else
             log_warn "Profile may fall back to Menlo without the Nerd Font"
         fi
@@ -248,15 +248,17 @@ shell_menu() {
             "Full setup (Zinit + Starship + .zshrc)" \
             "---" \
             "Starship prompt only" \
+            "Starship preset" \
             "Copy .zshrc only" \
             "Catppuccin theme" \
             "Back")
 
         case "$choice" in
-            1) install_zinit; install_starship; install_zshrc ;;
+            1) install_zinit; install_starship; starship_preset; install_zshrc ;;
             2) install_starship ;;
-            3) install_zshrc ;;
-            4) apply_catppuccin ;;
+            3) starship_preset ;;
+            4) install_zshrc ;;
+            5) apply_catppuccin ;;
             0) break ;;
             *) ;;
         esac
@@ -298,17 +300,6 @@ install_zinit() {
 install_starship() {
     if ! brew_install "starship"; then return; fi
 
-    local config_source="$MACRIFT_DIR/config/shell/starship.toml"
-    local config_target="$HOME/.config/starship.toml"
-
-    if [[ -f "$config_source" ]]; then
-        if confirm "Copy Starship config?"; then
-            copy_config "$config_source" "$config_target"
-        fi
-    else
-        log_info "Add your starship.toml to config/shell/ to auto-import"
-    fi
-
     # Ensure starship init is in .zshrc
     if ! grep -q 'eval "$(starship init zsh)"' "$HOME/.zshrc" 2>/dev/null; then
         echo 'eval "$(starship init zsh)"' >> "$HOME/.zshrc"
@@ -316,6 +307,67 @@ install_starship() {
     else
         log_skip "Starship already in .zshrc"
     fi
+}
+
+starship_preset() {
+    if ! command -v starship &>/dev/null; then
+        log_warn "Starship not installed"
+        if confirm "Install Starship?"; then
+            brew_install "starship" || return
+        else
+            return
+        fi
+    fi
+
+    local config_target="$HOME/.config/starship.toml"
+
+    # preset_id:label
+    local presets=(
+        "nerd-font:Nerd Font Symbols"
+        "no-nerd-font:No Nerd Fonts"
+        "bracketed-segments:Bracketed Segments"
+        "plain-text:Plain Text Symbols"
+        "no-runtimes:No Runtime Versions"
+        "no-empty-icons:No Empty Icons"
+        "pure-preset:Pure Prompt"
+        "pastel-powerline:Pastel Powerline"
+        "tokyo-night:Tokyo Night"
+        "gruvbox-rainbow:Gruvbox Rainbow"
+        "jetpack:Jetpack"
+        "catppuccin-powerline:Catppuccin Powerline"
+    )
+
+    local labels=()
+    local ids=()
+    for entry in "${presets[@]}"; do
+        ids+=("${entry%%:*}")
+        labels+=("${entry#*:}")
+    done
+
+    local choice
+    choice=$(show_menu "Starship Presets" "${labels[@]}" "Back")
+    [[ "$choice" == "0" || -z "$choice" ]] && return
+
+    local idx=$((choice - 1))
+    local preset_id="${ids[$idx]}"
+    local preset_label="${labels[$idx]}"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply preset '$preset_label'"
+        wait_enter
+        return
+    fi
+
+    if confirm "Apply '$preset_label'? (current config will be backed up)"; then
+        backup_file "$config_target"
+        if starship preset "$preset_id" > "$config_target" 2>/dev/null; then
+            log_ok "'$preset_label' applied"
+            log_info "Restart shell to see changes"
+        else
+            log_err "Failed to apply preset"
+        fi
+    fi
+    wait_enter
 }
 
 install_fastfetch() {

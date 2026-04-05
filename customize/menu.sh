@@ -17,6 +17,7 @@ customize_menu() {
             "Dock Layout" \
             "---" \
             "Wallpaper" \
+            "Claude Code" \
             "Back")
 
         case "$choice" in
@@ -27,6 +28,7 @@ customize_menu() {
             5) source "$MACRIFT_DIR/customize/editor.sh" && editor_menu ;;
             6) source "$MACRIFT_DIR/customize/dock_layout.sh" && dock_layout_menu ;;
             7) source "$MACRIFT_DIR/customize/wallpaper.sh" && wallpaper_menu ;;
+            8) source "$MACRIFT_DIR/customize/claude_code.sh" && claude_code_menu ;;
             0) break ;;
             *) ;;
         esac

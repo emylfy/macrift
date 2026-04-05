@@ -178,14 +178,15 @@ install_bundle() {
             log_info "Dry run — would reinstall broken casks"
         elif confirm "Fix them now?"; then
             printf "\n"
+            local cask_idx=0
             for cask in "${broken_casks[@]}"; do
-                log_info "Reinstalling $cask..."
-                if brew reinstall --cask "$cask"; then
+                ((cask_idx++))
+                show_progress "$cask_idx" "${#broken_casks[@]}" "$cask"
+                if brew reinstall --cask "$cask" &>/dev/null; then
                     log_ok "$cask reinstalled"
                 else
                     log_warn "Failed to reinstall $cask"
                 fi
-                printf "\n"
             done
             wait_enter
         fi
@@ -250,11 +251,13 @@ install_bundle() {
     fi
     rm -f "$tmp"
 
+    local mas_idx=0 mas_total=${#mas_install_lines[@]}
     for mas_line in "${mas_install_lines[@]}"; do
+        ((mas_idx++))
         if [[ "$mas_line" =~ ^mas[[:space:]]+\"([^\"]+)\",[[:space:]]*id:[[:space:]]*([0-9]+) ]]; then
             local mas_name="${BASH_REMATCH[1]}"
             local mas_id="${BASH_REMATCH[2]}"
-            log_info "Installing $mas_name..."
+            [[ $mas_total -gt 1 ]] && show_progress "$mas_idx" "$mas_total" "$mas_name"
             local mas_out
             if mas_out=$(mas install "$mas_id" 2>&1); then
                 log_ok "$mas_name installed"

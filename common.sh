@@ -116,6 +116,31 @@ run_with_spinner() {
     return $?
 }
 
+# Progress bar — inline redraw
+# Usage: show_progress 3 10 "Installing packages..."
+#        show_progress 10 10 "Done"  (auto-clears on complete)
+show_progress() {
+    local current="$1" total="$2" msg="${3:-}"
+    local pct=$((current * 100 / total))
+    local bar_w=20
+    local filled=$((pct * bar_w / 100))
+    local empty=$((bar_w - filled))
+
+    local bar=""
+    local i
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+
+    if [[ $current -ge $total ]]; then
+        printf '\r  %b%s%b %b%d/%d%b  %s\033[K\n' \
+            "$GREEN" "$bar" "$RESET" "$DIM" "$current" "$total" "$RESET" "$msg" >&2
+    else
+        printf '\r  %b%s%b %b%d/%d%b  %s\033[K' \
+            "$CYAN" "$bar" "$RESET" "$DIM" "$current" "$total" "$RESET" "$msg" >&2
+    fi
+}
+
+
 log_info()  { printf '  %b›%b  %s\n' "${CYAN}" "${RESET}" "$1"; _log_file "[info] $1"; }
 log_ok()    { printf '  %b✓%b  %s\n' "${GREEN}" "${RESET}" "$1"; _log_file "[  ok] $1"; }
 log_err()   { printf '  %b✗%b  %s\n' "${RED}" "${RESET}" "$1"; _log_file "[ err] $1"; }
@@ -133,16 +158,19 @@ show_menu() {
     local last_idx=$((count - 1))
 
     # Build selectable items: sel_nums[i]=choice number, sel_labels[i]=label
-    local sel_nums=() sel_labels=()
+    # Also map sel_idx → item_idx for scrolling
+    local sel_nums=() sel_labels=() sel_to_item=()
     local i num=0
     for ((i=0; i<last_idx; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
         num=$((num + 1))
         sel_nums+=("$num")
         sel_labels+=("${items[$i]}")
+        sel_to_item+=("$i")
     done
     sel_nums+=(0)
     sel_labels+=("${items[$last_idx]}")
+    sel_to_item+=("$last_idx")
     local sel_total=${#sel_nums[@]}
 
     # Box dimensions
@@ -162,14 +190,58 @@ show_menu() {
     local top_fill=$((inner_w - ${#title} - 3))
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
-    local total_lines=$((last_idx + 8))
+
+    # Terminal-aware scrolling
+    local term_h
+    term_h=$(tput lines 2>/dev/null || echo 24)
+    # Chrome without scroll: blank(1) + top(1) + pad(1) + gap(0-1) + back(1) + pad(1) + bottom(1) + footer(1)
+    local chrome_base=8
+    [[ "$no_nums" == true ]] && chrome_base=7
+
+    local need_scroll=false
+    local visible_count=$last_idx
+    local vp_top=0
+
+    if [[ $last_idx -gt $((term_h - chrome_base)) ]]; then
+        need_scroll=true
+        # With scroll indicators (+2) and 1 line margin
+        visible_count=$((term_h - chrome_base - 3))
+        [[ $visible_count -lt 3 ]] && visible_count=3
+    fi
+
+    # total_lines must stay constant for cursor repositioning
+    # blank(1) + top(1) + pad(1) + scroll_up(need_scroll?1:0) + visible_count
+    # + scroll_down(need_scroll?1:0) + gap(no_nums?0:1) + back(1) + pad(1) + bottom(1) + footer(1)
+    local total_lines=$((visible_count + 8))
     [[ "$no_nums" == true ]] && total_lines=$((total_lines - 1))
+    if $need_scroll; then total_lines=$((total_lines + 2)); fi
+
     local sel=0 first_draw=true
 
     stty -echo 2>/dev/null
     printf "\033[?25l" >&2
 
     while true; do
+        # Adjust viewport to keep selected item visible
+        if $need_scroll; then
+            local cur_item=${sel_to_item[$sel]}
+            # Only scroll for main items (not Back which is always shown)
+            if [[ $sel -lt $((sel_total - 1)) ]]; then
+                if [[ $cur_item -lt $vp_top ]]; then
+                    vp_top=$cur_item
+                    # Include preceding separator
+                    while [[ $vp_top -gt 0 && "${items[$((vp_top-1))]}" == "---" ]]; do
+                        vp_top=$((vp_top - 1))
+                    done
+                fi
+                local vp_bottom=$((vp_top + visible_count))
+                if [[ $cur_item -ge $vp_bottom ]]; then
+                    vp_top=$((cur_item - visible_count + 1))
+                    [[ $vp_top -lt 0 ]] && vp_top=0
+                fi
+            fi
+        fi
+
         printf "\033[?2026h" >&2
         if $first_draw; then
             first_draw=false
@@ -183,13 +255,39 @@ show_menu() {
         printf '╮%b\033[K\n' "$R" >&2
         printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
 
-        local num=0 sel_idx=0
+        # Scroll-up indicator
+        if $need_scroll; then
+            if [[ $vp_top -gt 0 ]]; then
+                local arrow_pad=$(( (inner_w - 5) / 2 ))
+                printf '  %b│%b%*s%b▲ ···%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$arrow_pad" "" "$DIM" "$R" "$((inner_w - arrow_pad - 5))" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+            fi
+        fi
+
+        # Render visible items
+        local num=0 sel_idx=0 rendered=0
         for ((i=0; i<last_idx; i++)); do
+            # Track numbering regardless of viewport
+            if [[ "${items[$i]}" != "---" ]]; then
+                num=$((num + 1))
+            fi
+
+            # Skip items outside viewport
+            if $need_scroll; then
+                if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
+                    [[ "${items[$i]}" != "---" ]] && ((sel_idx++))
+                    continue
+                fi
+            fi
+
             if [[ "${items[$i]}" == "---" ]]; then
                 printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                ((rendered++))
                 continue
             fi
-            num=$((num + 1))
+
             local vis=$((2 + num_w + num_pad + ${#items[$i]}))
             local pad=$((inner_w - vis))
             if [[ "$no_nums" == true ]]; then
@@ -210,13 +308,26 @@ show_menu() {
                 fi
             fi
             ((sel_idx++))
+            ((rendered++))
         done
 
+        # Scroll-down indicator
+        if $need_scroll; then
+            if [[ $((vp_top + visible_count)) -lt $last_idx ]]; then
+                local arrow_pad=$(( (inner_w - 5) / 2 ))
+                printf '  %b│%b%*s%b▼ ···%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$arrow_pad" "" "$DIM" "$R" "$((inner_w - arrow_pad - 5))" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+            fi
+        fi
+
+        # Back item (always visible)
         [[ "$no_nums" != true ]] && printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         local vis=$((2 + num_w + num_pad + ${#items[$last_idx]}))
         local pad=$((inner_w - vis))
         if [[ "$no_nums" == true ]]; then
-            if [[ $sel_idx -eq $sel ]]; then
+            if [[ $sel -eq $((sel_total - 1)) ]]; then
                 printf '  %b│%b  %b› %s%b%*s%b│%b\033[K\n' \
                     "$BP" "$R" "${BOLD}${ICE}" "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
             else
@@ -224,7 +335,7 @@ show_menu() {
                     "$BP" "$R" "$DIM" "$R" "${items[$last_idx]}" "$pad" "" "$BP" "$R" >&2
             fi
         else
-            if [[ $sel_idx -eq $sel ]]; then
+            if [[ $sel -eq $((sel_total - 1)) ]]; then
                 printf '  %b│%b  %b%*d › %s%b%*s%b│%b\033[K\n' \
                     "$BP" "$R" "${BOLD}${ICE}" "$num_w" 0 "${items[$last_idx]}" "$R" "$pad" "" "$BP" "$R" >&2
             else
@@ -237,9 +348,18 @@ show_menu() {
         printf '  %b╰' "$BP" >&2
         printf '─%.0s' $(seq 1 $inner_w) >&2
         printf '╯%b\033[K\n' "$R" >&2
+
         local _nav_hint="↑↓ navigate  enter/→ select"
         [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && _nav_hint+="  ← back"
-        printf '  %b%s%b\033[K\n' "$DIM" "$_nav_hint" "$R" >&2
+        local _flags=""
+        [[ "$MACRIFT_DRY_RUN" == true ]] && _flags+=" [dry-run]"
+        [[ "$MACRIFT_NO_CONFIRM" == true ]] && _flags+=" [auto]"
+        [[ -n "$MACRIFT_LOG" ]] && _flags+=" [log]"
+        if [[ -n "$_flags" ]]; then
+            printf '  %b%s%b %b%s%b\033[K\n' "$DIM" "$_nav_hint" "$R" "$YELLOW" "$_flags" "$R" >&2
+        else
+            printf '  %b%s%b\033[K\n' "$DIM" "$_nav_hint" "$R" >&2
+        fi
         printf "\033[?2026l" >&2
 
         local key=""
@@ -363,14 +483,47 @@ show_multiselect() {
     if [[ $title_min -gt $inner_w ]]; then inner_w=$title_min; fi
     local top_fill=$((inner_w - ${#title} - 3))
 
+    # Terminal-aware scrolling
+    local term_h
+    term_h=$(tput lines 2>/dev/null || echo 24)
+    # Chrome without scroll: blank(1) + top(1) + pad(1) + pad(1) + back(1) + pad(1) + bottom(1) + hint(1) = 8
+    local chrome_base=8
+
+    local need_scroll=false
+    local visible_count=$count
+    local vp_top=0
+
+    if [[ $count -gt $((term_h - chrome_base)) ]]; then
+        need_scroll=true
+        # With scroll indicators (+2) and 1 line margin
+        visible_count=$((term_h - chrome_base - 3))
+        [[ $visible_count -lt 3 ]] && visible_count=3
+    fi
+
     # Hide cursor & disable echo
     stty -echo 2>/dev/null
     printf "\033[?25l" >&2
 
     local first_draw=true
-    local redraw_lines=$((count + 8))
+    local redraw_lines=$((visible_count + 8))
+    if $need_scroll; then redraw_lines=$((redraw_lines + 2)); fi
 
     while true; do
+        # Adjust viewport to keep cursor visible (only for item rows, not Back)
+        if $need_scroll && [[ $cursor -lt $count ]]; then
+            if [[ $cursor -lt $vp_top ]]; then
+                vp_top=$cursor
+                while [[ $vp_top -gt 0 && "${items[$((vp_top-1))]}" == "---" ]]; do
+                    vp_top=$((vp_top - 1))
+                done
+            fi
+            local vp_bottom=$((vp_top + visible_count))
+            if [[ $cursor -ge $vp_bottom ]]; then
+                vp_top=$((cursor - visible_count + 1))
+                [[ $vp_top -lt 0 ]] && vp_top=0
+            fi
+        fi
+
         printf "\033[?2026h" >&2
         if [[ "$first_draw" == true ]]; then
             first_draw=false
@@ -383,48 +536,74 @@ show_multiselect() {
         printf "\033[K\n" >&2
         printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
         printf '─%.0s' $(seq 1 $top_fill) >&2
-        printf '╮%b\n' "$R" >&2
-        # │ (empty) │
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+        printf '╮%b\033[K\n' "$R" >&2
+        printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
 
-        # │ items │
+        # Scroll-up indicator
+        if $need_scroll; then
+            if [[ $vp_top -gt 0 ]]; then
+                local arrow_pad=$(( (inner_w - 5) / 2 ))
+                printf '  %b│%b%*s%b▲ ···%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$arrow_pad" "" "$DIM" "$R" "$((inner_w - arrow_pad - 5))" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+            fi
+        fi
+
+        # Render visible items
+        local rendered=0
         for ((i=0; i<count; i++)); do
+            if $need_scroll; then
+                if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
+                    continue
+                fi
+            fi
+
             if [[ "${items[$i]}" == "---" ]]; then
-                printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+                ((rendered++))
                 continue
             fi
             local pad=$((inner_w - 8 - ${#items[$i]}))
             if [[ $i -eq $cursor ]]; then
                 if [[ "${selected[i]}" == "1" ]]; then
-                    printf '  %b│%b  %b›%b %b[*]%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                    printf '  %b│%b  %b›%b %b[*]%b %s%*s%b│%b\033[K\n' "$BP" "$R" "$CYAN" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 else
-                    printf '  %b│%b  %b›%b %b[ ]%b %s%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                    printf '  %b│%b  %b›%b %b[ ]%b %s%*s%b│%b\033[K\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 fi
             else
                 if [[ "${selected[i]}" == "1" ]]; then
-                    printf '  %b│%b    %b[*]%b %s%*s%b│%b\n' "$BP" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                    printf '  %b│%b    %b[*]%b %s%*s%b│%b\033[K\n' "$BP" "$R" "$GREEN" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 else
-                    printf '  %b│%b    %b[ ]%b %s%*s%b│%b\n' "$BP" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
+                    printf '  %b│%b    %b[ ]%b %s%*s%b│%b\033[K\n' "$BP" "$R" "$DIM" "$R" "${items[$i]}" "$pad" "" "$BP" "$R" >&2
                 fi
             fi
+            ((rendered++))
         done
 
-        # │ (empty) │
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-        # │ ‹ Back  │
+        # Scroll-down indicator
+        if $need_scroll; then
+            if [[ $((vp_top + visible_count)) -lt $count ]]; then
+                local arrow_pad=$(( (inner_w - 5) / 2 ))
+                printf '  %b│%b%*s%b▼ ···%b%*s%b│%b\033[K\n' \
+                    "$BP" "$R" "$arrow_pad" "" "$DIM" "$R" "$((inner_w - arrow_pad - 5))" "" "$BP" "$R" >&2
+            else
+                printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
+            fi
+        fi
+
+        # Back item (always visible)
+        printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         local back_pad=$((inner_w - 10))
         if [[ $cursor -eq $count ]]; then
-            printf '  %b│%b  %b›%b %b‹ Back%b%*s%b│%b\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
+            printf '  %b│%b  %b›%b %b‹ Back%b%*s%b│%b\033[K\n' "$BP" "$R" "$CYAN" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
         else
-            printf '  %b│%b    %b‹ Back%b%*s%b│%b\n' "$BP" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
+            printf '  %b│%b    %b‹ Back%b%*s%b│%b\033[K\n' "$BP" "$R" "$DIM" "$R" "$back_pad" "" "$BP" "$R" >&2
         fi
-        # │ (empty) │
-        printf '  %b│%b%*s%b│%b\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
-        # ╰─────────╯
+        printf '  %b│%b%*s%b│%b\033[K\n' "$BP" "$R" "$inner_w" "" "$BP" "$R" >&2
         printf '  %b╰' "$BP" >&2
         printf '─%.0s' $(seq 1 $inner_w) >&2
-        printf '╯%b\n' "$R" >&2
-        # hint below box
+        printf '╯%b\033[K\n' "$R" >&2
         local _ms_hint="${MULTISELECT_HINT:-↑↓ move  space toggle  a all  enter confirm}"
         printf '  %b%s%b\033[K\n' "$DIM" "$_ms_hint" "$R" >&2
         printf "\033[?2026l" >&2
@@ -468,7 +647,6 @@ show_multiselect() {
                 fi
             fi
         elif [[ "$key" == 'a' || "$key" == 'A' ]]; then
-            # Toggle all non-separator items
             local all_on=true
             for ((i=0; i<count; i++)); do
                 [[ "${items[$i]}" == "---" ]] && continue

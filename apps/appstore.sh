@@ -99,10 +99,14 @@ install_appstore() {
             fi
         done
     else
+        local as_idx=0
+        local as_total
+        as_total=$(echo "$selected" | wc -l | tr -d ' ')
         for ((i=0; i<${#new_labels[@]}; i++)); do
             if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
-                log_info "Installing ${new_labels[$i]}..."
-                if mas install "${new_ids[$i]}"; then
+                ((as_idx++))
+                show_progress "$as_idx" "$as_total" "${new_labels[$i]}"
+                if mas install "${new_ids[$i]}" &>/dev/null; then
                     log_ok "${new_labels[$i]} installed"
                 else
                     log_warn "Failed: ${new_labels[$i]}"

@@ -106,7 +106,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 - **Communication** — Ayugram, Telegram, Discord, Vesktop, Slack, Zoom
 - **Media** — IINA, OBS, Spotify, Figma, Affinity
 - **Games** — Steam, Heroic Games Launcher, Modrinth
-- **Fonts** — Fira Code, Maple Mono, JetBrains Mono (Nerd Fonts)
+- **Fonts** — Fira Code, Maple Mono (Nerd Fonts)
 
 **Mac App Store** — `mas` entries in Brewfiles installed individually with App Store redirect for unpurchased apps.
 
@@ -140,7 +140,7 @@ Complete environment setup from one menu.
 
 **Terminal** — install & configure [iTerm2](https://iterm2.com) or [Ghostty](https://ghostty.org):
 
-- **iTerm2 Dynamic Profiles** — 3 presets (Cyberdrift, Nord Frost, Tokyo Night) with JetBrainsMono Nerd Font, auto-set as default
+- **iTerm2 Dynamic Profiles** — 3 presets (Cyberdrift, Nord Frost, Tokyo Night) with FiraCode Nerd Font, auto-set as default
 - **iTerm2 Defaults** — GPU renderer, compact tabs, hidden scrollbar, focus follows mouse
 - **Ghostty** — config from `config/ghostty/`; Catppuccin Mocha and Latte themes downloaded automatically
 

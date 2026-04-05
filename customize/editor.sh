@@ -106,7 +106,7 @@ install_extensions() {
     log_info "Installing via '$cli'..."
     printf "\n"
 
-    local count=0 total
+    local count=0 total failed=0
     total=$(echo "$selected" | wc -l | tr -d ' ')
 
     while IFS= read -r ext; do
@@ -119,11 +119,16 @@ install_extensions() {
                 printf '%b✓%b\n' "$GREEN" "$RESET"
             else
                 printf '%b✗%b\n' "$RED" "$RESET"
+                ((failed++))
             fi
         fi
     done <<< "$selected"
 
     printf "\n"
-    log_ok "$count extensions processed"
+    if [[ $failed -eq 0 ]]; then
+        log_ok "$count extensions installed"
+    else
+        log_warn "$count processed, $failed failed"
+    fi
     wait_enter
 }

@@ -43,7 +43,7 @@ jobs:
           for f in config/Brewfile.dev config/Brewfile.browsers config/Brewfile.utils \
                    config/Brewfile.media config/Brewfile.comm config/Brewfile.fonts \
                    config/Brewfile.games config/Brewfile.appstore config/shell/.zshrc \
-                   config/shell/starship.toml config/shell/config.jsonc config/ghostty/config \
+                   config/shell/config.jsonc config/ghostty/config \
                    config/vscode/settings.json; do
             [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
           done
