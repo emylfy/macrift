@@ -66,6 +66,30 @@ brewbak_menu() {
     crumb_pop
 }
 
+_fix_broken_casks() {
+    local casks=("$@")
+    [[ ${#casks[@]} -eq 0 ]] && return
+    log_warn "${#casks[@]} app(s) are missing from Applications"
+    for cask in "${casks[@]}"; do
+        printf '  %b· %s%b\n' "$DIM" "$cask" "$RESET"
+    done
+    printf "\n"
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would reinstall broken casks"
+    elif confirm "Fix them now?"; then
+        local idx=0
+        for cask in "${casks[@]}"; do
+            ((idx++))
+            show_progress "$idx" "${#casks[@]}" "$cask"
+            if brew reinstall --cask "$cask" &>/dev/null; then
+                log_ok "$cask reinstalled"
+            else
+                log_warn "Failed to reinstall $cask"
+            fi
+        done
+    fi
+}
+
 install_bundle() {
     local brewfile="$1"
     local label="${2:-$brewfile}"
@@ -78,9 +102,9 @@ install_bundle() {
 
     clear
 
-    # Get installed packages once
+    # Get installed packages once (strip @version suffix for matching)
     local installed
-    installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
+    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//' ; brew list --cask -1 2>/dev/null)
 
     # Parse Brewfile — split into new, broken, and already installed
     local new_lines=()
@@ -127,23 +151,7 @@ install_bundle() {
     # Nothing new — handle broken casks if any, otherwise skip silently
     if [[ ! ${new_labels[*]+x} || ${#new_labels[@]} -eq 0 ]]; then
         if [[ ${broken_casks[*]+x} && ${#broken_casks[@]} -gt 0 ]]; then
-            log_warn "${#broken_casks[@]} app(s) are missing from Applications"
-            for cask in "${broken_casks[@]}"; do
-                printf '  %b· %s%b\n' "$DIM" "$cask" "$RESET"
-            done
-            printf "\n"
-            if [[ "$MACRIFT_DRY_RUN" != true ]] && confirm "Fix them now?"; then
-                local cask_idx=0
-                for cask in "${broken_casks[@]}"; do
-                    ((cask_idx++))
-                    show_progress "$cask_idx" "${#broken_casks[@]}" "$cask"
-                    if brew reinstall --cask "$cask" &>/dev/null; then
-                        log_ok "$cask reinstalled"
-                    else
-                        log_warn "Failed to reinstall $cask"
-                    fi
-                done
-            fi
+            _fix_broken_casks "${broken_casks[@]}"
             wait_enter
         fi
         return 0
@@ -172,32 +180,10 @@ install_bundle() {
         new_labels=(${clean_labels[@]+"${clean_labels[@]}"})
     fi
 
-    # Handle missing apps separately — ask user once, then fix silently
+    # Handle missing apps separately
     if [[ ${#broken_casks[@]} -gt 0 ]]; then
         printf "\n"
-        log_warn "${#broken_casks[@]} app(s) are missing from Applications"
-        for cask in "${broken_casks[@]}"; do
-            printf '  %b· %s%b\n' "$DIM" "$cask" "$RESET"
-        done
-        printf "\n"
-        printf '  %bThis will reinstall the apps listed above.%b\n' "$DIM" "$RESET"
-        printf "\n"
-        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-            log_info "Dry run — would reinstall broken casks"
-        elif confirm "Fix them now?"; then
-            printf "\n"
-            local cask_idx=0
-            for cask in "${broken_casks[@]}"; do
-                ((cask_idx++))
-                show_progress "$cask_idx" "${#broken_casks[@]}" "$cask"
-                if brew reinstall --cask "$cask" &>/dev/null; then
-                    log_ok "$cask reinstalled"
-                else
-                    log_warn "Failed to reinstall $cask"
-                fi
-            done
-            wait_enter
-        fi
+        _fix_broken_casks "${broken_casks[@]}"
         printf "\n"
     fi
 
@@ -232,6 +218,11 @@ install_bundle() {
             echo "${new_lines[$i]}" >> "$tmp"
         fi
     done
+
+    if [[ ! -s "$tmp" ]]; then
+        rm -f "$tmp"
+        return 0
+    fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install:"

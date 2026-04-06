@@ -5,40 +5,41 @@
 TWEAK_SELECTION=()
 TWEAK_RESETS=()
 
-# Wizard: one category per screen, three states per item.
-# States: 0=skip, 1=apply, 2=reset (defaults delete)
-# Keys: space=toggle apply, d=toggle reset, a=all apply
+# Tweak wizard: one category per screen, three actions per item.
+# Each spec is "Name:start_idx:end_idx" pointing into AUDIT_ENTRIES[].
+# Actions: 0=skip, 1=apply, 2=reset (defaults delete)
+# has_diff[i]=1 means current != new (space/a toggles allowed), 0 means match (only d allowed)
 _tweak_wizard() {
     local specs=("$@")
     local cat_count=${#specs[@]}
 
+    # --- Parse specs ---
     local cat_names=() cat_starts=() cat_ends=() cat_sizes=()
-    local ci
+    local ci bounds
     for ci in "${specs[@]}"; do
         cat_names+=("${ci%%:*}")
-        local bounds="${ci#*:}"
+        bounds="${ci#*:}"
         cat_starts+=("${bounds%%:*}")
         cat_ends+=("${bounds#*:}")
         cat_sizes+=("$(( ${bounds#*:} - ${bounds%%:*} ))")
     done
 
-    # State per entry: 0=skip, 1=apply (pre-set for pending), 2=reset
-    # pending[i]=1 means current != new_val (space/a allowed), 0 means match (only d allowed)
-    local state=() pending=()
+    # --- Init state ---
+    local action=() has_diff=()
     local sel_idx=() cat_sel_offsets=() cat_sel_counts=()
-    local i _l _c _n _rest
+    local i c label current new_val rest
     for ((c=0; c<cat_count; c++)); do
         cat_sel_offsets+=("${#sel_idx[@]}")
         local cs="${cat_starts[$c]}" ce="${cat_ends[$c]}" cnt=0
         for ((i=cs; i<ce; i++)); do
             [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
-            IFS='|' read -r _l _c _n _rest <<< "${AUDIT_ENTRIES[$i]}"
-            [[ "$_l" == "---" ]] && continue
+            IFS='|' read -r label current new_val rest <<< "${AUDIT_ENTRIES[$i]}"
+            [[ "$label" == "---" ]] && continue
             sel_idx+=("$i")
-            if [[ "$_c" != "$_n" ]]; then
-                state[i]="1"; pending[i]=1
+            if [[ "$current" != "$new_val" ]]; then
+                action[i]="1"; has_diff[i]=1
             else
-                state[i]="0"; pending[i]=0
+                action[i]="0"; has_diff[i]=0
             fi
             cnt=$(( cnt + 1 ))
         done
@@ -51,9 +52,9 @@ _tweak_wizard() {
     local cat_idx=0 wizard_done=false
     local R="${RESET}"
 
-    stty -echo 2>/dev/null
-    printf "\033[?25l" >&2
+    _ui_start
 
+    # --- Interactive loop ---
     while ! $wizard_done; do
         local cname="${cat_names[$cat_idx]}"
         local cstart="${cat_starts[$cat_idx]}"
@@ -63,66 +64,64 @@ _tweak_wizard() {
         local sel_off="${cat_sel_offsets[$cat_idx]}"
         local sel_cnt="${cat_sel_counts[$cat_idx]}"
 
-        # Count extra warning lines in this category
+        # Count extra warning lines for frame height
         local warn_lines=0
         for ((i=cstart; i<cend; i++)); do
             [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
-            IFS='|' read -r _l _rest <<< "${AUDIT_ENTRIES[$i]}"
-            [[ "$_l" == *"~"* ]] && warn_lines=$(( warn_lines + 1 ))
+            IFS='|' read -r label rest <<< "${AUDIT_ENTRIES[$i]}"
+            [[ "$label" == *"~"* ]] && warn_lines=$(( warn_lines + 1 ))
         done
         local total_lines=$(( 1 + 1 + csize + warn_lines + 1 ))
         local first_draw=true
 
         while true; do
-            printf "\033[?2026h" >&2
+            # --- Render ---
             if $first_draw; then
                 first_draw=false
                 clear
+                printf "\033[K\n" >&2
             else
+                printf "\033[?2026h" >&2
                 printf "\033[%dA\r" "$total_lines" >&2
+                printf "\033[K\n" >&2
             fi
 
-            printf "\033[K\n" >&2
-
-            # Progress dots — filled for visited/current, empty for remaining
+            # Progress dots
             local dots="" p
             for ((p=0; p<cat_count; p++)); do
                 if [[ $p -le $cat_idx ]]; then dots+="●"; else dots+="○"; fi
             done
-
             printf '  %b%s%b  %b%s%b\033[K\n' \
-                "${BOLD}${ICE}" "$cname" "${RESET}" \
-                "$DIM" "$dots" "$R" >&2
+                "${BOLD}${ICE}" "$cname" "${RESET}" "$DIM" "$dots" "$R" >&2
 
+            # Render entries
             local si=0
             for ((i=cstart; i<cend; i++)); do
                 [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
-                IFS='|' read -r label current new_val _rest <<< "${AUDIT_ENTRIES[$i]}"
+                IFS='|' read -r label current new_val rest <<< "${AUDIT_ENTRIES[$i]}"
 
                 if [[ "$label" == "---" ]]; then
                     printf '\033[K\n' >&2
                     continue
                 fi
 
-                # Extract warning hint if present (label~hint format)
+                # Warning hint (label~hint format)
                 local warn=""
                 if [[ "$label" == *"~"* ]]; then
-                    warn="${label#*~}"
-                    label="${label%%~*}"
+                    warn="${label#*~}"; label="${label%%~*}"
                 fi
 
                 local fc fn
                 fc=$(_friendly_val "$current")
                 fn=$(_friendly_val "$new_val")
-                local s="${state[$i]}"
+                local act="${action[$i]}"
 
-                # Build display: "Label: value"
-                local display=""
-                local cursor_char="" icon_color=""
-                if [[ "$s" == "2" ]]; then
+                # Build display line
+                local display="" cursor_char="" icon_color=""
+                if [[ "$act" == "2" ]]; then
                     display=$(printf '%s: %b%s%b → %b%s%b' "$label" "$DIM" "$fc" "$R" "$YELLOW" "reset" "$R")
                     cursor_char="[✗]"; icon_color="$RED"
-                elif [[ "$s" == "1" ]]; then
+                elif [[ "$act" == "1" ]]; then
                     if [[ "$current" == "$new_val" ]]; then
                         display=$(printf '%s: %b%s%b' "$label" "$DIM" "$fc" "$R")
                     elif [[ "$current" == "default" ]]; then
@@ -143,14 +142,12 @@ _tweak_wizard() {
                 fi
 
                 if [[ $si -eq $cursor ]]; then
-                    printf '  %b›%b %b%s%b %s\033[K\n' \
-                        "$CYAN" "$R" "$icon_color" "$cursor_char" "$R" "$display" >&2
+                    printf '  %b›%b %b%s%b %s\033[K\n' "$CYAN" "$R" "$icon_color" "$cursor_char" "$R" "$display" >&2
                 else
-                    printf '    %b%s%b %s\033[K\n' \
-                        "$icon_color" "$cursor_char" "$R" "$display" >&2
+                    printf '    %b%s%b %s\033[K\n' "$icon_color" "$cursor_char" "$R" "$display" >&2
                 fi
                 if [[ -n "$warn" ]]; then
-                    if [[ "$s" != "0" ]]; then
+                    if [[ "$act" != "0" ]]; then
                         printf '  %b      ! %s%b\033[K\n' "$YELLOW" "$warn" "$R" >&2
                     else
                         printf '  %b      %s%b\033[K\n' "$DIM" "$warn" "$R" >&2
@@ -159,125 +156,103 @@ _tweak_wizard() {
                 si=$(( si + 1 ))
             done
 
+            # Hint line
             local hint="↑↓ move  ␣ apply  d reset  a all"
-            if [[ $cat_count -eq 1 ]]; then
-                hint+="  ↵ review"
-            elif [[ $cat_idx -eq 0 ]]; then
-                hint+="  →/↵ next"
-            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then
-                hint+="  ← prev  ↵ review"
-            else
-                hint+="  ←/→ prev/next"
+            if [[ $cat_count -eq 1 ]]; then hint+="  ↵ review"
+            elif [[ $cat_idx -eq 0 ]]; then hint+="  →/↵ next"
+            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ← prev  ↵ review"
+            else hint+="  ←/→ prev/next"
             fi
 
-            # Count totals across all categories
-            local _ta=0 _tr=0 _ti
-            for ((_ti=0; _ti<${#sel_idx[@]}; _ti++)); do
-                local _si_idx="${sel_idx[$_ti]}"
-                [[ "${state[$_si_idx]}" == "1" && "${pending[$_si_idx]}" == "1" ]] && _ta=$((_ta + 1))
-                [[ "${state[$_si_idx]}" == "2" ]] && _tr=$((_tr + 1))
+            # Totals across all categories
+            local total_apply=0 total_reset=0 ti si_idx
+            for ((ti=0; ti<${#sel_idx[@]}; ti++)); do
+                si_idx="${sel_idx[$ti]}"
+                [[ "${action[$si_idx]}" == "1" && "${has_diff[$si_idx]}" == "1" ]] && total_apply=$((total_apply + 1))
+                [[ "${action[$si_idx]}" == "2" ]] && total_reset=$((total_reset + 1))
             done
-            local _count=""
-            [[ $_ta -gt 0 ]] && _count="${_ta} apply"
-            [[ $_tr -gt 0 ]] && { [[ -n "$_count" ]] && _count+=", "; _count+="${_tr} reset"; }
+            local count_str=""
+            [[ $total_apply -gt 0 ]] && count_str="${total_apply} apply"
+            [[ $total_reset -gt 0 ]] && { [[ -n "$count_str" ]] && count_str+=", "; count_str+="${total_reset} reset"; }
 
-            if [[ -n "$_count" ]]; then
-                printf '  %b%s%b  %b· %s%b\033[K\n' "$DIM" "$hint" "$R" "$CYAN" "$_count" "$R" >&2
+            if [[ -n "$count_str" ]]; then
+                printf '  %b%s%b  %b· %s%b\033[K\n' "$DIM" "$hint" "$R" "$CYAN" "$count_str" "$R" >&2
             else
                 printf '  %b%s%b\033[K\n' "$DIM" "$hint" "$R" >&2
             fi
-
             printf "\033[?2026l" >&2
 
-            local key=""
-            IFS= read -rsn1 key < /dev/tty || true
-
-            if [[ "$key" == $'\x1b' ]]; then
-                local seq=""
-                read -rsn2 -t 1 seq < /dev/tty || true
-                case "$seq" in
-                    '[A') [[ $cursor -gt 0 ]] && cursor=$(( cursor - 1 )) ;;
-                    '[B') [[ $cursor -lt $(( sel_cnt - 1 )) ]] && cursor=$(( cursor + 1 )) ;;
-                    '[C')
-                        cursors[cat_idx]=$cursor
-                        if [[ $cat_idx -lt $(( cat_count - 1 )) ]]; then
-                            cat_idx=$(( cat_idx + 1 ))
-                        else wizard_done=true; fi
-                        break ;;
-                    '[D')
-                        cursors[cat_idx]=$cursor
-                        if [[ $cat_idx -gt 0 ]]; then
-                            cat_idx=$(( cat_idx - 1 ))
-                            break
-                        else
-                            stty echo 2>/dev/null; printf "\033[?25h" >&2
-                            TWEAK_SELECTION=(); TWEAK_RESETS=()
-                            return 1
-                        fi
-                        ;;
-                esac
-            elif [[ "$key" == ' ' ]]; then
-                local gsi=$(( sel_off + cursor ))
-                local idx="${sel_idx[$gsi]}"
-                # Only toggle apply for entries with pending changes
-                if [[ "${pending[$idx]}" == 1 ]]; then
-                    if [[ "${state[$idx]}" == "1" ]]; then state[idx]="0"; else state[idx]="1"; fi
-                fi
-            elif [[ "$key" == 'd' || "$key" == 'D' ]]; then
-                local gsi=$(( sel_off + cursor ))
-                local idx="${sel_idx[$gsi]}"
-                # Toggle: 0→2, 1→2, 2→0
-                if [[ "${state[$idx]}" == "2" ]]; then state[idx]="0"; else state[idx]="2"; fi
-            elif [[ "$key" == 'a' || "$key" == 'A' ]]; then
-                # Toggle all pending entries only
-                local all_apply=true k
-                for ((k=0; k<sel_cnt; k++)); do
-                    local idx="${sel_idx[$((sel_off + k))]}"
-                    [[ "${pending[$idx]}" == 0 ]] && continue
-                    if [[ "${state[$idx]}" != "1" ]]; then all_apply=false; break; fi
-                done
-                local val="1"; if $all_apply; then val="0"; fi
-                for ((k=0; k<sel_cnt; k++)); do
-                    local idx="${sel_idx[$((sel_off + k))]}"
-                    [[ "${pending[$idx]}" == 0 ]] && continue
-                    state[idx]="$val"
-                done
-            elif [[ "$key" == '' ]]; then
-                cursors[cat_idx]=$cursor
-                if [[ $cat_idx -lt $(( cat_count - 1 )) ]]; then
-                    cat_idx=$(( cat_idx + 1 ))
-                else wizard_done=true; fi
-                break
-            fi
+            # --- Input ---
+            local key
+            key=$(_read_key)
+            case "$key" in
+                up)   [[ $cursor -gt 0 ]] && cursor=$(( cursor - 1 )) ;;
+                down) [[ $cursor -lt $(( sel_cnt - 1 )) ]] && cursor=$(( cursor + 1 )) ;;
+                right|enter)
+                    cursors[cat_idx]=$cursor
+                    if [[ $cat_idx -lt $(( cat_count - 1 )) ]]; then
+                        cat_idx=$(( cat_idx + 1 ))
+                    else wizard_done=true; fi
+                    break ;;
+                left)
+                    cursors[cat_idx]=$cursor
+                    if [[ $cat_idx -gt 0 ]]; then
+                        cat_idx=$(( cat_idx - 1 )); break
+                    else
+                        _ui_end
+                        TWEAK_SELECTION=(); TWEAK_RESETS=()
+                        return 1
+                    fi ;;
+                space)
+                    local idx="${sel_idx[$((sel_off + cursor))]}"
+                    if [[ "${has_diff[$idx]}" == 1 ]]; then
+                        if [[ "${action[$idx]}" == "1" ]]; then action[idx]="0"; else action[idx]="1"; fi
+                    fi ;;
+                d|D)
+                    local idx="${sel_idx[$((sel_off + cursor))]}"
+                    if [[ "${action[$idx]}" == "2" ]]; then action[idx]="0"; else action[idx]="2"; fi ;;
+                a|A)
+                    local all_apply=true k
+                    for ((k=0; k<sel_cnt; k++)); do
+                        local idx="${sel_idx[$((sel_off + k))]}"
+                        [[ "${has_diff[$idx]}" == 0 ]] && continue
+                        [[ "${action[$idx]}" != "1" ]] && { all_apply=false; break; }
+                    done
+                    local val="1"; $all_apply && val="0"
+                    for ((k=0; k<sel_cnt; k++)); do
+                        local idx="${sel_idx[$((sel_off + k))]}"
+                        [[ "${has_diff[$idx]}" == 0 ]] && continue
+                        action[idx]="$val"
+                    done ;;
+            esac
         done
     done
 
-    stty echo 2>/dev/null
-    printf "\033[?25h" >&2
+    _ui_end
 
-    # Summary
+    # --- Summary ---
     clear
     printf "\n"
 
-    local total_apply=0 total_reset=0 cats_active=0
+    local sum_apply=0 sum_reset=0 cats_active=0
     for ((c=0; c<cat_count; c++)); do
         local off="${cat_sel_offsets[$c]}" cnt="${cat_sel_counts[$c]}"
         local cat_apply=0 cat_reset=0 k
         for ((k=0; k<cnt; k++)); do
             local idx="${sel_idx[$((off + k))]}"
-            if [[ "${state[$idx]}" == "1" ]]; then cat_apply=$(( cat_apply + 1 )); fi
-            if [[ "${state[$idx]}" == "2" ]]; then cat_reset=$(( cat_reset + 1 )); fi
+            [[ "${action[$idx]}" == "1" ]] && cat_apply=$(( cat_apply + 1 ))
+            [[ "${action[$idx]}" == "2" ]] && cat_reset=$(( cat_reset + 1 ))
         done
         if [[ $cat_apply -gt 0 || $cat_reset -gt 0 ]]; then
             local detail=""
-            if [[ $cat_apply -gt 0 ]]; then detail="${cat_apply} apply"; fi
+            [[ $cat_apply -gt 0 ]] && detail="${cat_apply} apply"
             if [[ $cat_reset -gt 0 ]]; then
-                if [[ -n "$detail" ]]; then detail+=", "; fi
+                [[ -n "$detail" ]] && detail+=", "
                 detail+="${cat_reset} reset"
             fi
             printf '  %b✓%b %s — %s\n' "$GREEN" "$RESET" "${cat_names[$c]}" "$detail"
-            total_apply=$(( total_apply + cat_apply ))
-            total_reset=$(( total_reset + cat_reset ))
+            sum_apply=$(( sum_apply + cat_apply ))
+            sum_reset=$(( sum_reset + cat_reset ))
             cats_active=$(( cats_active + 1 ))
         else
             printf '  %b-%b %s\n' "$DIM" "$RESET" "${cat_names[$c]}"
@@ -286,39 +261,41 @@ _tweak_wizard() {
 
     printf "\n"
 
-    local total=$(( total_apply + total_reset ))
+    local total=$(( sum_apply + sum_reset ))
     if [[ $total -eq 0 ]]; then
         log_info "Nothing selected"
         wait_enter
         TWEAK_SELECTION=(); TWEAK_RESETS=()
-        return
+        return 0
     fi
 
     local summary=""
-    if [[ $total_apply -gt 0 ]]; then summary="${total_apply} apply"; fi
-    if [[ $total_reset -gt 0 ]]; then
-        if [[ -n "$summary" ]]; then summary+=", "; fi
-        summary+="${total_reset} reset"
+    [[ $sum_apply -gt 0 ]] && summary="${sum_apply} apply"
+    if [[ $sum_reset -gt 0 ]]; then
+        [[ -n "$summary" ]] && summary+=", "
+        summary+="${sum_reset} reset"
     fi
     printf '  %b%s from %d categories%b\n\n' "$BOLD" "$summary" "$cats_active" "$RESET"
 
     if ! confirm "Apply?"; then
         TWEAK_SELECTION=(); TWEAK_RESETS=()
-        return
+        return 0
     fi
 
+    # --- Collect results ---
     TWEAK_SELECTION=(); TWEAK_RESETS=()
     for ci in "${specs[@]}"; do
-        local bounds="${ci#*:}"
+        bounds="${ci#*:}"
         local cs="${bounds%%:*}" ce="${bounds#*:}"
         for ((i=cs; i<ce; i++)); do
             [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
-            IFS='|' read -r _l _rest <<< "${AUDIT_ENTRIES[$i]}"
-            [[ "$_l" == "---" ]] && continue
-            if [[ "${state[$i]}" == "1" ]]; then TWEAK_SELECTION+=("${AUDIT_ENTRIES[$i]}"); fi
-            if [[ "${state[$i]}" == "2" ]]; then TWEAK_RESETS+=("${AUDIT_ENTRIES[$i]}"); fi
+            IFS='|' read -r label rest <<< "${AUDIT_ENTRIES[$i]}"
+            [[ "$label" == "---" ]] && continue
+            [[ "${action[$i]}" == "1" ]] && TWEAK_SELECTION+=("${AUDIT_ENTRIES[$i]}")
+            [[ "${action[$i]}" == "2" ]] && TWEAK_RESETS+=("${AUDIT_ENTRIES[$i]}")
         done
     done
+    return 0
 }
 
 select_tweaks() {
@@ -326,110 +303,104 @@ select_tweaks() {
 
     local cat_names=("Dock" "Finder" "Safari" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc" "Hot Corners")
 
-    while true; do
-        audit_reset
-        MACRIFT_BATCH_TWEAKS=true
+    audit_reset
+    MACRIFT_BATCH_TWEAKS=true
 
-        local dock_s=0
-        source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
-        local dock_e=${#AUDIT_ENTRIES[@]}
+    local dock_s=0
+    source "$MACRIFT_DIR/tweaks/dock.sh" && dock_tweaks
+    local dock_e=${#AUDIT_ENTRIES[@]}
 
-        local finder_s=$dock_e
-        source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
-        local finder_e=${#AUDIT_ENTRIES[@]}
+    local finder_s=$dock_e
+    source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
+    local finder_e=${#AUDIT_ENTRIES[@]}
 
-        local safari_s=$finder_e
-        source "$MACRIFT_DIR/tweaks/safari.sh" && safari_tweaks
-        local safari_e=${#AUDIT_ENTRIES[@]}
+    local safari_s=$finder_e
+    source "$MACRIFT_DIR/tweaks/safari.sh" && safari_tweaks
+    local safari_e=${#AUDIT_ENTRIES[@]}
 
-        local keyboard_s=$safari_e
-        source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
-        local keyboard_e=${#AUDIT_ENTRIES[@]}
+    local keyboard_s=$safari_e
+    source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
+    local keyboard_e=${#AUDIT_ENTRIES[@]}
 
-        local input_s=$keyboard_e
-        source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
-        local input_e=${#AUDIT_ENTRIES[@]}
+    local input_s=$keyboard_e
+    source "$MACRIFT_DIR/tweaks/input.sh" && input_tweaks
+    local input_e=${#AUDIT_ENTRIES[@]}
 
-        local screenshots_s=$input_e
-        source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
-        local screenshots_e=${#AUDIT_ENTRIES[@]}
+    local screenshots_s=$input_e
+    source "$MACRIFT_DIR/tweaks/screenshots.sh" && screenshots_tweaks
+    local screenshots_e=${#AUDIT_ENTRIES[@]}
 
-        local misc_s=$screenshots_e
-        source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
-        local misc_e=${#AUDIT_ENTRIES[@]}
+    local misc_s=$screenshots_e
+    source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
+    local misc_e=${#AUDIT_ENTRIES[@]}
 
-        MACRIFT_BATCH_TWEAKS=false
+    MACRIFT_BATCH_TWEAKS=false
 
-        MULTISELECT_HINT="↑↓ move  space toggle  a all  enter → view tweaks"
-        local selected_cats
-        selected_cats=$(show_multiselect "System Tweaks" "${cat_names[@]}")
-        MULTISELECT_HINT=""
-        [[ -z "$selected_cats" ]] && { audit_reset; return; }
+    MULTISELECT_HINT="↑↓ move  space toggle  a all  enter → view tweaks"
+    local selected_cats
+    selected_cats=$(show_multiselect "System Tweaks" "${cat_names[@]}")
+    MULTISELECT_HINT=""
+    [[ -z "$selected_cats" ]] && { audit_reset; return; }
 
-        local do_hot_corners=false
-        echo "$selected_cats" | grep -qxF "Hot Corners" && do_hot_corners=true
+    local do_hot_corners=false
+    echo "$selected_cats" | grep -qxF "Hot Corners" && do_hot_corners=true
 
-        local specs=()
-        echo "$selected_cats" | grep -qxF "Dock"             && specs+=("Dock:${dock_s}:${dock_e}")
-        echo "$selected_cats" | grep -qxF "Finder"           && specs+=("Finder:${finder_s}:${finder_e}")
-        echo "$selected_cats" | grep -qxF "Safari"           && specs+=("Safari:${safari_s}:${safari_e}")
-        echo "$selected_cats" | grep -qxF "Keyboard & Text"  && specs+=("Keyboard & Text:${keyboard_s}:${keyboard_e}")
-        echo "$selected_cats" | grep -qxF "Trackpad & Mouse" && specs+=("Trackpad & Mouse:${input_s}:${input_e}")
-        echo "$selected_cats" | grep -qxF "Screenshots"      && specs+=("Screenshots:${screenshots_s}:${screenshots_e}")
-        echo "$selected_cats" | grep -qxF "Misc"             && specs+=("Misc:${misc_s}:${misc_e}")
+    local specs=()
+    echo "$selected_cats" | grep -qxF "Dock"             && specs+=("Dock:${dock_s}:${dock_e}")
+    echo "$selected_cats" | grep -qxF "Finder"           && specs+=("Finder:${finder_s}:${finder_e}")
+    echo "$selected_cats" | grep -qxF "Safari"           && specs+=("Safari:${safari_s}:${safari_e}")
+    echo "$selected_cats" | grep -qxF "Keyboard & Text"  && specs+=("Keyboard & Text:${keyboard_s}:${keyboard_e}")
+    echo "$selected_cats" | grep -qxF "Trackpad & Mouse" && specs+=("Trackpad & Mouse:${input_s}:${input_e}")
+    echo "$selected_cats" | grep -qxF "Screenshots"      && specs+=("Screenshots:${screenshots_s}:${screenshots_e}")
+    echo "$selected_cats" | grep -qxF "Misc"             && specs+=("Misc:${misc_s}:${misc_e}")
 
-        # Run tweak wizard if any defaults-based categories selected
-        if [[ ${#specs[@]} -gt 0 ]]; then
-            if ! _tweak_wizard "${specs[@]}"; then
-                clear
-                continue
+    # Run tweak wizard if any defaults-based categories selected
+    if [[ ${#specs[@]} -gt 0 ]]; then
+        _tweak_wizard "${specs[@]}" || { audit_reset; return; }
+
+        if [[ ${TWEAK_SELECTION[*]+x} && ${#TWEAK_SELECTION[@]} -gt 0 ]] || \
+           [[ ${TWEAK_RESETS[*]+x} && ${#TWEAK_RESETS[@]} -gt 0 ]]; then
+            clear
+
+            local need_dock=false need_finder=false
+
+            if [[ ${#TWEAK_SELECTION[@]} -gt 0 ]]; then
+                AUDIT_ENTRIES=("${TWEAK_SELECTION[@]}")
+                apply_audited_defaults
             fi
 
-            if [[ ${#TWEAK_SELECTION[@]} -gt 0 || ${#TWEAK_RESETS[@]} -gt 0 ]]; then
-                clear
-
-                local need_dock=false need_finder=false
-
-                if [[ ${#TWEAK_SELECTION[@]} -gt 0 ]]; then
-                    AUDIT_ENTRIES=("${TWEAK_SELECTION[@]}")
-                    apply_audited_defaults
-                fi
-
-                if [[ ${#TWEAK_RESETS[@]} -gt 0 ]]; then
-                    RESET_ENTRIES=("${TWEAK_RESETS[@]}")
-                    apply_reset_defaults
-                fi
-
-                local domain
-                for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
-                    [[ "$domain" == *"dock"* ]]                                       && need_dock=true
-                    [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && need_finder=true
-                done
-                MACRIFT_CHANGED_DOMAINS=()
-
-                TWEAK_SELECTION=(); TWEAK_RESETS=()
-
-                if $need_dock || $need_finder; then
-                    printf '\n'
-                    if confirm "Restart affected services?"; then
-                        $need_dock   && { killall Dock 2>/dev/null || true;   log_ok "Dock restarted"; }
-                        $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
-                    else
-                        log_info "Restart skipped — changes apply after logout"
-                    fi
-                fi
-
-                wait_enter
+            if [[ ${#TWEAK_RESETS[@]} -gt 0 ]]; then
+                RESET_ENTRIES=("${TWEAK_RESETS[@]}")
+                apply_reset_defaults
             fi
-        fi
 
-        # Run Hot Corners if selected
-        if $do_hot_corners; then
-            source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
-        fi
+            local domain
+            for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
+                [[ "$domain" == *"dock"* ]]                                       && need_dock=true
+                [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && need_finder=true
+            done
+            MACRIFT_CHANGED_DOMAINS=()
 
-        break
-    done
+            TWEAK_SELECTION=(); TWEAK_RESETS=()
+
+            if $need_dock || $need_finder; then
+                printf '\n'
+                if confirm "Restart affected services?"; then
+                    $need_dock   && { killall Dock 2>/dev/null || true;   log_ok "Dock restarted"; }
+                    $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
+                else
+                    log_info "Restart skipped — changes apply after logout"
+                fi
+            fi
+
+            wait_enter
+        fi
+    fi
+
+    # Run Hot Corners if selected
+    if $do_hot_corners; then
+        source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
+    fi
 
     audit_reset
 }

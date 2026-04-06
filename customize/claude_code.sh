@@ -292,10 +292,32 @@ _cc_install_dir() {
 
 # Environment
 
-_cc_install_env() {
-    local source="$CC_CONFIG/env.sh"
+# Replace marker-bounded block in .zshrc with env vars from source
+_cc_write_env_block() {
+    local source="$1"
     local zshrc="$HOME/.zshrc"
     local marker="# macrift:claude-code env"
+
+    # Remove old block between markers
+    if grep -q "$marker" "$zshrc" 2>/dev/null; then
+        local temp
+        temp=$(mktemp)
+        awk "/$marker/{skip=!skip; next} !skip" "$zshrc" > "$temp"
+        cp "$temp" "$zshrc"
+        rm -f "$temp"
+    fi
+
+    # Append new block
+    {
+        echo ""
+        echo "$marker"
+        grep -v '^#' "$source" | grep -v '^$'
+        echo "$marker"
+    } >> "$zshrc"
+}
+
+_cc_install_env() {
+    local source="$CC_CONFIG/env.sh"
 
     if [[ ! -f "$source" ]]; then
         log_err "No env.sh found in config/claude-code/"
@@ -317,51 +339,15 @@ _cc_install_env() {
 
     if ! confirm "Add Claude Code env vars to .zshrc?"; then return; fi
 
-    # Remove old block if exists
-    if grep -q "$marker" "$zshrc" 2>/dev/null; then
-        local temp
-        temp=$(mktemp)
-        awk "/$marker/{found=1; next} found && /^$/{found=0; next} !found" "$zshrc" > "$temp"
-        cp "$temp" "$zshrc"
-        rm -f "$temp"
-        log_info "Replaced existing env block"
-    fi
-
-    # Append new block
-    {
-        echo ""
-        echo "$marker"
-        grep -v '^#' "$source" | grep -v '^$'
-        echo "$marker"
-    } >> "$zshrc"
-
+    _cc_write_env_block "$source"
     log_ok "Environment variables added to .zshrc"
     log_info "Restart shell to apply"
 }
 
 _cc_install_env_copy() {
     local source="$CC_CONFIG/env.sh"
-    local zshrc="$HOME/.zshrc"
-    local marker="# macrift:claude-code env"
-
     [[ ! -f "$source" ]] && return
-
-    # Remove old block if exists
-    if grep -q "$marker" "$zshrc" 2>/dev/null; then
-        local temp
-        temp=$(mktemp)
-        awk "/$marker/{found=1; next} found && /^$/{found=0; next} !found" "$zshrc" > "$temp"
-        cp "$temp" "$zshrc"
-        rm -f "$temp"
-    fi
-
-    {
-        echo ""
-        echo "$marker"
-        grep -v '^#' "$source" | grep -v '^$'
-        echo "$marker"
-    } >> "$zshrc"
-
+    _cc_write_env_block "$source"
     log_ok "Environment variables added to .zshrc"
 }
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 26.04.7
+
+### Changed
+
+- **UI refactor** — extracted reusable helpers from `show_menu`, `show_multiselect`, `_tweak_wizard`: `_box_top/bottom/empty/row/scroll_indicator`, `_read_key`, `_ui_start/end`, `_frame_start/end`, `_calc_scroll`, `_adjust_viewport`, `_menu_content`
+- **`_defaults_cmd`** — unified defaults write/delete with sudo fallback, replaces duplicated logic in `apply_audited_defaults` and `apply_reset_defaults`
+- **`_fix_broken_casks`** — extracted from `install_bundle`, was duplicated for two code paths
+- **`_cc_write_env_block`** — extracted marker-bounded block writer, shared between `_cc_install_env` and `_cc_install_env_copy`; fixed awk pattern that skipped lines outside markers
+- **Spicetify restore** — one-shot via `macrift-restore-done` LocalStorage flag; removed manual cleanup step; `spicetify backup apply` with fallback
+- **Spotify prefs check** — both `install_spicetify` and `restore_marketplace` auto-launch Spotify if prefs file missing, wait up to 15s
+- **Spicetify update** — `run_with_spinner` instead of inline log messages
+- **Brew version matching** — `sed 's/@.*//'` strips `@version` suffix from formula names for accurate installed detection
+- **Brew empty bundle** — early return when temp brewfile is empty, skips unnecessary `brew bundle` call
+- **DNS benchmark** — extracted `_parse_dnspyre_avg`, `_bench_dnspyre`, `_bench_dig` helpers; deduplicated per-provider benchmark logic
+- **Security status** — extracted `_match_status` helper for FileVault/SIP/Gatekeeper parsing
+- **Tweak wizard** — renamed `state[]` → `action[]`, `pending[]` → `has_diff[]`; uses shared `_ui_start/end/read_key` helpers
+- **`select_tweaks`** — removed unnecessary `while true; do ... break; done` loop wrapper
+
+### Removed
+
+- **`install_fastfetch`** — dead code, `setup_fastfetch` handles the full flow
+- **SoundSource** — removed from Utilities Brewfile
+
+---
+
 ## 26.04.6
 
 ### New

@@ -64,48 +64,29 @@ hardening_menu() {
     crumb_pop
 }
 
+_match_status() {
+    local raw="$1" on_pat="$2" off_pat="$3" on_label="${4:-On}" off_label="${5:-Off}"
+    if echo "$raw" | grep -qi "$on_pat"; then echo "$on_label"
+    elif echo "$raw" | grep -qi "$off_pat"; then echo "$off_label"
+    else echo "unknown"; fi
+}
+
 show_security_status() {
     clear
 
-    local fv_raw fw_raw sip_raw gk_raw
     local fv_status fw_status sip_status gk_status
 
-    fv_raw=$(fdesetup status 2>/dev/null || echo "unknown")
-    if echo "$fv_raw" | grep -qi "On"; then
-        fv_status="On"
-    elif echo "$fv_raw" | grep -qi "Off"; then
-        fv_status="Off"
-    else
-        fv_status="unknown"
-    fi
+    fv_status=$(_match_status "$(fdesetup status 2>/dev/null)" "On" "Off")
 
-    fw_raw=$(defaults read /Library/Preferences/com.apple.alf globalstate 2>/dev/null || echo "unknown")
-    fw_raw="${fw_raw// /}"
-    fw_raw="${fw_raw%%$'\n'*}"
+    local fw_raw
+    fw_raw=$(defaults read /Library/Preferences/com.apple.alf globalstate 2>/dev/null || echo "")
+    fw_raw="${fw_raw// /}"; fw_raw="${fw_raw%%$'\n'*}"
     case "$fw_raw" in
-        0) fw_status="Off" ;;
-        1) fw_status="On" ;;
-        2) fw_status="On (stealth mode)" ;;
-        *) fw_status="unknown" ;;
+        0) fw_status="Off" ;; 1) fw_status="On" ;; 2) fw_status="On (stealth mode)" ;; *) fw_status="unknown" ;;
     esac
 
-    sip_raw=$(csrutil status 2>/dev/null || echo "unknown")
-    if echo "$sip_raw" | grep -qi "enabled"; then
-        sip_status="Enabled"
-    elif echo "$sip_raw" | grep -qi "disabled"; then
-        sip_status="Disabled"
-    else
-        sip_status="unknown"
-    fi
-
-    gk_raw=$(spctl --status 2>/dev/null || echo "unknown")
-    if echo "$gk_raw" | grep -qi "assessments enabled"; then
-        gk_status="Enabled"
-    elif echo "$gk_raw" | grep -qi "assessments disabled"; then
-        gk_status="Disabled"
-    else
-        gk_status="unknown"
-    fi
+    sip_status=$(_match_status "$(csrutil status 2>/dev/null)" "enabled" "disabled" "Enabled" "Disabled")
+    gk_status=$(_match_status "$(spctl --status 2>/dev/null)" "assessments enabled" "assessments disabled" "Enabled" "Disabled")
 
     show_info_box "System Security Status" \
         "FileVault:   $fv_status" \
@@ -337,6 +318,60 @@ _check_vpn() {
     scutil --nwi 2>/dev/null | command grep -qiE 'utun|ipsec|tun[0-9]|ppp'
 }
 
+# Parse dnspyre output → avg ms (handles ms, s, µs units)
+_parse_dnspyre_avg() {
+    local output="$1"
+    # shellcheck disable=SC2001
+    echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | awk '/mean:/{
+        for(i=1;i<=NF;i++) {
+            if($i ~ /^[0-9]+(\.[0-9]+)?ms$/) { gsub(/ms/,"",$i); printf "%.0f", $i; exit }
+            if($i ~ /^[0-9]+(\.[0-9]+)?s$/)  { gsub(/s/,"",$i); printf "%.0f", $i*1000; exit }
+            if($i ~ /^[0-9]+(\.[0-9]+)?µs$/) { gsub(/µs/,"",$i); printf "%.0f", $i/1000; exit }
+        }
+    }'
+}
+
+# Run dnspyre benchmark for one server, print result, update best_* vars from caller
+_bench_dnspyre() {
+    local ip="$1" label="$2" idx="$3" total="$4"
+    printf '  %b[%d/%d]%b %s\n' "$DIM" "$idx" "$total" "$RESET" "$label"
+
+    local output avg_ms
+    output=$(dnspyre -s "$ip" -n 50 -c 5 -t A example.com 2>&1)
+    avg_ms=$(_parse_dnspyre_avg "$output")
+
+    if [[ -n "$avg_ms" && "$avg_ms" =~ ^[0-9]+$ ]]; then
+        printf '  %b  → avg %dms%b\n\n' "$GREEN" "$avg_ms" "$RESET"
+        if [[ $avg_ms -lt $best_avg ]]; then
+            best_avg=$avg_ms
+            best_label="$label"
+        fi
+    else
+        printf '  %b  → could not parse latency%b\n\n' "$DIM" "$RESET"
+    fi
+}
+
+# Run dig benchmark for one server (3 queries), print result, update best_* vars from caller
+_bench_dig() {
+    local ip="$1" label="$2" suffix="${3:-}"
+    local total_ms=0 ms
+    for _ in 1 2 3; do
+        ms=$(dig @"$ip" example.com +noall +stats 2>/dev/null \
+            | awk '/Query time:/{print $4}')
+        total_ms=$((total_ms + ${ms:-999}))
+    done
+    local avg=$((total_ms / 3))
+    if [[ -n "$suffix" ]]; then
+        printf '  %-14s %s  %dms avg  %b%s%b\n' "$label" "$ip" "$avg" "$DIM" "$suffix" "$RESET"
+    else
+        printf '  %-14s %s  %dms avg\n' "$label" "$ip" "$avg"
+    fi
+    if [[ $avg -lt $best_avg ]]; then
+        best_avg=$avg
+        best_label="$label"
+    fi
+}
+
 dns_benchmark() {
     clear
 
@@ -351,13 +386,11 @@ dns_benchmark() {
         return
     fi
 
-    # Get current DNS for comparison
     local cur_dns cur_primary
     cur_dns=$(_current_dns)
     cur_primary=$(echo "$cur_dns" | cut -d',' -f1 | tr -d ' ')
 
     local labels=()
-    # Add current DNS as first option if it's a valid IP
     local has_current=false
     if [[ "$cur_primary" =~ ^[0-9]+\.[0-9]+ ]]; then
         labels+=("Current ($cur_primary)")
@@ -379,14 +412,9 @@ dns_benchmark() {
         bench_current=true
     fi
     for entry in "${DNS_PROVIDERS[@]}"; do
-        if echo "$selected" | grep -qxF "$(_dns_label "$entry")"; then
-            count=$((count + 1))
-        fi
+        echo "$selected" | grep -qxF "$(_dns_label "$entry")" && count=$((count + 1))
     done
-
-    if [[ $count -eq 0 ]]; then
-        return
-    fi
+    [[ $count -eq 0 ]] && return
 
     log_info "Benchmarking $count providers (50 queries each)..."
     printf "\n"
@@ -394,67 +422,18 @@ dns_benchmark() {
     local best_label="" best_avg=999999
     local idx=0
 
-    # Benchmark current DNS first
     if $bench_current; then
         idx=$((idx + 1))
-        printf '  %b[%d/%d]%b Current (%s)\n' "$DIM" "$idx" "$count" "$RESET" "$cur_primary"
-
-        local output clean avg_ms
-        output=$(dnspyre -s "$cur_primary" -n 50 -c 5 -t A example.com 2>&1)
-        # shellcheck disable=SC2001
-        clean=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')
-
-        avg_ms=$(echo "$clean" | awk '/mean:/{
-            for(i=1;i<=NF;i++) {
-                if($i ~ /^[0-9]+(\.[0-9]+)?ms$/) { gsub(/ms/,"",$i); printf "%.0f", $i; exit }
-                if($i ~ /^[0-9]+(\.[0-9]+)?s$/)  { gsub(/s/,"",$i); printf "%.0f", $i*1000; exit }
-                if($i ~ /^[0-9]+(\.[0-9]+)?µs$/) { gsub(/µs/,"",$i); printf "%.0f", $i/1000; exit }
-            }
-        }')
-
-        if [[ -n "$avg_ms" && "$avg_ms" =~ ^[0-9]+$ ]]; then
-            printf '  %b  → avg %dms%b\n\n' "$GREEN" "$avg_ms" "$RESET"
-            if [[ $avg_ms -lt $best_avg ]]; then
-                best_avg=$avg_ms
-                best_label="Current ($cur_primary)"
-            fi
-        else
-            printf '  %b  → could not parse latency%b\n\n' "$DIM" "$RESET"
-        fi
+        _bench_dnspyre "$cur_primary" "Current ($cur_primary)" "$idx" "$count"
     fi
 
     for entry in "${DNS_PROVIDERS[@]}"; do
         local label primary
         label=$(_dns_label "$entry")
         primary=$(_dns_primary "$entry")
-
         echo "$selected" | grep -qxF "$label" || continue
         idx=$((idx + 1))
-
-        printf '  %b[%d/%d]%b %s (%s)\n' "$DIM" "$idx" "$count" "$RESET" "$label" "$primary"
-
-        local output clean avg_ms
-        output=$(dnspyre -s "$primary" -n 50 -c 5 -t A example.com 2>&1)
-        # shellcheck disable=SC2001
-        clean=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g')
-
-        avg_ms=$(echo "$clean" | awk '/mean:/{
-            for(i=1;i<=NF;i++) {
-                if($i ~ /^[0-9]+(\.[0-9]+)?ms$/) { gsub(/ms/,"",$i); printf "%.0f", $i; exit }
-                if($i ~ /^[0-9]+(\.[0-9]+)?s$/)  { gsub(/s/,"",$i); printf "%.0f", $i*1000; exit }
-                if($i ~ /^[0-9]+(\.[0-9]+)?µs$/) { gsub(/µs/,"",$i); printf "%.0f", $i/1000; exit }
-            }
-        }')
-
-        if [[ -n "$avg_ms" && "$avg_ms" =~ ^[0-9]+$ ]]; then
-            printf '  %b  → avg %dms%b\n\n' "$GREEN" "$avg_ms" "$RESET"
-            if [[ $avg_ms -lt $best_avg ]]; then
-                best_avg=$avg_ms
-                best_label=$label
-            fi
-        else
-            printf '  %b  → could not parse latency%b\n\n' "$DIM" "$RESET"
-        fi
+        _bench_dnspyre "$primary" "$label ($primary)" "$idx" "$count"
     done
 
     if [[ -n "$best_label" ]]; then
@@ -479,43 +458,15 @@ _dns_benchmark_dig() {
 
     local best_label="" best_avg=999999
 
-    # Benchmark current DNS
     local cur_dns cur_primary
     cur_dns=$(_current_dns)
     cur_primary=$(echo "$cur_dns" | cut -d',' -f1 | tr -d ' ')
     if [[ "$cur_primary" =~ ^[0-9]+\.[0-9]+ ]]; then
-        local total=0 ms
-        for _ in 1 2 3; do
-            ms=$(dig @"$cur_primary" example.com +noall +stats 2>/dev/null \
-                | awk '/Query time:/{print $4}')
-            total=$((total + ${ms:-999}))
-        done
-        local avg=$((total / 3))
-        printf '  %-14s %s  %dms avg  %b(current)%b\n' "Current" "$cur_primary" "$avg" "$DIM" "$RESET"
-        if [[ $avg -lt $best_avg ]]; then
-            best_avg=$avg
-            best_label="Current ($cur_primary)"
-        fi
+        _bench_dig "$cur_primary" "Current" "(current)"
     fi
 
     for entry in "${DNS_PROVIDERS[@]}"; do
-        local label primary total=0 ms
-        label=$(_dns_label "$entry")
-        primary=$(_dns_primary "$entry")
-
-        for _ in 1 2 3; do
-            ms=$(dig @"$primary" example.com +noall +stats 2>/dev/null \
-                | awk '/Query time:/{print $4}')
-            total=$((total + ${ms:-999}))
-        done
-
-        local avg=$((total / 3))
-        printf '  %-14s %s  %dms avg\n' "$label" "$primary" "$avg"
-
-        if [[ $avg -lt $best_avg ]]; then
-            best_avg=$avg
-            best_label=$label
-        fi
+        _bench_dig "$(_dns_primary "$entry")" "$(_dns_label "$entry")"
     done
 
     printf "\n"

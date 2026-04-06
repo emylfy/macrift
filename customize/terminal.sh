@@ -382,21 +382,6 @@ starship_preset() {
     wait_enter
 }
 
-install_fastfetch() {
-    if ! brew_install "fastfetch"; then return; fi
-
-    local config_source="$MACRIFT_DIR/config/shell/config.jsonc"
-    local config_target="$HOME/.config/fastfetch/config.jsonc"
-
-    if [[ -f "$config_source" ]]; then
-        if confirm "Copy FastFetch config?"; then
-            copy_config "$config_source" "$config_target"
-        fi
-    else
-        log_info "Add your config.jsonc to config/shell/ to auto-import"
-    fi
-}
-
 setup_fastfetch() {
     clear
 

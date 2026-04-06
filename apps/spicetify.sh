@@ -26,9 +26,32 @@ restore_marketplace() {
         log_ok "Marketplace installed"
     fi
 
-    # Spotify must be closed for spicetify apply
-    log_warn "Spotify must be closed before applying"
-    if pgrep -x Spotify &>/dev/null; then
+    # Spotify must have been launched at least once to create prefs
+    local prefs_path="$HOME/Library/Application Support/Spotify/prefs"
+    if [[ ! -f "$prefs_path" ]]; then
+        log_warn "Spotify prefs not found — need to launch it once"
+        if confirm "Launch Spotify now?"; then
+            open -a Spotify
+            log_info "Waiting for Spotify to initialize..."
+            local wait=0
+            while [[ ! -f "$prefs_path" && $wait -lt 15 ]]; do
+                sleep 1; wait=$((wait + 1))
+            done
+            if [[ ! -f "$prefs_path" ]]; then
+                log_err "Prefs still not found — try opening Spotify manually and retry"
+                wait_enter
+                return
+            fi
+            log_ok "Prefs created — closing Spotify"
+            killall Spotify 2>/dev/null || true
+            sleep 1
+        else
+            log_info "Open Spotify manually, close it, then retry"
+            wait_enter
+            return
+        fi
+    elif pgrep -x Spotify &>/dev/null; then
+        log_warn "Spotify must be closed before applying"
         if confirm "Quit Spotify now?"; then
             killall Spotify 2>/dev/null || true
             sleep 1
@@ -67,9 +90,12 @@ JSHEAD
         cat "$MARKETPLACE_BACKUP"
         cat <<'JSTAIL'
 ;
+    // Only restore once — check flag
+    if (Spicetify.LocalStorage.get("macrift-restore-done")) return;
     for (const [key, value] of Object.entries(data)) {
         Spicetify.LocalStorage.set(key, value);
     }
+    Spicetify.LocalStorage.set("macrift-restore-done", "1");
     Spicetify.showNotification("macrift: Marketplace settings restored!");
 })();
 JSTAIL
@@ -78,25 +104,16 @@ JSTAIL
     log_ok "Extension generated"
 
     log_info "Adding extension to Spicetify..."
-    spicetify config extensions "$RESTORE_EXT"
-    spicetify apply 2>/dev/null
-    log_ok "Applied — open Spotify to restore settings"
-
-    printf "\n"
-    printf '  %bOpen Spotify and wait for the notification,%b\n' "$YELLOW" "$RESET"
-    printf '  %bthen press Y to clean up the temp extension.%b\n\n' "$YELLOW" "$RESET"
-
-    if confirm "Done? Clean up now?"; then
-        log_info "Removing restore extension..."
-        spicetify config extensions "${RESTORE_EXT}-"
-        rm -f "$ext_file"
-        spicetify apply 2>/dev/null
-        log_ok "Cleanup complete"
+    spicetify config extensions "$RESTORE_EXT" 2>/dev/null || true
+    if spicetify backup apply 2>/dev/null || spicetify apply 2>/dev/null; then
+        log_ok "Applied — open Spotify to restore settings"
     else
-        log_warn "Extension left in place — remove manually:"
-        log_info "  spicetify config extensions ${RESTORE_EXT}-"
-        log_info "  rm $ext_file"
+        log_warn "Spicetify apply failed — try running 'spicetify backup apply' manually"
+        wait_enter
+        return
     fi
+
+    log_ok "Open Spotify — settings will be restored once automatically"
 
     wait_enter
 }
