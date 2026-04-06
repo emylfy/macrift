@@ -8,7 +8,7 @@ cleanup_menu() {
     crumb_push "Cleanup"
     while true; do
         clear
-        set_title "macrift > cleanup"
+
 
         local choice
         choice=$(show_menu "Cleanup" \

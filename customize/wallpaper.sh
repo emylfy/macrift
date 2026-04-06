@@ -5,7 +5,7 @@ wallpaper_menu() {
     crumb_push "Wallpaper"
     while true; do
         clear
-        set_title "macrift > wallpaper"
+
         local choice
         choice=$(show_menu "Wallpaper" \
             "Wallhaven" \

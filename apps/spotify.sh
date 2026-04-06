@@ -5,12 +5,12 @@ spotify_menu() {
     crumb_push "Spotify"
     while true; do
         clear
-        set_title "macrift > spotify"
+
         local choice
         choice=$(show_menu "Spotify" \
             "SpotX — ad blocker (macOS)" \
             "Spicetify — customization framework" \
-            "Spicetify — restore marketplace" \
+            "Restore marketplace settings" \
             "Back")
 
         case "$choice" in
@@ -52,6 +52,13 @@ install_spotx() {
 }
 
 install_spicetify() {
+    # Check Spotify is installed
+    if [[ ! -d "/Applications/Spotify.app" ]]; then
+        log_err "Spotify not found — install it first"
+        wait_enter
+        return 1
+    fi
+
     if command -v spicetify &>/dev/null; then
         log_ok "Spicetify installed"
         log_info "Checking for updates..."
@@ -60,13 +67,29 @@ install_spicetify() {
         brew_install "spicetify-cli"
         if ! command -v spicetify &>/dev/null; then
             log_err "Spicetify not found after install"
+            wait_enter
             return 1
         fi
     fi
 
+    log_warn "Spotify must be closed before applying"
+    if pgrep -x Spotify &>/dev/null; then
+        if confirm "Quit Spotify now?"; then
+            killall Spotify 2>/dev/null || true
+            sleep 1
+        else
+            log_info "Close Spotify manually and retry"
+            wait_enter
+            return
+        fi
+    fi
+
     log_info "Applying Spicetify..."
-    spicetify restore &>/dev/null || true
-    spicetify backup apply &>/dev/null
+    spicetify restore 2>/dev/null || true
+    if ! spicetify backup apply 2>/dev/null; then
+        log_warn "Spicetify backup apply failed — retrying..."
+        spicetify apply 2>/dev/null || true
+    fi
 
     # Install Marketplace if not present
     local mp_dir="$HOME/.config/spicetify/CustomApps/marketplace"
@@ -74,8 +97,8 @@ install_spicetify() {
         log_info "Installing Marketplace..."
         curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
     fi
-    spicetify config custom_apps marketplace &>/dev/null
-    spicetify apply &>/dev/null
+    spicetify config custom_apps marketplace 2>/dev/null || true
+    spicetify apply 2>/dev/null || true
     log_ok "Spicetify + Marketplace applied"
     wait_enter
 }

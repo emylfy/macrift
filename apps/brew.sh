@@ -12,7 +12,7 @@ brew_menu() {
     crumb_push "Homebrew"
     while true; do
         clear
-        set_title "macrift > brew"
+
         local choice
         choice=$(show_menu "Homebrew" \
             "Development" \
@@ -29,13 +29,13 @@ brew_menu() {
             "Back")
 
         case "$choice" in
-            1) install_bundle "Brewfile.dev" ;;
-            2) install_bundle "Brewfile.utils" ;;
-            3) install_bundle "Brewfile.browsers" ;;
-            4) install_bundle "Brewfile.comm" ;;
-            5) install_bundle "Brewfile.media" ;;
-            6) install_bundle "Brewfile.games" ;;
-            7) install_bundle "Brewfile.fonts" ;;
+            1) install_bundle "Brewfile.dev" "Development" ;;
+            2) install_bundle "Brewfile.utils" "Utilities" ;;
+            3) install_bundle "Brewfile.browsers" "Browsers" ;;
+            4) install_bundle "Brewfile.comm" "Communication" ;;
+            5) install_bundle "Brewfile.media" "Media" ;;
+            6) install_bundle "Brewfile.games" "Games" ;;
+            7) install_bundle "Brewfile.fonts" "Fonts" ;;
             8) install_all_bundles ;;
             9) brewbak_menu ;;
             0) break ;;
@@ -49,7 +49,7 @@ brewbak_menu() {
     crumb_push "Backup"
     while true; do
         clear
-        set_title "macrift > brew > backup"
+
         local choice
         choice=$(show_menu "Backup (.brewbak)" \
             "Import from .brewbak" \
@@ -68,6 +68,7 @@ brewbak_menu() {
 
 install_bundle() {
     local brewfile="$1"
+    local label="${2:-$brewfile}"
     local path="$MACRIFT_DIR/config/$brewfile"
 
     if [[ ! -f "$path" ]]; then
@@ -97,36 +98,20 @@ install_bundle() {
             continue
         fi
         had_items=true
-        local name="" label=""
+        local name=""
         if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
-            label="$name"
         elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
-            label="$name"
-        elif [[ "$line" =~ ^mas[[:space:]]+\"([^\"]+)\",[[:space:]]*id:[[:space:]]*([0-9]+) ]]; then
-            name="${BASH_REMATCH[1]}"
-            local mas_id="${BASH_REMATCH[2]}"
-            label="$name"
-            if mas list 2>/dev/null | awk '{print $1}' | grep -qx "$mas_id"; then
-                installed_count=$((installed_count + 1))
-            else
-                new_lines+=("$line")
-                new_labels+=("$label")
-            fi
-            continue
         else
             continue
         fi
         if echo "$installed" | grep -qxF "$name"; then
-            # For casks, verify the .app actually exists in /Applications
             if [[ "$line" =~ ^cask ]]; then
-                # || true prevents set -e from triggering if find exits non-zero
                 app_path=$(find "$(brew --prefix)/Caskroom"/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
                 if [[ -n "$app_path" ]]; then
                     appname=$(basename "$app_path")
                     if [[ ! -e "/Applications/$appname" ]]; then
-                        # Registered in brew but .app is missing — queue for silent reinstall
                         broken_casks+=("$name")
                         continue
                     fi
@@ -135,33 +120,56 @@ install_bundle() {
             installed_count=$((installed_count + 1))
         else
             new_lines+=("$line")
-            new_labels+=("$label")
+            new_labels+=("$name")
         fi
     done < "$path"
 
-    # Clean up separators: remove leading, trailing, and consecutive
-    local clean_lines=() clean_labels=()
-    local prev_sep=true
-    for ((i=0; i<${#new_labels[@]}; i++)); do
-        if [[ "${new_labels[$i]}" == "---" ]]; then
-            $prev_sep && continue
-            prev_sep=true
-        else
-            prev_sep=false
+    # Nothing new — handle broken casks if any, otherwise skip silently
+    if [[ ! ${new_labels[*]+x} || ${#new_labels[@]} -eq 0 ]]; then
+        if [[ ${broken_casks[*]+x} && ${#broken_casks[@]} -gt 0 ]]; then
+            log_warn "${#broken_casks[@]} app(s) are missing from Applications"
+            for cask in "${broken_casks[@]}"; do
+                printf '  %b· %s%b\n' "$DIM" "$cask" "$RESET"
+            done
+            printf "\n"
+            if [[ "$MACRIFT_DRY_RUN" != true ]] && confirm "Fix them now?"; then
+                local cask_idx=0
+                for cask in "${broken_casks[@]}"; do
+                    ((cask_idx++))
+                    show_progress "$cask_idx" "${#broken_casks[@]}" "$cask"
+                    if brew reinstall --cask "$cask" &>/dev/null; then
+                        log_ok "$cask reinstalled"
+                    else
+                        log_warn "Failed to reinstall $cask"
+                    fi
+                done
+            fi
+            wait_enter
         fi
-        clean_lines+=("${new_lines[$i]}")
-        clean_labels+=("${new_labels[$i]}")
-    done
-    # Remove trailing separator
-    while [[ ${#clean_labels[@]} -gt 0 && "${clean_labels[-1]}" == "---" ]]; do
-        unset 'clean_lines[-1]'
-        unset 'clean_labels[-1]'
-    done
-    new_lines=("${clean_lines[@]}")
-    new_labels=("${clean_labels[@]}")
+        return 0
+    fi
 
-    if [[ $installed_count -gt 0 ]]; then
-        log_ok "$installed_count already installed"
+    # Clean up separators: remove leading, trailing, and consecutive
+    if [[ ${#new_labels[@]} -gt 0 ]]; then
+        local clean_lines=() clean_labels=()
+        local prev_sep=true
+        for ((i=0; i<${#new_labels[@]}; i++)); do
+            if [[ "${new_labels[$i]}" == "---" ]]; then
+                $prev_sep && continue
+                prev_sep=true
+            else
+                prev_sep=false
+            fi
+            clean_lines+=("${new_lines[$i]}")
+            clean_labels+=("${new_labels[$i]}")
+        done
+        # Remove trailing separator
+        while [[ ${#clean_labels[@]} -gt 0 && "${clean_labels[${#clean_labels[@]}-1]}" == "---" ]]; do
+            unset "clean_lines[${#clean_lines[@]}-1]"
+            unset "clean_labels[${#clean_labels[@]}-1]"
+        done
+        new_lines=(${clean_lines[@]+"${clean_lines[@]}"})
+        new_labels=(${clean_labels[@]+"${clean_labels[@]}"})
     fi
 
     # Handle missing apps separately — ask user once, then fix silently
@@ -205,8 +213,10 @@ install_bundle() {
     fi
 
     # Multiselect for new packages only
+    local ms_title="$label"
+    [[ $installed_count -gt 0 ]] && ms_title="$label · $installed_count installed"
     local selected
-    selected=$(show_multiselect "$brewfile" "${new_labels[@]}")
+    selected=$(show_multiselect "$ms_title" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
         return 0
@@ -216,15 +226,10 @@ install_bundle() {
     local tmp
     tmp=$(mktemp /tmp/macrift_brew_XXXXXX)
 
-    local mas_install_lines=()
     for ((i=0; i<${#new_labels[@]}; i++)); do
         [[ "${new_labels[$i]}" == "---" ]] && continue
         if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
-            if [[ "${new_lines[$i]}" =~ ^mas[[:space:]] ]]; then
-                mas_install_lines+=("${new_lines[$i]}")
-            else
-                echo "${new_lines[$i]}" >> "$tmp"
-            fi
+            echo "${new_lines[$i]}" >> "$tmp"
         fi
     done
 
@@ -233,11 +238,6 @@ install_bundle() {
         [[ -s "$tmp" ]] && while IFS= read -r line; do
             printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"
-        for mas_line in "${mas_install_lines[@]}"; do
-            if [[ "$mas_line" =~ ^mas[[:space:]]+\"([^\"]+)\" ]]; then
-                printf '  %b· %s (App Store)%b\n' "$DIM" "${BASH_REMATCH[1]}" "$RESET"
-            fi
-        done
         rm -f "$tmp"
         wait_enter
         return 0
@@ -251,33 +251,25 @@ install_bundle() {
     fi
     rm -f "$tmp"
 
-    local mas_idx=0 mas_total=${#mas_install_lines[@]}
-    for mas_line in "${mas_install_lines[@]}"; do
-        ((mas_idx++))
-        if [[ "$mas_line" =~ ^mas[[:space:]]+\"([^\"]+)\",[[:space:]]*id:[[:space:]]*([0-9]+) ]]; then
-            local mas_name="${BASH_REMATCH[1]}"
-            local mas_id="${BASH_REMATCH[2]}"
-            [[ $mas_total -gt 1 ]] && show_progress "$mas_idx" "$mas_total" "$mas_name"
-            local mas_out
-            if mas_out=$(mas install "$mas_id" 2>&1); then
-                log_ok "$mas_name installed"
-            elif echo "$mas_out" | grep -qi "Redownload Unavailable"; then
-                log_warn "$mas_name: not purchased with this account — opening App Store"
-                open "https://apps.apple.com/app/id$mas_id"
-                all_ok=false
-            else
-                log_warn "Failed to install $mas_name"
-                all_ok=false
-            fi
-        fi
-    done
-
     if $all_ok; then
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
     fi
     wait_enter
+}
+
+_bundle_label() {
+    case "$1" in
+        Brewfile.dev)      echo "Development" ;;
+        Brewfile.utils)    echo "Utilities" ;;
+        Brewfile.browsers) echo "Browsers" ;;
+        Brewfile.comm)     echo "Communication" ;;
+        Brewfile.media)    echo "Media" ;;
+        Brewfile.games)    echo "Games" ;;
+        Brewfile.fonts)    echo "Fonts" ;;
+        *)                 echo "$1" ;;
+    esac
 }
 
 install_all_bundles() {
@@ -287,7 +279,9 @@ install_all_bundles() {
 
     for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
         if [[ -f "$brewfile" ]]; then
-            install_bundle "$(basename "$brewfile")"
+            local name
+            name=$(basename "$brewfile")
+            install_bundle "$name" "$(_bundle_label "$name")"
         fi
     done
 

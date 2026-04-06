@@ -7,7 +7,7 @@ terminal_menu() {
     crumb_push "Terminal"
     while true; do
         clear
-        set_title "macrift > terminal"
+
         local choice
         choice=$(show_menu "Terminal" \
             "iTerm2" \
@@ -37,7 +37,7 @@ setup_iterm2() {
 
     while true; do
         clear
-        set_title "macrift > terminal > iterm2"
+
 
         local choice
         choice=$(show_menu "iTerm2" \
@@ -241,7 +241,7 @@ shell_menu() {
     crumb_push "Shell"
     while true; do
         clear
-        set_title "macrift > shell"
+
 
         local choice
         choice=$(show_menu "Shell" \
@@ -254,7 +254,7 @@ shell_menu() {
             "Back")
 
         case "$choice" in
-            1) install_zinit; install_starship; starship_preset; install_zshrc ;;
+            1) _ensure_nerd_font; install_zinit; install_starship; starship_preset; install_zshrc ;;
             2) install_starship ;;
             3) starship_preset ;;
             4) install_zshrc ;;
@@ -264,6 +264,18 @@ shell_menu() {
         esac
     done
     crumb_pop
+}
+
+_ensure_nerd_font() {
+    if fc-list 2>/dev/null | grep -qi "FiraCode Nerd Font" || \
+       ls "$HOME/Library/Fonts"/FiraCodeNerdFont* &>/dev/null || \
+       ls "/Library/Fonts"/FiraCodeNerdFont* &>/dev/null; then
+        return
+    fi
+    log_warn "FiraCode Nerd Font not found (required for icons)"
+    if confirm "Install font-fira-code-nerd-font via Homebrew?"; then
+        brew_install "font-fira-code-nerd-font" "cask"
+    fi
 }
 
 install_zinit() {
@@ -385,25 +397,16 @@ install_fastfetch() {
     fi
 }
 
-fastfetch_menu() {
-    crumb_push "FastFetch"
-    while true; do
-        clear
-        set_title "macrift > fastfetch"
-        local choice
-        choice=$(show_menu "FastFetch" \
-            "Install FastFetch" \
-            "Apply config" \
-            "Back")
+setup_fastfetch() {
+    clear
 
-        case "$choice" in
-            1) install_fastfetch ;;
-            2) apply_fastfetch_config ;;
-            0) break ;;
-            *) ;;
-        esac
-    done
-    crumb_pop
+    if ! command -v fastfetch &>/dev/null; then
+        log_warn "FastFetch not found"
+        if ! brew_install "fastfetch"; then return; fi
+    fi
+
+    apply_fastfetch_config
+    wait_enter
 }
 
 apply_fastfetch_config() {

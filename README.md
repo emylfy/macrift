@@ -28,7 +28,7 @@
 
 Fresh Mac → full setup in minutes.
 
-- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 60+ tweaks across 7 categories, all audited
+- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 60+ tweaks across 8 categories, all audited
 - **83 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
 - **12 bundled configs** — terminal profiles, shell aliases, Catppuccin theme, editor settings, dock layout — ready to apply
 - **Profile save/restore** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout, Raycast) to Desktop, Documents, or iCloud Drive and restore it anywhere
@@ -76,9 +76,9 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 
 |     | Feature                | What it does                                                                |
 | :-- | :--------------------- | :-------------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc            |
+| ⚙️  | **System Tweaks**      | Dock, Finder, Safari, Keyboard, Trackpad, Screenshots, Hot Corners, Misc    |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                 |
-| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Dock Layout, Wallpapers                   |
+| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers      |
 | 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets                 |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                           |
 
@@ -90,6 +90,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | :--------------- | :----------------------------------------------------------------------------- |
 | Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
 | Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders |
+| Safari           | DuckDuckGo as default search engine                                            |
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere |
 | Screenshots      | Format, save location, shadow, date in filename                                |

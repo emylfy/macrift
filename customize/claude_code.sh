@@ -8,7 +8,7 @@ claude_code_menu() {
     crumb_push "Claude Code"
     while true; do
         clear
-        set_title "macrift > claude code"
+
 
         local choice
         choice=$(show_menu "Claude Code" \
@@ -39,7 +39,7 @@ claude_code_menu() {
     crumb_pop
 }
 
-# ── Full Setup ───────────────────────────────────────────────────────────────
+# Full Setup
 
 _cc_full_setup() {
     clear
@@ -78,7 +78,7 @@ _cc_full_setup() {
     wait_enter
 }
 
-# ── Settings ─────────────────────────────────────────────────────────────────
+# Settings
 
 _cc_install_settings_user() {
     local source="$CC_CONFIG/settings/user.json"
@@ -151,7 +151,7 @@ _cc_install_settings_project() {
     fi
 }
 
-# ── Hooks ────────────────────────────────────────────────────────────────────
+# Hooks
 
 _cc_install_hooks() {
     local source_dir="$CC_CONFIG/hooks"
@@ -212,7 +212,7 @@ _cc_install_hooks_copy() {
     log_ok "Hooks installed"
 }
 
-# ── Agents / Commands / Rules (generic dir copy) ────────────────────────────
+# Agents / Commands / Rules
 
 _cc_install_agents() {
     _cc_install_component "agents" "Agents" "md"
@@ -285,10 +285,12 @@ _cc_install_dir() {
         [[ -f "$f" ]] || continue
         copy_config "$f" "$target_dir/$(basename "$f")"
     done
-    log_ok "${dir_name^} installed"
+    local label
+    label="$(printf '%s' "${dir_name:0:1}" | tr '[:lower:]' '[:upper:]')${dir_name:1}"
+    log_ok "$label installed"
 }
 
-# ── Environment ──────────────────────────────────────────────────────────────
+# Environment
 
 _cc_install_env() {
     local source="$CC_CONFIG/env.sh"
@@ -363,7 +365,7 @@ _cc_install_env_copy() {
     log_ok "Environment variables added to .zshrc"
 }
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# Helpers
 
 _cc_ensure_dir() {
     mkdir -p "$CLAUDE_DIR"

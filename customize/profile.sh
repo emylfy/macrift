@@ -5,7 +5,7 @@ profile_menu() {
     crumb_push "Profile"
     while true; do
         clear
-        set_title "macrift > profile"
+
         local choice
         choice=$(show_menu "Profile" \
             "Save setup" \

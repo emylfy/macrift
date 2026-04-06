@@ -5,7 +5,7 @@ apps_menu() {
     crumb_push "Apps & Packages"
     while true; do
         clear
-        set_title "macrift > apps"
+
         local choice
         choice=$(show_menu "Apps & Packages" \
             "Homebrew Bundles" \

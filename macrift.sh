@@ -40,7 +40,7 @@ main_menu() {
     crumb_push "macrift"
     while true; do
         clear
-        set_title "macrift"
+
         # Build title with version, update hint, and flags
         local title="macrift $MACRIFT_VERSION"
         [[ -n "$MACRIFT_UPDATE" ]] && title+=" → $MACRIFT_UPDATE"

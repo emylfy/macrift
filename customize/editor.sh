@@ -5,7 +5,7 @@ editor_menu() {
     crumb_push "Code Editor"
     while true; do
         clear
-        set_title "macrift > editor"
+
 
         local choice
         choice=$(show_menu "Code Editor" \
@@ -32,6 +32,16 @@ editor_menu() {
     crumb_pop
 }
 
+_editor_cask() {
+    case "$1" in
+        VSCode)   echo "visual-studio-code" ;;
+        Cursor)   echo "cursor" ;;
+        Windsurf) echo "windsurf" ;;
+        VSCodium) echo "vscodium" ;;
+        Zed)      echo "zed" ;;
+    esac
+}
+
 apply_editor_config() {
     local editor_name="$1"
     local target="$2"
@@ -48,8 +58,12 @@ apply_editor_config() {
     target_dir=$(dirname "$target")
 
     if [[ ! -d "$target_dir" ]]; then
-        log_warn "$editor_name doesn't seem to be installed (config dir not found)"
-        if ! confirm "Create config directory anyway?"; then
+        local cask
+        cask=$(_editor_cask "$editor_name")
+        log_warn "$editor_name not installed"
+        if [[ -n "$cask" ]] && confirm "Install $editor_name via Homebrew?"; then
+            brew_install "$cask" "cask"
+        else
             return
         fi
     fi

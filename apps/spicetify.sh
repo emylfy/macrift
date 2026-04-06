@@ -21,11 +21,20 @@ restore_marketplace() {
     fi
 
     if [[ ! -d "$HOME/.config/spicetify/CustomApps/marketplace" ]]; then
-        log_warn "Marketplace custom app not found"
-        if confirm "Install marketplace?"; then
-            curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
-            log_ok "Marketplace installed"
+        log_info "Installing Marketplace..."
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
+        log_ok "Marketplace installed"
+    fi
+
+    # Spotify must be closed for spicetify apply
+    log_warn "Spotify must be closed before applying"
+    if pgrep -x Spotify &>/dev/null; then
+        if confirm "Quit Spotify now?"; then
+            killall Spotify 2>/dev/null || true
+            sleep 1
         else
+            log_info "Close Spotify manually and retry"
+            wait_enter
             return
         fi
     fi

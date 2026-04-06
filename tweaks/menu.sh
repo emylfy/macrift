@@ -324,7 +324,7 @@ _tweak_wizard() {
 select_tweaks() {
     clear
 
-    local cat_names=("Dock" "Finder" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc" "Hot Corners")
+    local cat_names=("Dock" "Finder" "Safari" "Keyboard & Text" "Trackpad & Mouse" "Screenshots" "Misc" "Hot Corners")
 
     while true; do
         audit_reset
@@ -338,7 +338,11 @@ select_tweaks() {
         source "$MACRIFT_DIR/tweaks/finder.sh" && finder_tweaks
         local finder_e=${#AUDIT_ENTRIES[@]}
 
-        local keyboard_s=$finder_e
+        local safari_s=$finder_e
+        source "$MACRIFT_DIR/tweaks/safari.sh" && safari_tweaks
+        local safari_e=${#AUDIT_ENTRIES[@]}
+
+        local keyboard_s=$safari_e
         source "$MACRIFT_DIR/tweaks/keyboard.sh" && keyboard_tweaks
         local keyboard_e=${#AUDIT_ENTRIES[@]}
 
@@ -368,6 +372,7 @@ select_tweaks() {
         local specs=()
         echo "$selected_cats" | grep -qxF "Dock"             && specs+=("Dock:${dock_s}:${dock_e}")
         echo "$selected_cats" | grep -qxF "Finder"           && specs+=("Finder:${finder_s}:${finder_e}")
+        echo "$selected_cats" | grep -qxF "Safari"           && specs+=("Safari:${safari_s}:${safari_e}")
         echo "$selected_cats" | grep -qxF "Keyboard & Text"  && specs+=("Keyboard & Text:${keyboard_s}:${keyboard_e}")
         echo "$selected_cats" | grep -qxF "Trackpad & Mouse" && specs+=("Trackpad & Mouse:${input_s}:${input_e}")
         echo "$selected_cats" | grep -qxF "Screenshots"      && specs+=("Screenshots:${screenshots_s}:${screenshots_e}")
@@ -423,7 +428,7 @@ select_tweaks() {
             source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks
         fi
 
-        clear
+        break
     done
 
     audit_reset
@@ -431,7 +436,7 @@ select_tweaks() {
 
 tweaks_menu() {
     crumb_push "System Tweaks"
-    set_title "macrift > tweaks"
+
     select_tweaks
     crumb_pop
 }

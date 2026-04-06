@@ -9,23 +9,25 @@ privacy_menu() {
     crumb_push "Privacy & Security"
     while true; do
         clear
-        set_title "macrift > privacy"
 
-        local defender_label="Remove Microsoft Defender"
-        if [[ -d "/Applications/Microsoft Defender Shim.app" ]]; then
-            defender_label="Remove Microsoft Defender  (found)"
-        else
-            defender_label="Remove Microsoft Defender  (not found)"
-        fi
 
         local choice
-        choice=$(show_menu "Privacy & Security" \
-            "Security Status" \
-            "Hostname" \
-            "DNS" \
-            "Hardening (privacy.sexy)" \
-            "$defender_label" \
-            "Back")
+        if [[ -d "/Applications/Microsoft Defender Shim.app" ]]; then
+            choice=$(show_menu "Privacy & Security" \
+                "Security Status" \
+                "Hostname" \
+                "DNS" \
+                "Hardening (privacy.sexy)" \
+                "Remove Microsoft Defender" \
+                "Back")
+        else
+            choice=$(show_menu "Privacy & Security" \
+                "Security Status" \
+                "Hostname" \
+                "DNS" \
+                "Hardening (privacy.sexy)" \
+                "Back")
+        fi
 
         case "$choice" in
             1) show_security_status ;;
@@ -44,7 +46,7 @@ hardening_menu() {
     crumb_push "Hardening"
     while true; do
         clear
-        set_title "macrift > privacy > hardening"
+
 
         local choice
         choice=$(show_menu "Hardening (privacy.sexy)" \
@@ -306,7 +308,7 @@ dns_menu() {
     crumb_push "DNS"
     while true; do
         clear
-        set_title "macrift > privacy > dns"
+
 
         local current
         current=$(_current_dns)

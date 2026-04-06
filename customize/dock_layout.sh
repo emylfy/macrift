@@ -5,7 +5,7 @@ dock_layout_menu() {
     crumb_push "Dock Layout"
     while true; do
         clear
-        set_title "macrift > dock layout"
+
         local choice
         choice=$(show_menu "Dock Layout" \
             "Clear Dock" \

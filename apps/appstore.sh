@@ -5,7 +5,7 @@ appstore_menu() {
     crumb_push "App Store"
     while true; do
         clear
-        set_title "macrift > app store"
+
         local choice
         choice=$(show_menu "App Store" \
             "Install from list" \
@@ -110,6 +110,9 @@ install_appstore() {
                     log_ok "${new_labels[$i]} installed"
                 else
                     log_warn "Failed: ${new_labels[$i]}"
+                    if confirm "Open App Store page?"; then
+                        open "macappstore://apps.apple.com/app/id${new_ids[$i]}"
+                    fi
                 fi
             fi
         done

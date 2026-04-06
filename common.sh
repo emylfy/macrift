@@ -87,11 +87,15 @@ _friendly_val() {
 }
 
 #
-set_title() { printf "\033]0;%s\007" "$1"; }
+_update_title() {
+    local title
+    title=$(IFS=" › "; echo "${MACRIFT_CRUMBS[*]}")
+    printf "\033]0;%s\007" "${title:-macrift}"
+}
 
 MACRIFT_CRUMBS=()
-crumb_push() { MACRIFT_CRUMBS+=("$1"); }
-crumb_pop()  { local _i=$(( ${#MACRIFT_CRUMBS[@]} - 1 )); [[ $_i -ge 0 ]] && unset "MACRIFT_CRUMBS[$_i]"; }
+crumb_push() { MACRIFT_CRUMBS+=("$1"); _update_title; }
+crumb_pop()  { local _i=$(( ${#MACRIFT_CRUMBS[@]} - 1 )); [[ $_i -ge 0 ]] && unset "MACRIFT_CRUMBS[$_i]"; _update_title; }
 
 spinner() {
     local pid=$1 msg="${2:-}"
@@ -767,13 +771,12 @@ check_homebrew() {
     if ! command -v brew &>/dev/null; then
         log_warn "Homebrew not found"
         if confirm "Install Homebrew?"; then
-            if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+            if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty; then
                 if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
                     eval "$(/opt/homebrew/bin/brew shellenv)"
                 elif [[ -f /usr/local/bin/brew ]]; then
                     eval "$(/usr/local/bin/brew shellenv)"
                 fi
-                log_ok "Homebrew installed"
             else
                 log_err "Homebrew installation failed"
                 return 1

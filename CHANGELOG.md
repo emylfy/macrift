@@ -1,5 +1,37 @@
 # Changelog
 
+## 26.04.6
+
+### New
+
+- **Safari tweaks** — DuckDuckGo as default search engine via `SearchProviderShortName`
+- **App Store fallback** — when `mas install` fails, offers to open App Store page for the app
+- **Fira Code check** — Shell Full Setup checks for FiraCode Nerd Font before installing, offers brew install if missing
+- **Editor brew install** — when editor not found, offers to install via Homebrew instead of creating empty config dir
+
+### Changed
+
+- **Terminal titles** — removed all manual `set_title` calls; `crumb_push`/`crumb_pop` now auto-update terminal title from breadcrumb stack (`macrift › Apps › Homebrew`)
+- **Homebrew installer** — passes `< /dev/tty` to fix `stdin is not a TTY` error; removed noisy `✓ Homebrew installed` message
+- **Brew bundle titles** — human-readable names in multiselect (`Communication` instead of `Brewfile.comm`); installed count moved into box title
+- **Brew empty bundles** — silently skips fully-installed bundles instead of showing empty "press enter" screen
+- **Spicetify flow** — checks Spotify is installed and closed before applying; `spicetify backup apply` no longer crashes on `set -e`
+- **Marketplace restore** — auto-installs marketplace without asking; checks Spotify is closed; renamed menu item to "Restore marketplace settings"
+- **FastFetch** — merged Install + Apply config into single `setup_fastfetch` flow
+- **Customize menu** — Claude Code moved between Code Editor and Dock Layout
+- **Microsoft Defender** — menu item hidden when Defender not installed
+- **Tweaks flow** — exits to main menu after applying instead of looping back to category select
+- **`mas` parsing** — removed dead mas code from `brew.sh`; App Store apps handled exclusively by `appstore.sh`
+- **Claude Code comments** — replaced `# ── Section ──────` decorators with plain `# Section`
+
+### Fixed
+
+- **bash 3.2 compat** — `${arr[-1]}` → `${arr[${#arr[@]}-1]}`, `${var^}` → `tr` uppercase
+- **`set -u` crashes** — empty array expansion guarded throughout `brew.sh` (`new_labels`, `clean_lines`, `mas_install_lines`)
+- **`$label` collision** — `install_bundle` loop variable `label` no longer overwrites the function parameter
+
+---
+
 ## 26.04.5
 
 ### New
