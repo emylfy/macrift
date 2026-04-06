@@ -110,8 +110,8 @@ hot_corners_tweaks() {
     local i
 
     for ((i=0; i<4; i++)); do
-        orig[$i]=$(defaults read com.apple.dock "${keys[$i]}" 2>/dev/null || echo "0")
-        vals[$i]="${orig[$i]}"
+        orig[i]=$(defaults read com.apple.dock "${keys[$i]}" 2>/dev/null || echo "0")
+        vals[i]="${orig[i]}"
     done
 
     crumb_push "Hot Corners"
@@ -169,8 +169,8 @@ hot_corners_tweaks() {
             right) if [[ $((cursor % 2)) -eq 0 ]]; then cursor=$((cursor + 1)); else _ui_end; break; fi ;;
             space|enter)
                 local picked
-                picked=$(_pick_corner_action "${vals[$cursor]}")
-                vals[$cursor]="$picked"
+                picked=$(_pick_corner_action "${vals[cursor]}")
+                vals[cursor]="$picked"
                 first_draw=true
                 ;;
         esac
@@ -179,7 +179,7 @@ hot_corners_tweaks() {
     # Check for changes
     local has_changes=false
     for ((i=0; i<4; i++)); do
-        [[ "${vals[$i]}" != "${orig[$i]}" ]] && has_changes=true
+        [[ "${vals[i]}" != "${orig[i]}" ]] && has_changes=true
     done
 
     if ! $has_changes; then
@@ -214,7 +214,7 @@ hot_corners_tweaks() {
     if ! confirm "Apply?"; then crumb_pop; return; fi
 
     for ((i=0; i<4; i++)); do
-        defaults write com.apple.dock "${keys[$i]}" -int "${vals[$i]}"
+        defaults write com.apple.dock "${keys[$i]}" -int "${vals[i]}"
         defaults write com.apple.dock "${keys[$i]%%-corner}-modifier" -int 0
     done
     log_ok "Hot corners applied"

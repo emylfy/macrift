@@ -87,11 +87,17 @@ _friendly_val() {
     esac
 }
 
-# Update terminal tab/window title from breadcrumb stack (e.g. "macrift › Apps › Homebrew")
+# Update terminal tab/window title — show path to current menu, not the menu itself
 _update_title() {
-    local title
-    title=$(IFS=" › "; echo "${MACRIFT_CRUMBS[*]}")
-    printf "\033]0;%s\007" "${title:-macrift}"
+    local count=${#MACRIFT_CRUMBS[@]}
+    if [[ $count -le 1 ]]; then
+        printf "\033]0;%s\007" "macrift"
+    else
+        local parent=("${MACRIFT_CRUMBS[@]:0:count-1}")
+        local title
+        title=$(IFS=" › "; echo "${parent[*]}")
+        printf "\033]0;%s\007" "$title"
+    fi
 }
 
 MACRIFT_CRUMBS=()
