@@ -133,7 +133,7 @@ install_extensions() {
                 printf '%b✓%b\n' "$GREEN" "$RESET"
             else
                 printf '%b✗%b\n' "$RED" "$RESET"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         fi
     done <<< "$selected"

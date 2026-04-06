@@ -2,8 +2,6 @@
 # macrift — Dock tweaks
 
 dock_tweaks() {
-    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
-
     audit_default "com.apple.dock" "autohide" "-bool" "true" "Autohide"
     audit_default "com.apple.dock" "autohide-delay" "-float" "0" "Autohide delay"
     audit_default "com.apple.dock" "autohide-time-modifier" "-float" "0.3" "Animation speed"
@@ -20,17 +18,6 @@ dock_tweaks() {
     audit_default "com.apple.dock" "showhidden" "-bool" "true" "Dim hidden apps"
     audit_default "com.apple.dock" "mru-spaces" "-bool" "false" "Rearrange Spaces"
     audit_default "com.apple.dock" "static-only" "-bool" "false" "Only running apps"
-
-    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
-
-    if show_audit_table "Dock"; then
-        apply_audited_defaults
-        if confirm "Restart Dock?"; then
-            killall Dock 2>/dev/null || true
-            log_ok "Dock restarted"
-        fi
-        wait_enter
-    fi
 }
 
 _corner_name() {

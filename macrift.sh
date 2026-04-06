@@ -6,8 +6,6 @@
 
 set -euo pipefail
 
-trap 'stty echo 2>/dev/null; printf "\033[?25h"' EXIT
-
 # Parse flags before sourcing (exports to common.sh)
 for arg in "$@"; do
     case "$arg" in
@@ -24,6 +22,7 @@ for arg in "$@"; do
     esac
 done
 
+# Resolve symlink — global 'macrift' command is a symlink to this file
 MACRIFT_ENTRY="${BASH_SOURCE[0]}"
 [[ -L "$MACRIFT_ENTRY" ]] && MACRIFT_ENTRY="$(readlink "$MACRIFT_ENTRY")"
 source "$(cd "$(dirname "$MACRIFT_ENTRY")" && pwd)/common.sh"
@@ -67,13 +66,7 @@ main_menu() {
 
         case "$choice" in
             1) source "$MACRIFT_DIR/tweaks/menu.sh" && tweaks_menu ;;
-            2)
-                if check_homebrew; then
-                    source "$MACRIFT_DIR/apps/menu.sh" && apps_menu
-                else
-                    wait_enter
-                fi
-                ;;
+            2) source "$MACRIFT_DIR/apps/menu.sh" && apps_menu ;;
             3)
                 if check_homebrew; then
                     source "$MACRIFT_DIR/customize/menu.sh" && customize_menu

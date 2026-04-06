@@ -3,15 +3,15 @@
 
 set -euo pipefail
 
-#
+# CPU architecture — used to detect Apple Silicon vs Intel for brew paths
 ARCH=$(uname -m)
 
-#
+# Global flags — set by macrift.sh before sourcing, defaults here for direct sourcing
 MACRIFT_DRY_RUN="${MACRIFT_DRY_RUN:-false}"
 MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
 MACRIFT_LOG="${MACRIFT_LOG:-}"
 
-#
+# Restore cursor on exit
 _macrift_cleanup() {
     printf "\033[?25h" 2>/dev/null
 }
@@ -24,7 +24,7 @@ _log_file() {
     printf "%s  %s\n" "$(date '+%H:%M:%S')" "$1" >> "$MACRIFT_LOG"
 }
 
-#
+# ANSI colors — adjusted for dark/light theme below
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
@@ -51,6 +51,7 @@ _detect_theme() {
             local r=$((16#${BASH_REMATCH[1]:0:2}))
             local g=$((16#${BASH_REMATCH[2]:0:2}))
             local b=$((16#${BASH_REMATCH[3]:0:2}))
+            # Perceived brightness (ITU-R BT.601 luma coefficients)
             local lum=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
             if [[ $lum -gt 128 ]]; then echo "light"; else echo "dark"; fi
             return
@@ -86,7 +87,7 @@ _friendly_val() {
     esac
 }
 
-#
+# Update terminal tab/window title from breadcrumb stack (e.g. "macrift › Apps › Homebrew")
 _update_title() {
     local title
     title=$(IFS=" › "; echo "${MACRIFT_CRUMBS[*]}")
@@ -95,17 +96,24 @@ _update_title() {
 
 MACRIFT_CRUMBS=()
 crumb_push() { MACRIFT_CRUMBS+=("$1"); _update_title; }
-crumb_pop()  { local _i=$(( ${#MACRIFT_CRUMBS[@]} - 1 )); [[ $_i -ge 0 ]] && unset "MACRIFT_CRUMBS[$_i]"; _update_title; }
+crumb_pop() {
+    local last=$(( ${#MACRIFT_CRUMBS[@]} - 1 ))
+    if [[ $last -ge 0 ]]; then
+        unset "MACRIFT_CRUMBS[$last]"
+    fi
+    _update_title
+}
 
 spinner() {
     local pid=$1 msg="${2:-}"
     local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local frame_count=${#frames}
     local i=0
     tput civis 2>/dev/null || true
     while kill -0 "$pid" 2>/dev/null; do
-        printf '\r  %b%s%b  %s' "$CYAN" "${frames:i%10:1}" "$RESET" "$msg" >&2
+        printf '\r  %b%s%b  %s' "$CYAN" "${frames:i%frame_count:1}" "$RESET" "$msg" >&2
         sleep 0.08
-        ((i++))
+        i=$((i + 1))
     done
     printf '\r\033[K' >&2
     tput cnorm 2>/dev/null || true
@@ -125,8 +133,9 @@ run_with_spinner() {
 #        show_progress 10 10 "Done"  (auto-clears on complete)
 show_progress() {
     local current="$1" total="$2" msg="${3:-}"
+    [[ $total -eq 0 ]] && return
     local pct=$((current * 100 / total))
-    local bar_w=20
+    local bar_w=20  # bar width in characters
     local filled=$((pct * bar_w / 100))
     local empty=$((bar_w - filled))
 
@@ -157,15 +166,16 @@ log_skip()  { printf '  %b-%b  %s\n' "${DIM}" "${RESET}" "$1"; _log_file "[skip]
 _box_top() {
     local title="$1" inner_w="$2"
     local fill=$((inner_w - ${#title} - 3))
+    [[ $fill -lt 1 ]] && fill=1
     printf '  %b╭─ %b%s%b ' "$BP" "${R}${BOLD}${ICE}" "$title" "${R}${BP}" >&2
-    printf '─%.0s' $(seq 1 $fill) >&2
+    printf '─%.0s' $(seq 1 "$fill") >&2
     printf '╮%b\033[K\n' "$R" >&2
 }
 
 _box_bottom() {
     local inner_w="$1"
     printf '  %b╰' "$BP" >&2
-    printf '─%.0s' $(seq 1 $inner_w) >&2
+    printf '─%.0s' $(seq 1 "$inner_w") >&2
     printf '╯%b\033[K\n' "$R" >&2
 }
 
@@ -176,10 +186,18 @@ _box_empty() {
 
 _box_scroll_indicator() {
     local inner_w="$1" direction="$2"
-    local arrow_pad=$(( (inner_w - 5) / 2 ))
-    local char="▲"; [[ "$direction" == "down" ]] && char="▼"
-    printf '  %b│%b%*s%b%s ···%b%*s%b│%b\033[K\n' \
-        "$BP" "$R" "$arrow_pad" "" "$DIM" "$char" "$R" "$((inner_w - arrow_pad - 5))" "" "$BP" "$R" >&2
+    local char="▲"
+    if [[ "$direction" == "down" ]]; then char="▼"; fi
+
+    # Center "▲ ···" (5 chars) within inner_w, accounting for _box_row's 2-char left padding
+    local label="$char ···"
+    local usable=$((inner_w - 2))
+    local pad_left=$(( (usable - 5) / 2 ))
+    local pad_right=$(( usable - pad_left - 5 ))
+
+    local content
+    content=$(printf '%*s%b%s%b%*s' "$pad_left" "" "$DIM" "$label" "$R" "$pad_right" "")
+    _box_row "$inner_w" "$content" 0
 }
 
 _box_row() {
@@ -231,13 +249,13 @@ _read_key() {
 
 # Begin interactive UI — hide cursor, disable echo
 _ui_start() {
-    stty -echo 2>/dev/null
+    stty -echo 2>/dev/null || true
     printf "\033[?25l" >&2
 }
 
 # End interactive UI — show cursor, restore echo
 _ui_end() {
-    stty echo 2>/dev/null
+    stty echo 2>/dev/null || true
     printf "\033[?25h" >&2
 }
 
@@ -366,14 +384,14 @@ show_menu() {
 
             if $need_scroll; then
                 if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
-                    [[ "${items[$i]}" != "---" ]] && ((sel_idx++))
+                    [[ "${items[$i]}" != "---" ]] && sel_idx=$((sel_idx + 1))
                     continue
                 fi
             fi
 
             if [[ "${items[$i]}" == "---" ]]; then
                 _box_empty "$inner_w"
-                ((rendered++))
+                rendered=$((rendered + 1))
                 continue
             fi
 
@@ -381,8 +399,8 @@ show_menu() {
             local pad=$((inner_w - vis))
             local is_sel=false; [[ $sel_idx -eq $sel ]] && is_sel=true
             _box_row "$inner_w" "$(_menu_content "${items[$i]}" "$cur_num" "$is_sel")" "$pad"
-            ((sel_idx++))
-            ((rendered++))
+            sel_idx=$((sel_idx + 1))
+            rendered=$((rendered + 1))
         done
 
         # Scroll-down
@@ -422,8 +440,8 @@ show_menu() {
         local key
         key=$(_read_key)
         case "$key" in
-            up)    ((sel > 0)) && ((sel--)) ;;
-            down)  ((sel < sel_total - 1)) && ((sel++)) ;;
+            up)    [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
+            down)  [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
             right) _ui_end; echo "${sel_nums[$sel]}"; return ;;
             left)
                 if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
@@ -541,7 +559,7 @@ show_multiselect() {
             fi
             if [[ "${items[$i]}" == "---" ]]; then
                 _box_empty "$inner_w"
-                ((rendered++))
+                rendered=$((rendered + 1))
                 continue
             fi
 
@@ -561,7 +579,7 @@ show_multiselect() {
                 fi
             fi
             _box_row "$inner_w" "$content" "$pad"
-            ((rendered++))
+            rendered=$((rendered + 1))
         done
 
         # Scroll-down
@@ -653,22 +671,10 @@ wait_enter() {
     done
     printf '\n'
 }
-wait_retry() {
-    printf '  %bpress enter to retry%b ' "$DIM" "$RESET"
-    while true; do
-        local _k=""
-        IFS= read -rsn1 _k < /dev/tty || true
-        if [[ "$_k" == $'\x1b' ]]; then
-            read -rsn2 -t 1 _ < /dev/tty || true
-            continue
-        fi
-        [[ "$_k" == "" ]] && break
-    done
-    printf '\n'
-}
+
 prompt_path() { printf '  %bpath:%b ' "$CYAN" "$RESET"; }
 
-#
+# Prompt y/n; respects MACRIFT_NO_CONFIRM (auto-yes); returns 0=yes, 1=no
 confirm() {
     local msg="${1:-Continue?}"
     local default="${2:-}"
@@ -701,7 +707,7 @@ confirm() {
     done
 }
 
-# 
+# Prompt for sudo password if not already cached
 require_sudo() {
     if ! sudo -n true 2>/dev/null; then
         printf '\n  %bSudo access needed for system tweaks%b\n' "$YELLOW" "$RESET"
@@ -709,7 +715,7 @@ require_sudo() {
     fi
 }
 
-# 
+# Ensure Homebrew is available; install if missing, load shellenv for current session
 check_homebrew() {
     if ! command -v brew &>/dev/null; then
         # Try to load brew from known paths before declaring missing
@@ -743,35 +749,22 @@ check_homebrew() {
 brew_install() {
     local package="$1"
     local type="${2:-formula}" # formula or cask
+    local -a flag=(); [[ "$type" == "cask" ]] && flag=("--cask")
 
-    if [[ "$type" == "cask" ]]; then
-        if brew list --cask "$package" &>/dev/null; then
-            log_skip "$package already installed"
-            return 0
-        fi
-        log_info "Installing $package..."
-        if brew install --cask "$package"; then
-            log_ok "$package installed"
-        else
-            log_err "Failed to install $package"
-            return 1
-        fi
+    if brew list "${flag[@]}" "$package" &>/dev/null; then
+        log_skip "$package already installed"
+        return 0
+    fi
+    log_info "Installing $package..."
+    if brew install "${flag[@]}" "$package"; then
+        log_ok "$package installed"
     else
-        if brew list "$package" &>/dev/null; then
-            log_skip "$package already installed"
-            return 0
-        fi
-        log_info "Installing $package..."
-        if brew install "$package"; then
-            log_ok "$package installed"
-        else
-            log_err "Failed to install $package"
-            return 1
-        fi
+        log_err "Failed to install $package"
+        return 1
     fi
 }
 
-# 
+#
 # Stores pending changes for review before applying
 declare -a AUDIT_ENTRIES=()
 
@@ -804,24 +797,6 @@ audit_default() {
     AUDIT_ENTRIES+=("${label}|${current}|${new_value}|${domain}|${key}|${type}")
 }
 
-# Queue a sudo defaults write for audit
-audit_default_sudo() {
-    local domain="$1"
-    local key="$2"
-    local type="$3"
-    local new_value="$4"
-    local label="${5:-$key}"
-
-    local current
-    current=$(sudo defaults read "$domain" "$key" 2>/dev/null || echo "default")
-
-    if [[ "$type" == "-bool" ]]; then
-        [[ "$current" == "1" ]] && current="true"
-        [[ "$current" == "0" ]] && current="false"
-    fi
-
-    AUDIT_ENTRIES+=("${label}|${current}|${new_value}|${domain}|${key}|${type}|sudo")
-}
 
 # Show audit table and ask for confirmation
 show_audit_table() {
@@ -931,9 +906,9 @@ apply_audited_defaults() {
 
         # Handle chflags entries (e.g. ~/Library)
         if [[ "$domain" == "chflags" ]]; then
-            local flag="$key"
-            [[ "$new_val" == "false" ]] && flag="hidden"
-            if chflags "$flag" ~/Library 2>/dev/null; then
+            local chflag="$key"
+            [[ "$new_val" == "false" ]] && chflag="hidden"
+            if chflags "$chflag" ~/Library 2>/dev/null; then
                 log_ok "$label → $friendly"
                 applied=$((applied + 1))
             else
@@ -945,7 +920,7 @@ apply_audited_defaults() {
 
         # Handle nvram entries (e.g. StartupMute)
         if [[ "$domain" == "nvram" ]]; then
-            local nvram_val="%01"
+            local nvram_val="%01"                           # %01 = muted, %00 = sound on (NVRAM raw byte)
             [[ "$new_val" == "true" ]] && nvram_val="%00"
             require_sudo
             if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
@@ -956,6 +931,11 @@ apply_audited_defaults() {
                 failed=$((failed + 1))
             fi
             continue
+        fi
+
+        # Ensure screenshot directory exists before setting location
+        if [[ "$domain" == "com.apple.screencapture" && "$key" == "location" ]]; then
+            mkdir -p "$new_val" 2>/dev/null || true
         fi
 
         if _defaults_cmd "write" "$domain" "$key" "$type" "$new_val" "$label" "${sudo_flag:-}"; then
@@ -987,7 +967,7 @@ apply_reset_defaults() {
 
         if _defaults_cmd "delete" "$domain" "$key" "" "" "$label" "${sudo_flag:-}"; then
             log_ok "$label → system default"
-            ((reset++))
+            reset=$((reset + 1))
         else
             log_err "Failed to reset: $label"
             failed=$((failed + 1))
@@ -1002,7 +982,7 @@ apply_reset_defaults() {
     RESET_ENTRIES=()
 }
 
-#
+# Create timestamped backup of a file before overwriting
 backup_file() {
     local target="$1"
     if [[ -f "$target" ]]; then
@@ -1012,6 +992,7 @@ backup_file() {
     fi
 }
 
+# Copy file to target, creating parent dirs; logs the destination
 copy_config() {
     local source="$1"
     local target="$2"
@@ -1061,31 +1042,27 @@ check_update() {
     fi
 }
 
-# Download and apply update (git pull or tarball re-download)
+# Download and apply update
 macrift_update() {
-    if [[ -d "$MACRIFT_DIR/.git" ]] && command -v git &>/dev/null; then
-        log_info "Updating via git..."
-        if git -C "$MACRIFT_DIR" pull --rebase --autostash; then
-            log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
-        else
-            log_err "git pull failed"
-            return 1
-        fi
-    else
-        log_info "Downloading latest version..."
-        local tmp
-        tmp="$(mktemp -d)"
-        if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp"; then
-            rm -rf "$MACRIFT_DIR"
-            mv "$tmp/macrift-main" "$MACRIFT_DIR"
-            rm -rf "$tmp"
+    log_info "Downloading latest version..."
+    local tmp
+    tmp="$(mktemp -d)"
+    if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp" && [[ -d "$tmp/macrift-main" ]]; then
+        rm -rf "$MACRIFT_DIR"
+        if mv "$tmp/macrift-main" "$MACRIFT_DIR"; then
             chmod +x "$MACRIFT_DIR/macrift.sh"
             find "$MACRIFT_DIR" -name "*.sh" -exec chmod +x {} +
             log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
         else
-            log_err "Download failed"
+            log_err "Failed to replace install directory"
+            # Restore from tmp if possible
+            [[ -d "$tmp/macrift-main" ]] && mv "$tmp/macrift-main" "$MACRIFT_DIR"
             rm -rf "$tmp"
             return 1
         fi
+    else
+        log_err "Download failed"
     fi
+    rm -rf "$tmp"
+    return 0
 }

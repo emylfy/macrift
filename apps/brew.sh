@@ -8,7 +8,34 @@ export HOMEBREW_NO_INSTALL_CLEANUP=1
 export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
 
+# Strip drag-and-drop quotes and trailing whitespace from a path
+_clean_dragged_path() {
+    local p="$1"
+    p="${p//\'/}"
+    p="${p//\"/}"
+    p="${p%% }"
+    echo "$p"
+}
+
+# Check if a cask is installed but its .app is missing from /Applications
+_is_cask_broken() {
+    local name="$1"
+    local cask_apps
+    cask_apps=$(find "$(brew --prefix)/Caskroom/$name" -name "*.app" -maxdepth 3 2>/dev/null) || return 1
+    [[ -z "$cask_apps" ]] && return 1
+    while IFS= read -r app_path; do
+        local appname
+        appname=$(basename "$app_path")
+        if [[ -e "/Applications/$appname" ]] || \
+           [[ -e "/Applications/${appname/_installer/}" ]]; then
+            return 1
+        fi
+    done <<< "$cask_apps"
+    return 0
+}
+
 brew_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Homebrew"
     while true; do
         clear
@@ -79,7 +106,7 @@ _fix_broken_casks() {
     elif confirm "Fix them now?"; then
         local idx=0
         for cask in "${casks[@]}"; do
-            ((idx++))
+            idx=$((idx + 1))
             show_progress "$idx" "${#casks[@]}" "$cask"
             if brew reinstall --cask "$cask" &>/dev/null; then
                 log_ok "$cask reinstalled"
@@ -102,9 +129,10 @@ install_bundle() {
 
     clear
 
-    # Get installed packages once (strip @version suffix for matching)
+    # Get installed packages (strip @version from formulae, e.g. python@3.14 → python)
     local installed
-    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//' ; brew list --cask -1 2>/dev/null)
+    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
+    installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
     # Parse Brewfile — split into new, broken, and already installed
     local new_lines=()
@@ -131,15 +159,9 @@ install_bundle() {
             continue
         fi
         if echo "$installed" | grep -qxF "$name"; then
-            if [[ "$line" =~ ^cask ]]; then
-                app_path=$(find "$(brew --prefix)/Caskroom"/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
-                if [[ -n "$app_path" ]]; then
-                    appname=$(basename "$app_path")
-                    if [[ ! -e "/Applications/$appname" ]]; then
-                        broken_casks+=("$name")
-                        continue
-                    fi
-                fi
+            if [[ "$line" =~ ^cask ]] && _is_cask_broken "$name"; then
+                broken_casks+=("$name")
+                continue
             fi
             installed_count=$((installed_count + 1))
         else
@@ -148,12 +170,21 @@ install_bundle() {
         fi
     done < "$path"
 
-    # Nothing new — handle broken casks if any, otherwise skip silently
-    if [[ ! ${new_labels[*]+x} || ${#new_labels[@]} -eq 0 ]]; then
+    # Check if there are any real (non-separator) new items
+    local has_new=false
+    if [[ ${new_labels[*]+x} && ${#new_labels[@]} -gt 0 ]]; then
+        for lbl in "${new_labels[@]}"; do
+            if [[ "$lbl" != "---" ]]; then has_new=true; break; fi
+        done
+    fi
+
+    # Nothing new — show status, handle broken casks
+    if ! $has_new; then
+        log_ok "Everything installed"
         if [[ ${broken_casks[*]+x} && ${#broken_casks[@]} -gt 0 ]]; then
             _fix_broken_casks "${broken_casks[@]}"
-            wait_enter
         fi
+        wait_enter
         return 0
     fi
 
@@ -187,14 +218,8 @@ install_bundle() {
         printf "\n"
     fi
 
-    # Check if there are any real (non-separator) items
-    local has_real=false
-    for lbl in "${new_labels[@]}"; do
-        [[ "$lbl" != "---" ]] && { has_real=true; break; }
-    done
-    if ! $has_real; then
-        log_ok "Everything installed"
-        wait_enter
+    # After cleanup, if only separators remained they're gone — nothing to show
+    if [[ ! ${new_labels[*]+x} || ${#new_labels[@]} -eq 0 ]]; then
         return 0
     fi
 
@@ -264,19 +289,101 @@ _bundle_label() {
 }
 
 install_all_bundles() {
-    if ! confirm "Install all bundles? (select packages in each)"; then
-        return
-    fi
+    clear
+
+    # Get installed packages once
+    local installed
+    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
+    installed+=$'\n'$(brew list --cask -1 2>/dev/null)
+
+    # Merge all brewfiles into one list with section separators
+    local all_lines=() all_labels=()
+    local installed_count=0 first_section=true
 
     for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
-        if [[ -f "$brewfile" ]]; then
-            local name
-            name=$(basename "$brewfile")
-            install_bundle "$name" "$(_bundle_label "$name")"
+        [[ -f "$brewfile" ]] || continue
+        local bname had_new=false
+        bname=$(basename "$brewfile")
+
+        local section_lines=() section_labels=()
+        while IFS= read -r line; do
+            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
+            local name=""
+            if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
+                name="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
+                name="${BASH_REMATCH[1]}"
+            else
+                continue
+            fi
+            if echo "$installed" | grep -qxF "$name"; then
+                installed_count=$((installed_count + 1))
+            else
+                section_lines+=("$line")
+                section_labels+=("$name")
+                had_new=true
+            fi
+        done < "$brewfile"
+
+        if $had_new; then
+            if ! $first_section && [[ ${#all_labels[@]} -gt 0 ]]; then
+                all_lines+=("")
+                all_labels+=("---")
+            fi
+            first_section=false
+            for ((i=0; i<${#section_labels[@]}; i++)); do
+                all_lines+=("${section_lines[$i]}")
+                all_labels+=("${section_labels[$i]}")
+            done
         fi
     done
 
-    log_ok "All bundles done"
+    if [[ ${#all_labels[@]} -eq 0 ]]; then
+        log_ok "Everything installed"
+        [[ $installed_count -gt 0 ]] && log_info "$installed_count packages already installed"
+        wait_enter
+        return
+    fi
+
+    local ms_title="All Bundles"
+    [[ $installed_count -gt 0 ]] && ms_title="All Bundles · $installed_count installed"
+
+    local selected
+    selected=$(show_multiselect "$ms_title" "${all_labels[@]}")
+    [[ -z "$selected" ]] && return
+
+    local tmp
+    tmp=$(mktemp /tmp/macrift_brew_all_XXXXXX)
+
+    for ((i=0; i<${#all_labels[@]}; i++)); do
+        [[ "${all_labels[$i]}" == "---" ]] && continue
+        if echo "$selected" | grep -qxF "${all_labels[$i]}"; then
+            echo "${all_lines[$i]}" >> "$tmp"
+        fi
+    done
+
+    if [[ ! -s "$tmp" ]]; then
+        rm -f "$tmp"
+        return
+    fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install:"
+        while IFS= read -r line; do
+            printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
+        done < "$tmp"
+        rm -f "$tmp"
+        wait_enter
+        return
+    fi
+
+    log_info "Installing selected packages..."
+    if brew bundle --quiet --no-upgrade --file="$tmp"; then
+        log_ok "All packages installed"
+    else
+        log_warn "Some packages failed to install"
+    fi
+    rm -f "$tmp"
     wait_enter
 }
 
@@ -287,11 +394,7 @@ import_brewbak() {
     prompt_path
     read -r filepath
 
-    # Strip quotes if dragged in
-    filepath="${filepath//\'/}"
-    filepath="${filepath//\"/}"
-    # Strip trailing whitespace
-    filepath="${filepath%% }"
+    filepath=$(_clean_dragged_path "$filepath")
 
     if [[ ! -f "$filepath" ]]; then
         log_err "File not found: $filepath"
@@ -328,19 +431,10 @@ import_brewbak() {
             continue
         fi
         if echo "$installed" | grep -qxF "$name"; then
-            # For casks, verify the .app actually exists in /Applications
-            if [[ "$line" =~ ^cask ]]; then
-                # || true prevents set -e from triggering if find exits non-zero
-                app_path=$(find "$(brew --prefix)/Caskroom"/"$name" -name "*.app" -maxdepth 3 2>/dev/null | head -1) || true
-                if [[ -n "$app_path" ]]; then
-                    appname=$(basename "$app_path")
-                    if [[ ! -e "/Applications/$appname" ]]; then
-                        # Registered in brew but .app is missing — treat as broken
-                        new_lines+=("$line")
-                        new_labels+=("$label [broken]")
-                        continue
-                    fi
-                fi
+            if [[ "$line" =~ ^cask ]] && _is_cask_broken "$name"; then
+                new_lines+=("$line")
+                new_labels+=("$label [broken]")
+                continue
             fi
             installed_count=$((installed_count + 1))
         else
@@ -399,9 +493,7 @@ export_brewbak() {
     if [[ -z "$filepath" ]]; then
         filepath="$default_path"
     fi
-    filepath="${filepath//\'/}"
-    filepath="${filepath//\"/}"
-    filepath="${filepath%% }"
+    filepath=$(_clean_dragged_path "$filepath")
 
     log_info "Exporting..."
     if brew bundle dump --file="$filepath" --force; then

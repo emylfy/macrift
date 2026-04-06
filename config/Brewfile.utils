@@ -8,7 +8,6 @@ cask "alfred"
 # Menu bar & Window management
 cask "hiddenbar"
 cask "alt-tab"
-cask "supercorners"
 cask "keyboard-cowboy"
 
 # Files & Downloads

@@ -26,41 +26,7 @@ restore_marketplace() {
         log_ok "Marketplace installed"
     fi
 
-    # Spotify must have been launched at least once to create prefs
-    local prefs_path="$HOME/Library/Application Support/Spotify/prefs"
-    if [[ ! -f "$prefs_path" ]]; then
-        log_warn "Spotify prefs not found — need to launch it once"
-        if confirm "Launch Spotify now?"; then
-            open -a Spotify
-            log_info "Waiting for Spotify to initialize..."
-            local wait=0
-            while [[ ! -f "$prefs_path" && $wait -lt 15 ]]; do
-                sleep 1; wait=$((wait + 1))
-            done
-            if [[ ! -f "$prefs_path" ]]; then
-                log_err "Prefs still not found — try opening Spotify manually and retry"
-                wait_enter
-                return
-            fi
-            log_ok "Prefs created — closing Spotify"
-            killall Spotify 2>/dev/null || true
-            sleep 1
-        else
-            log_info "Open Spotify manually, close it, then retry"
-            wait_enter
-            return
-        fi
-    elif pgrep -x Spotify &>/dev/null; then
-        log_warn "Spotify must be closed before applying"
-        if confirm "Quit Spotify now?"; then
-            killall Spotify 2>/dev/null || true
-            sleep 1
-        else
-            log_info "Close Spotify manually and retry"
-            wait_enter
-            return
-        fi
-    fi
+    _ensure_spotify_prefs || return
 
     show_info_box "Restore Marketplace Settings" \
         "This will:" \

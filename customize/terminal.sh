@@ -113,17 +113,7 @@ _iterm2_install_profile() {
     local selected="${profiles[$idx]}"
     local selected_name="${descriptions[$idx]}"
 
-    # Install font if missing
-    if ! fc-list 2>/dev/null | grep -qi "FiraCode Nerd Font" && \
-       ! ls "$HOME/Library/Fonts"/FiraCodeNerdFont* &>/dev/null && \
-       ! ls "/Library/Fonts"/FiraCodeNerdFont* &>/dev/null; then
-        log_info "FiraCode Nerd Font not found"
-        if confirm "Install font-fira-code-nerd-font via Homebrew?"; then
-            brew_install "font-fira-code-nerd-font" "cask"
-        else
-            log_warn "Profile may fall back to Menlo without the Nerd Font"
-        fi
-    fi
+    _ensure_nerd_font
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install '$selected_name' to DynamicProfiles"
@@ -146,7 +136,7 @@ _iterm2_install_profile() {
          sleep 1
          defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
         ) &>/dev/null &
-        disown
+        disown  # detach subprocess so it survives macrift's exit
         log_ok "'$selected_name' set as default — restart iTerm2 to apply"
     fi
 }
@@ -203,6 +193,7 @@ setup_ghostty() {
     if [[ ! -f "$config_source" ]]; then
         log_warn "No Ghostty config found in config/ghostty/config"
         log_info "You can add your config there and re-run this"
+        wait_enter
         return
     fi
 
@@ -412,7 +403,7 @@ apply_fastfetch_config() {
             if confirm "Replace with dynamic {name}?"; then
                 # Escape regex metacharacters in the value before sed substitution
                 local escaped_format
-                escaped_format=$(printf '%s' "$host_format" | sed 's/[&/\.*^$[]/\\&/g')
+                escaped_format=$(printf '%s' "$host_format" | sed 's/[&/\.*^$[\]]/\\&/g')
                 sed -i '' "s|\"format\": \"${escaped_format}\"|\"format\": \"{name}\"|" "$config_source"
                 log_ok "Fixed — will now show actual model name"
             fi

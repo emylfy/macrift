@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # macrift — one-line installer
 # Usage: bash <(curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh)
-# Works on a fresh macOS — no dependencies required (git, brew, etc.)
+# Works on a fresh macOS — only needs curl (built-in). No git, no Xcode CLT.
 
 set -euo pipefail
 
-REPO="https://github.com/emylfy/macrift.git"
 REPO_TAR="https://github.com/emylfy/macrift/archive/main.tar.gz"
 INSTALL_DIR="$HOME/.macrift"
-BIN_LINK="/usr/local/bin/macrift"
+LOCAL_BIN="$HOME/.local/bin"
 
 BOLD='\033[1m'
 DIM='\033[2m'
@@ -20,7 +19,6 @@ RED='\033[0;31m'
 
 info()  { printf '  %b›%b  %s\n' "$CYAN"   "$RESET" "$1"; }
 ok()    { printf '  %b✓%b  %s\n' "$GREEN"  "$RESET" "$1"; }
-warn()  { printf '  %b!%b  %s\n' "$YELLOW" "$RESET" "$1"; }
 err()   { printf '  %b✗%b  %s\n' "$RED"    "$RESET" "$1"; }
 
 ask() {
@@ -29,7 +27,6 @@ ask() {
     [[ "$answer" =~ ^[Yy]$ ]]
 }
 
-# macOS check
 if [[ "$(uname)" != "Darwin" ]]; then
     err "macrift is for macOS only"
     exit 1
@@ -37,61 +34,55 @@ fi
 
 printf '\n  %bmacrift installer%b\n\n' "$BOLD" "$RESET"
 
-# Xcode Command Line Tools
-if ! xcode-select -p &>/dev/null; then
-    warn "Xcode Command Line Tools not found"
-    if ask "Install? (provides git & developer tools)"; then
-        xcode-select --install 2>/dev/null || true
-        printf '  %bwaiting for installation...%b' "$DIM" "$RESET"
-        until xcode-select -p &>/dev/null; do
-            printf '.'
-            sleep 5
-        done
-        printf '\n'
-        ok "Xcode Command Line Tools installed"
-    else
-        info "Skipped — will download archive instead of git clone"
-    fi
-fi
-
-# Download / Update
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-    info "Updating macrift..."
-    git -C "$INSTALL_DIR" fetch --quiet
-    git -C "$INSTALL_DIR" reset --hard origin/main --quiet
-    ok "Updated"
-elif command -v git &>/dev/null; then
-    [[ -d "$INSTALL_DIR" ]] && rm -rf "$INSTALL_DIR"
-    info "Cloning macrift..."
-    git clone --quiet "$REPO" "$INSTALL_DIR"
-    ok "Cloned → $INSTALL_DIR"
-else
-    info "Downloading macrift..."
-    tmp="$(mktemp -d)"
-    curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"
+# Download
+info "Downloading macrift..."
+tmp="$(mktemp -d)"
+if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
     [[ -d "$INSTALL_DIR" ]] && rm -rf "$INSTALL_DIR"
     mv "$tmp/macrift-main" "$INSTALL_DIR"
     rm -rf "$tmp"
     ok "Downloaded → $INSTALL_DIR"
+else
+    rm -rf "$tmp"
+    err "Download failed — check your internet connection"
+    exit 1
 fi
 
 # Permissions
 chmod +x "$INSTALL_DIR/macrift.sh"
 find "$INSTALL_DIR" -name "*.sh" -exec chmod +x {} +
 
-# Global command
-if [[ ! -L "$BIN_LINK" || "$(readlink "$BIN_LINK" 2>/dev/null)" != "$INSTALL_DIR/macrift.sh" ]]; then
+# Global command — ~/.local/bin (no sudo)
+_link_exists() {
+    local target="$1/macrift"
+    [[ -L "$target" ]] && [[ "$(readlink "$target" 2>/dev/null)" == "$INSTALL_DIR/macrift.sh" ]]
+}
+
+if _link_exists "$LOCAL_BIN" || _link_exists "/usr/local/bin"; then
+    ok "macrift command already set up"
+else
     printf '\n'
-    if ask "Create global 'macrift' command? (needs sudo)"; then
-        sudo mkdir -p /usr/local/bin
-        sudo ln -sf "$INSTALL_DIR/macrift.sh" "$BIN_LINK"
+    if ask "Create global 'macrift' command?"; then
+        mkdir -p "$LOCAL_BIN"
+        ln -sf "$INSTALL_DIR/macrift.sh" "$LOCAL_BIN/macrift"
+        ok "Linked → $LOCAL_BIN/macrift"
+
+        if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
+            local_zshrc="$HOME/.zshrc"
+            path_line='export PATH="$HOME/.local/bin:$PATH"'
+            if ! grep -qF '.local/bin' "$local_zshrc" 2>/dev/null; then
+                printf '\n%s\n' "$path_line" >> "$local_zshrc"
+                ok "Added ~/.local/bin to PATH in .zshrc"
+            fi
+            export PATH="$LOCAL_BIN:$PATH"
+        fi
         ok "Run from anywhere: macrift"
     else
-        info "Skipped — run directly: ~/.macrift/macrift.sh"
+        info "Run directly: ~/.macrift/macrift.sh"
     fi
 fi
 
-printf '\n  %bDone!%b\n\n' "$GREEN" "$RESET"
+printf '\n  %bDone!%b Run %bmacrift%b to start.\n\n' "$GREEN" "$RESET" "$BOLD" "$RESET"
 
 # Launch
 "$INSTALL_DIR/macrift.sh"

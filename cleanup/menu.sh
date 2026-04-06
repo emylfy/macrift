@@ -48,36 +48,24 @@ run_brew_cleanup() {
 }
 
 run_mole_cleanup() {
+    clear
     if command -v mole &>/dev/null; then
-        clear
         mo clean
         wait_enter
         return
     fi
 
-    while true; do
-        clear
+    log_info "Mole — system cleanup tool"
+    printf '  %bSource: %s%b\n\n' "$DIM" "$MOLE_REPO" "$RESET"
 
-        local choice
-        choice=$(show_menu "Mole — system cleanup" \
-            "Install & run" \
-            "Review source" \
-            "Back")
-
-        case "$choice" in
-            1)
-                log_info "Installing Mole..."
-                if curl -fsSL "$MOLE_INSTALL" | bash; then
-                    log_ok "Mole installed"
-                    mole
-                else
-                    log_err "Failed to install Mole"
-                fi
-                wait_enter
-                return
-                ;;
-            2) open "$MOLE_REPO"; log_ok "Opened in browser" ;;
-            0) return ;;
-        esac
-    done
+    if confirm "Install & run Mole?"; then
+        log_info "Installing Mole..."
+        if curl -fsSL "$MOLE_INSTALL" | bash; then
+            log_ok "Mole installed"
+            mole
+        else
+            log_err "Failed to install Mole"
+        fi
+    fi
+    wait_enter
 }

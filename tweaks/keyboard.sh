@@ -2,10 +2,8 @@
 # macrift — Keyboard & text tweaks
 
 keyboard_tweaks() {
-    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
-
-    audit_default "NSGlobalDomain" "KeyRepeat" "-int" "2" "Repeat speed"
-    audit_default "NSGlobalDomain" "InitialKeyRepeat" "-int" "15" "Repeat delay"
+    audit_default "NSGlobalDomain" "KeyRepeat" "-int" "2" "Repeat speed"           # 2 = 30ms (fastest non-zero)
+    audit_default "NSGlobalDomain" "InitialKeyRepeat" "-int" "15" "Repeat delay"  # 15 = 225ms before repeat starts
     audit_default "NSGlobalDomain" "ApplePressAndHoldEnabled" "-bool" "false" "Press & hold accents~Disables long-press for é ñ ü"
 
     audit_sep
@@ -22,12 +20,4 @@ keyboard_tweaks() {
     audit_sep
 
     audit_default "com.apple.HIToolbox" "AppleDictationAutoEnable" "-bool" "false" "Dictation"
-
-    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
-
-    if show_audit_table "Keyboard & Text"; then
-        apply_audited_defaults
-        log_ok "Keyboard settings applied"
-        wait_enter
-    fi
 }

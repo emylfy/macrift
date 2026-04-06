@@ -2,8 +2,6 @@
 # macrift — Finder tweaks
 
 finder_tweaks() {
-    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
-
     audit_default "NSGlobalDomain" "AppleShowAllExtensions" "-bool" "true" "Show extensions"
     audit_default "com.apple.finder" "AppleShowAllFiles" "-bool" "true" "Show hidden files"
     audit_default "com.apple.finder" "ShowPathbar" "-bool" "true" "Path bar"
@@ -34,25 +32,10 @@ finder_tweaks() {
     audit_default "com.apple.finder" "_FXSortFoldersFirst" "-bool" "true" "Folders on top"
     audit_default "com.apple.finder" "_FXSortFoldersFirstOnDesktop" "-bool" "true" "Folders on top (Desktop)"
 
-    # ~/Library visibility: add to audit table
+    # ~/Library visibility
     local lib_visible="false"
     local lib_flags
     lib_flags=$(stat -f "%Sf" ~/Library 2>/dev/null || echo "hidden")
-    if [[ "$lib_flags" != *hidden* ]]; then
-        lib_visible="true"
-    fi
+    [[ "$lib_flags" != *hidden* ]] && lib_visible="true"
     AUDIT_ENTRIES+=("Show Library folder|${lib_visible}|true|chflags|nohidden|-bool")
-
-    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
-
-    if show_audit_table "Finder"; then
-        apply_audited_defaults
-
-        printf "\n"
-        if confirm "Restart Finder?"; then
-            killall Finder 2>/dev/null || true
-            log_ok "Finder restarted"
-        fi
-        wait_enter
-    fi
 }
