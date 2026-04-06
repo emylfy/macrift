@@ -34,6 +34,106 @@ _is_cask_broken() {
     return 0
 }
 
+fzf_search_packages() {
+    if ! command -v fzf &>/dev/null; then
+        log_warn "fzf not found"
+        if confirm "Install fzf via Homebrew?"; then
+            brew_install "fzf" || return
+        else
+            return
+        fi
+    fi
+
+    # Get installed packages
+    local installed
+    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
+    installed+=$'\n'$(brew list --cask -1 2>/dev/null)
+
+    # Parse all Brewfiles: "name [category]" + keep original lines for install
+    local -a fzf_lines=() brew_lines=()
+    for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
+        [[ -f "$brewfile" ]] || continue
+        local bname category
+        bname=$(basename "$brewfile")
+        category=$(_bundle_label "$bname")
+
+        while IFS= read -r line; do
+            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
+            local name=""
+            if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
+                name="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
+                name="${BASH_REMATCH[1]}"
+            else
+                continue
+            fi
+            # Skip already installed
+            echo "$installed" | grep -qxF "$name" && continue
+            fzf_lines+=("$name  [$category]")
+            brew_lines+=("$line")
+        done < "$brewfile"
+    done
+
+    if [[ ${#fzf_lines[@]} -eq 0 ]]; then
+        clear
+        log_ok "Everything installed"
+        wait_enter
+        return
+    fi
+
+    # fzf multi-select
+    local selected
+    selected=$(printf '%s\n' "${fzf_lines[@]}" | fzf --multi \
+        --header="tab select · enter install · esc cancel" \
+        --prompt="search: " \
+        --height=~80% \
+        --reverse \
+        --no-info) || true
+
+    [[ -z "$selected" ]] && return
+
+    # Build temp Brewfile from selected
+    local tmp
+    tmp=$(mktemp /tmp/macrift_fzf_XXXXXX)
+
+    while IFS= read -r pick; do
+        local pick_name="${pick%%  \[*}"
+        for ((i=0; i<${#fzf_lines[@]}; i++)); do
+            if [[ "${fzf_lines[$i]}" == "$pick" ]]; then
+                echo "${brew_lines[$i]}" >> "$tmp"
+                break
+            fi
+        done
+    done <<< "$selected"
+
+    if [[ ! -s "$tmp" ]]; then
+        rm -f "$tmp"
+        return
+    fi
+
+    local count
+    count=$(wc -l < "$tmp" | tr -d ' ')
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install $count packages:"
+        while IFS= read -r line; do
+            printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
+        done < "$tmp"
+        rm -f "$tmp"
+        wait_enter
+        return
+    fi
+
+    log_info "Installing $count packages..."
+    if brew bundle --quiet --no-upgrade --file="$tmp"; then
+        log_ok "All packages installed"
+    else
+        log_warn "Some packages failed to install"
+    fi
+    rm -f "$tmp"
+    wait_enter
+}
+
 brew_menu() {
     if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Homebrew"
@@ -42,6 +142,8 @@ brew_menu() {
 
         local choice
         choice=$(show_menu "Homebrew" \
+            "Search packages" \
+            "---" \
             "Development" \
             "Utilities" \
             "Browsers" \
@@ -56,15 +158,16 @@ brew_menu() {
             "Back")
 
         case "$choice" in
-            1) install_bundle "Brewfile.dev" "Development" ;;
-            2) install_bundle "Brewfile.utils" "Utilities" ;;
-            3) install_bundle "Brewfile.browsers" "Browsers" ;;
-            4) install_bundle "Brewfile.comm" "Communication" ;;
-            5) install_bundle "Brewfile.media" "Media" ;;
-            6) install_bundle "Brewfile.games" "Games" ;;
-            7) install_bundle "Brewfile.fonts" "Fonts" ;;
-            8) install_all_bundles ;;
-            9) brewbak_menu ;;
+            1) fzf_search_packages ;;
+            2) install_bundle "Brewfile.dev" "Development" ;;
+            3) install_bundle "Brewfile.utils" "Utilities" ;;
+            4) install_bundle "Brewfile.browsers" "Browsers" ;;
+            5) install_bundle "Brewfile.comm" "Communication" ;;
+            6) install_bundle "Brewfile.media" "Media" ;;
+            7) install_bundle "Brewfile.games" "Games" ;;
+            8) install_bundle "Brewfile.fonts" "Fonts" ;;
+            9) install_all_bundles ;;
+            10) brewbak_menu ;;
             0) break ;;
             *) ;;
         esac

@@ -40,9 +40,9 @@ _tweak_wizard() {
             [[ "$label" == "---" ]] && continue
             sel_idx+=("$i")
             if [[ "$current" != "$new_val" ]]; then
-                action[$i]="1"; has_diff[$i]=1
+                action[i]="1"; has_diff[i]=1
             else
-                action[$i]="0"; has_diff[$i]=0
+                action[i]="0"; has_diff[i]=0
             fi
             cnt=$(( cnt + 1 ))
         done
@@ -117,7 +117,7 @@ _tweak_wizard() {
                 local fc fn
                 fc=$(_friendly_val "$current")
                 fn=$(_friendly_val "$new_val")
-                local act="${action[$i]}"
+                local act="${action[i]}"
 
                 # Build display line
                 local display="" cursor_char="" icon_color=""
@@ -209,31 +209,31 @@ _tweak_wizard() {
                 space)
                     local idx="${sel_idx[$((sel_off + cursor))]}"
                     if [[ "${has_diff[$idx]}" == 1 ]]; then
-                        if [[ "${action[$idx]}" == "1" ]]; then
-                            action[$idx]="0"
+                        if [[ "${action[idx]}" == "1" ]]; then
+                            action[idx]="0"
                         else
-                            action[$idx]="1"
+                            action[idx]="1"
                         fi
                     fi ;;
                 d|D)
                     local idx="${sel_idx[$((sel_off + cursor))]}"
-                    if [[ "${action[$idx]}" == "2" ]]; then
-                        action[$idx]="0"
+                    if [[ "${action[idx]}" == "2" ]]; then
+                        action[idx]="0"
                     else
-                        action[$idx]="2"
+                        action[idx]="2"
                     fi ;;
                 a|A)
                     local all_apply=true k
                     for ((k=0; k<sel_cnt; k++)); do
                         local idx="${sel_idx[$((sel_off + k))]}"
                         [[ "${has_diff[$idx]}" == 0 ]] && continue
-                        [[ "${action[$idx]}" != "1" ]] && { all_apply=false; break; }
+                        [[ "${action[idx]}" != "1" ]] && { all_apply=false; break; }
                     done
                     local val="1"; $all_apply && val="0"
                     for ((k=0; k<sel_cnt; k++)); do
                         local idx="${sel_idx[$((sel_off + k))]}"
                         [[ "${has_diff[$idx]}" == 0 ]] && continue
-                        action[$idx]="$val"
+                        action[idx]="$val"
                     done ;;
             esac
         done
@@ -251,8 +251,8 @@ _tweak_wizard() {
         local cat_apply=0 cat_reset=0 k
         for ((k=0; k<cnt; k++)); do
             local idx="${sel_idx[$((off + k))]}"
-            [[ "${action[$idx]}" == "1" ]] && cat_apply=$(( cat_apply + 1 ))
-            [[ "${action[$idx]}" == "2" ]] && cat_reset=$(( cat_reset + 1 ))
+            [[ "${action[idx]}" == "1" ]] && cat_apply=$(( cat_apply + 1 ))
+            [[ "${action[idx]}" == "2" ]] && cat_reset=$(( cat_reset + 1 ))
         done
         if [[ $cat_apply -gt 0 || $cat_reset -gt 0 ]]; then
             local detail=""
@@ -302,8 +302,8 @@ _tweak_wizard() {
             [[ -z "${AUDIT_ENTRIES[$i]+x}" ]] && continue
             IFS='|' read -r label rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$label" == "---" ]] && continue
-            [[ "${action[$i]}" == "1" ]] && TWEAK_SELECTION+=("${AUDIT_ENTRIES[$i]}")
-            [[ "${action[$i]}" == "2" ]] && TWEAK_RESETS+=("${AUDIT_ENTRIES[$i]}")
+            [[ "${action[i]}" == "1" ]] && TWEAK_SELECTION+=("${AUDIT_ENTRIES[$i]}")
+            [[ "${action[i]}" == "2" ]] && TWEAK_RESETS+=("${AUDIT_ENTRIES[$i]}")
         done
     done
     return 0

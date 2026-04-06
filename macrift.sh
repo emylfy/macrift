@@ -12,11 +12,32 @@ for arg in "$@"; do
         --dry-run)     export MACRIFT_DRY_RUN=true ;;
         --no-confirm)  export MACRIFT_NO_CONFIRM=true ;;
         --log)         export MACRIFT_LOG="$HOME/.macrift/macrift.log" ;;
+        --uninstall)
+            printf '\n  Uninstall macrift?\n\n'
+            printf '  This will remove:\n'
+            printf '    ~/.macrift\n'
+            printf '    ~/.local/bin/macrift\n'
+            printf '    /usr/local/bin/macrift (if exists)\n'
+            printf '    PATH line from ~/.zshrc\n\n'
+            printf '  [y/n] '
+            read -r answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                rm -rf "$HOME/.macrift"
+                rm -f "$HOME/.local/bin/macrift"
+                [[ -L "/usr/local/bin/macrift" ]] && sudo rm -f "/usr/local/bin/macrift"
+                if [[ -f "$HOME/.zshrc" ]]; then
+                    sed -i '' '/\.local\/bin/d' "$HOME/.zshrc" 2>/dev/null || true
+                fi
+                printf '  Done. macrift removed.\n\n'
+            fi
+            exit 0
+            ;;
         --help|-h)
-            echo "Usage: macrift [--dry-run] [--no-confirm] [--log]"
+            echo "Usage: macrift [--dry-run] [--no-confirm] [--log] [--uninstall]"
             echo "  --dry-run      Show what would change without applying"
             echo "  --no-confirm   Skip all confirmation prompts"
             echo "  --log          Write log to ~/.macrift/macrift.log"
+            echo "  --uninstall    Remove macrift from this system"
             exit 0
             ;;
     esac

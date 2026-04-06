@@ -1,5 +1,20 @@
 # Changelog
 
+## 26.04.9
+
+### New
+
+- **fzf search in Homebrew** — fuzzy search across all Brewfiles at once, multi-select with tab, install selected
+- **Dock layout save/restore** — save current dock layout and restore it later via dockutil
+- **`macrift --uninstall`** — cleanly remove macrift, symlinks, and PATH entry
+
+### Changed
+
+- **Hot Corners** — single screen with 2×2 grid, space to pick action per corner instead of 4 sequential menus
+- **dnspyre cleanup** — now removes the tap (`brew untap`) alongside the formula
+
+---
+
 ## 26.04.8
 
 ### New

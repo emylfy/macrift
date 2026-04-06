@@ -260,6 +260,7 @@ _ensure_dnspyre() {
 _cleanup_dnspyre() {
     if [[ "${_DNSPYRE_INSTALLED_BY_US:-false}" == true ]] && command -v dnspyre &>/dev/null; then
         brew uninstall tantalor93/dnspyre/dnspyre &>/dev/null
+        brew untap tantalor93/dnspyre &>/dev/null || true
         log_info "Removed dnspyre"
     fi
 }

@@ -67,7 +67,7 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 | `--dry-run`    | Show what would change without applying       |
 | `--no-confirm` | Skip all confirmation prompts (auto-approve)  |
 | `--log`        | Write session log to `~/.macrift/macrift.log` |
-| `--version`    | Print version and exit                        |
+| `--uninstall`  | Remove macrift from this system               |
 | `--help`       | Show usage info                               |
 
 </details>
@@ -78,31 +78,31 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 
 ## Features
 
-|     | Feature                | What it does                                                                |
-| :-- | :--------------------- | :-------------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc            |
-| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                 |
-| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers      |
-| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets                 |
-| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                           |
+|     | Feature                | What it does                                                           |
+| :-- | :--------------------- | :--------------------------------------------------------------------- |
+| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc       |
+| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup            |
+| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers |
+| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets            |
+| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
 
 ### ⚙️ System Tweaks
 
 Tweak wizard with per-item skip, apply, or reset to system default. Batch apply or pick individually.
 
-| Category         | What it does                                                                   |
-| :--------------- | :----------------------------------------------------------------------------- |
-| Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
-| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders |
-| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
-| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere |
-| Screenshots      | Format, save location, shadow, date in filename                                |
-| Hot Corners      | Arrow-key menu per corner, no codes to memorize                                |
+| Category         | What it does                                                                                                  |
+| :--------------- | :------------------------------------------------------------------------------------------------------------ |
+| Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents                                        |
+| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders     |
+| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                           |
+| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                           |
+| Screenshots      | Format, save location, shadow, date in filename                                                               |
+| Hot Corners      | Single grid screen, space to cycle actions per corner                                                         |
 | Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled window margins, Safari search engine |
 
 ### 📦 Apps & Packages
 
-**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
+**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles + fzf search across all packages:
 
 - **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, neovim, tmux, fzf, ripgrep, bat, eza, fd, fastfetch, claude, claude-code, zed, t3-code...
 - **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keka, BetterDisplay, Cork, Keyboard Cowboy, Logi Options+...
@@ -120,12 +120,12 @@ Export/import your packages with `.brewbak` backup files.
 
 ### 🛡️ Security & Privacy
 
-| Tool                                     | Description                                                                                      |
-| :--------------------------------------- | :----------------------------------------------------------------------------------------------- |
-| **Security Status**                      | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off                    |
-| **Hostname**                             | Set custom hostname — hide your name from the network                                            |
-| **DNS**                                  | 11 providers, benchmark with current DNS comparison, VPN detection                               |
-| **Hardening**                            | [privacy.sexy](https://privacy.sexy) — custom or standard macOS hardening preset                 |
+| Tool                | Description                                                                      |
+| :------------------ | :------------------------------------------------------------------------------- |
+| **Security Status** | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off     |
+| **Hostname**        | Set custom hostname — hide your name from the network                            |
+| **DNS**             | 11 providers, benchmark with current DNS comparison, VPN detection               |
+| **Hardening**       | [privacy.sexy](https://privacy.sexy) — custom or standard macOS hardening preset |
 
 ### 🧹 Cleanup
 
@@ -156,16 +156,16 @@ Complete environment setup from one menu.
 <details>
 <summary>Shell aliases</summary>
 
-| Alias              | Tool                                                                 |
-| :----------------- | :------------------------------------------------------------------- |
-| `ls` `ll` `lt`     | [eza](https://github.com/eza-community/eza) with icons and tree view |
-| `cat`              | [bat](https://github.com/sharkdp/bat) with syntax highlighting       |
-| `grep`             | [ripgrep](https://github.com/BurntSushi/ripgrep)                     |
-| `find`             | [fd](https://github.com/sharkdp/fd)                                  |
-| `g` `gs` `ga` `gc` | git shortcuts (status, add, commit, push, log, diff, checkout, branch) |
-| `lg`               | [lazygit](https://github.com/jesseduffield/lazygit)                  |
-| `..` `...` `....`  | quick directory navigation                                            |
-| `reload` `ip` `ports` | shell reload, public IP, listening ports                          |
+| Alias                 | Tool                                                                   |
+| :-------------------- | :--------------------------------------------------------------------- |
+| `ls` `ll` `lt`        | [eza](https://github.com/eza-community/eza) with icons and tree view   |
+| `cat`                 | [bat](https://github.com/sharkdp/bat) with syntax highlighting         |
+| `grep`                | [ripgrep](https://github.com/BurntSushi/ripgrep)                       |
+| `find`                | [fd](https://github.com/sharkdp/fd)                                    |
+| `g` `gs` `ga` `gc`    | git shortcuts (status, add, commit, push, log, diff, checkout, branch) |
+| `lg`                  | [lazygit](https://github.com/jesseduffield/lazygit)                    |
+| `..` `...` `....`     | quick directory navigation                                             |
+| `reload` `ip` `ports` | shell reload, public IP, listening ports                               |
 
 </details>
 
@@ -184,6 +184,7 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 
 Dock management via [dockutil](https://github.com/kcrawford/dockutil):
 
+- **Save/Restore** — save current layout and restore it on another Mac
 - **Clear Dock** — remove all apps for a clean start
 - **Add spacer** — visual separator between groups
 - **Reset** — restore macOS default dock
