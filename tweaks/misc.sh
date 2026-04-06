@@ -2,9 +2,8 @@
 # macrift — Misc system tweaks
 
 misc_tweaks() {
-    [[ "$MACRIFT_BATCH_TWEAKS" != true ]] && audit_reset
-
     audit_default "com.apple.LaunchServices" "LSQuarantine" "-bool" "false" "App open warning"
+    audit_default "com.apple.Safari" "SearchProviderShortName" "-string" "DuckDuckGo" "Safari search engine"
 
     audit_sep
 
@@ -20,18 +19,10 @@ misc_tweaks() {
     audit_default "com.apple.WindowManager" "EnableStandardClickToShowDesktop" "-bool" "false" "Click wallpaper shows desktop"
     audit_default "com.apple.WindowManager" "EnableTiledWindowMargins" "-bool" "false" "Tiled window margins"
 
-    # Boot sound: read current state and add to audit table
+    # Boot sound
     local boot_current="true"
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then
         boot_current="false"
     fi
     AUDIT_ENTRIES+=("Startup sound|${boot_current}|false|nvram|StartupMute|-bool")
-
-    [[ "$MACRIFT_BATCH_TWEAKS" == true ]] && return 0
-
-    if show_audit_table "Misc"; then
-        apply_audited_defaults
-        log_ok "Misc tweaks applied"
-        wait_enter
-    fi
 }

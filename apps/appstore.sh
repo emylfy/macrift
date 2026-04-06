@@ -2,6 +2,7 @@
 # macrift — Mac App Store installer via mas
 
 appstore_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "App Store"
     while true; do
         clear
@@ -104,7 +105,7 @@ install_appstore() {
         as_total=$(echo "$selected" | wc -l | tr -d ' ')
         for ((i=0; i<${#new_labels[@]}; i++)); do
             if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
-                ((as_idx++))
+                as_idx=$((as_idx + 1))
                 show_progress "$as_idx" "$as_total" "${new_labels[$i]}"
                 if mas install "${new_ids[$i]}" &>/dev/null; then
                     log_ok "${new_labels[$i]} installed"

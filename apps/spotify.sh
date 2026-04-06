@@ -1,7 +1,48 @@
 #!/usr/bin/env bash
 # macrift — Spotify customization (SpotX + Spicetify)
 
+# Ensure Spotify prefs file exists (created on first launch) and Spotify is closed.
+# Returns 1 if user aborts or prefs can't be created.
+_ensure_spotify_prefs() {
+    local prefs_path="$HOME/Library/Application Support/Spotify/prefs"
+    if [[ ! -f "$prefs_path" ]]; then
+        log_warn "Spotify prefs not found — need to launch it once"
+        if confirm "Launch Spotify now?"; then
+            open -a Spotify
+            log_info "Waiting for Spotify to initialize..."
+            local w=0
+            while [[ ! -f "$prefs_path" && $w -lt 15 ]]; do
+                sleep 1; w=$((w + 1))
+            done
+            if [[ ! -f "$prefs_path" ]]; then
+                log_err "Prefs still not found — try opening Spotify manually and retry"
+                wait_enter
+                return 1
+            fi
+            log_ok "Prefs created — closing Spotify"
+            killall Spotify 2>/dev/null || true
+            sleep 1
+        else
+            log_info "Open Spotify manually, close it, then retry"
+            wait_enter
+            return 1
+        fi
+    elif pgrep -x Spotify &>/dev/null; then
+        log_warn "Spotify must be closed before applying"
+        if confirm "Quit Spotify now?"; then
+            killall Spotify 2>/dev/null || true
+            sleep 1
+        else
+            log_info "Close Spotify manually and retry"
+            wait_enter
+            return 1
+        fi
+    fi
+    return 0
+}
+
 spotify_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Spotify"
     while true; do
         clear
@@ -28,27 +69,16 @@ SPOTX_URL="https://spotx-official.github.io/run.sh"
 SPOTX_REPO="https://github.com/SpotX-Official/SpotX-Bash"
 
 install_spotx() {
-    while true; do
-        clear
+    clear
+    log_info "SpotX — Spotify ad blocker"
+    printf '  %bSource: %s%b\n\n' "$DIM" "$SPOTX_REPO" "$RESET"
 
-        local choice
-        choice=$(show_menu "SpotX — Spotify ad blocker" \
-            "Install SpotX" \
-            "Review source" \
-            "Back")
-
-        case "$choice" in
-            1)
-                log_info "Running SpotX..."
-                bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty
-                log_ok "SpotX applied"
-                wait_enter
-                return
-                ;;
-            2) open "$SPOTX_REPO"; log_ok "Opened in browser" ;;
-            0) return ;;
-        esac
-    done
+    if confirm "Install SpotX?"; then
+        log_info "Running SpotX..."
+        bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty
+        log_ok "SpotX applied"
+    fi
+    wait_enter
 }
 
 install_spicetify() {
@@ -71,40 +101,7 @@ install_spicetify() {
     fi
 
     # Spotify must have been launched at least once to create prefs
-    local prefs_path="$HOME/Library/Application Support/Spotify/prefs"
-    if [[ ! -f "$prefs_path" ]]; then
-        log_warn "Spotify prefs not found — need to launch it once"
-        if confirm "Launch Spotify now?"; then
-            open -a Spotify
-            log_info "Waiting for Spotify to initialize..."
-            local wait=0
-            while [[ ! -f "$prefs_path" && $wait -lt 15 ]]; do
-                sleep 1; wait=$((wait + 1))
-            done
-            if [[ ! -f "$prefs_path" ]]; then
-                log_err "Prefs still not found — try opening Spotify manually and retry"
-                wait_enter
-                return
-            fi
-            log_ok "Prefs created — closing Spotify"
-            killall Spotify 2>/dev/null || true
-            sleep 1
-        else
-            log_info "Open Spotify manually, close it, then retry"
-            wait_enter
-            return
-        fi
-    elif pgrep -x Spotify &>/dev/null; then
-        log_warn "Spotify must be closed before applying"
-        if confirm "Quit Spotify now?"; then
-            killall Spotify 2>/dev/null || true
-            sleep 1
-        else
-            log_info "Close Spotify manually and retry"
-            wait_enter
-            return
-        fi
-    fi
+    _ensure_spotify_prefs || return
 
     log_info "Applying Spicetify..."
     spicetify restore 2>/dev/null || true

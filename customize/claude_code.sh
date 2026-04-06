@@ -66,7 +66,7 @@ _cc_full_setup() {
 
     _cc_ensure_dir
     _cc_install_settings_user
-    _cc_install_hooks_copy
+    _cc_install_hooks --all
     _cc_install_dir "agents"
     _cc_install_dir "commands"
     _cc_install_dir "rules"
@@ -86,6 +86,7 @@ _cc_install_settings_user() {
 
     if [[ ! -f "$source" ]]; then
         log_err "No user settings found in config/claude-code/settings/"
+        wait_enter
         return
     fi
 
@@ -119,6 +120,7 @@ _cc_install_settings_project() {
 
     if [[ ! -f "$source" ]]; then
         log_err "No project settings found in config/claude-code/settings/"
+        wait_enter
         return
     fi
 
@@ -152,14 +154,18 @@ _cc_install_settings_project() {
 }
 
 # Hooks
+# --all: install all hooks without multiselect (used by full setup)
 
 _cc_install_hooks() {
+    local install_all=false
+    [[ "${1:-}" == "--all" ]] && install_all=true
+
     local source_dir="$CC_CONFIG/hooks"
     local target_dir="$CLAUDE_DIR/hooks"
 
     if [[ ! -d "$source_dir" ]]; then
         log_err "No hooks found in config/claude-code/hooks/"
-        wait_enter
+        $install_all || wait_enter
         return
     fi
 
@@ -171,18 +177,22 @@ _cc_install_hooks() {
 
     if [[ ${#hooks[@]} -eq 0 ]]; then
         log_info "No hook scripts found"
-        wait_enter
+        $install_all || wait_enter
         return
     fi
 
-    local selected
-    selected=$(show_multiselect "Hooks" "${hooks[@]}")
-    [[ -z "$selected" ]] && return
+    local to_install
+    if $install_all; then
+        to_install=$(printf '%s\n' "${hooks[@]}")
+    else
+        to_install=$(show_multiselect "Hooks" "${hooks[@]}")
+        [[ -z "$to_install" ]] && return
 
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install selected hooks"
-        wait_enter
-        return
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Dry run — would install selected hooks"
+            wait_enter
+            return
+        fi
     fi
 
     _cc_ensure_dir
@@ -191,25 +201,16 @@ _cc_install_hooks() {
     while IFS= read -r hook; do
         copy_config "$source_dir/$hook" "$target_dir/$hook"
         chmod +x "$target_dir/$hook"
-    done <<< "$selected"
+    done <<< "$to_install"
 
-    printf '\n'
-    log_ok "Hooks installed to ~/.claude/hooks/"
-    log_info "Register hooks in settings.json to activate them"
-    wait_enter
-}
-
-_cc_install_hooks_copy() {
-    local source_dir="$CC_CONFIG/hooks"
-    local target_dir="$CLAUDE_DIR/hooks"
-    mkdir -p "$target_dir"
-
-    for f in "$source_dir"/*.sh; do
-        [[ -f "$f" ]] || continue
-        copy_config "$f" "$target_dir/$(basename "$f")"
-        chmod +x "$target_dir/$(basename "$f")"
-    done
-    log_ok "Hooks installed"
+    if $install_all; then
+        log_ok "Hooks installed"
+    else
+        printf '\n'
+        log_ok "Hooks installed to ~/.claude/hooks/"
+        log_info "Register hooks in settings.json to activate them"
+        wait_enter
+    fi
 }
 
 # Agents / Commands / Rules

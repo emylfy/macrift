@@ -1,5 +1,35 @@
 # Changelog
 
+## 26.04.8
+
+### New
+
+- **Xcode CLT in Apps menu** — install Xcode Command Line Tools from Apps & Packages without needing Homebrew first
+
+### Changed
+
+- **Install without git** — `install.sh` and `macrift_update` use curl+tar only; no git, Xcode CLT, or sudo required. Global command via `~/.local/bin` instead of `/usr/local/bin`
+- **Tweaks flow** — removed category multiselect step; wizard launches immediately with all categories, skip/apply/reset per item
+- **Tweaks menu** — All Tweaks / Hot Corners / Back instead of jumping straight to multiselect
+- **Safari merged into Misc** — single setting moved to `misc_tweaks`; `safari.sh` deleted
+- **SpotX / Mole / privacy.sexy** — inlined submenus into single confirm + URL hint
+- **Install ALL bundles** — single grouped multiselect instead of 7 sequential dialogs
+- **Brew gate** — moved to per-submenu so Xcode CLT is accessible without Homebrew
+
+### Fixed
+
+- **Multiselect empty results** — `stty` could fail in subshells under `set -e`, causing selected items to be lost
+- **Scroll indicator overflow** — `▲ ···` / `▼ ···` no longer breaks the right box border
+- **Update safety** — `macrift_update` verifies download before removing old install
+
+### Removed
+
+- **`tweaks/safari.sh`** — merged into `misc.sh`
+- **Git dependency** — removed from `install.sh` and `macrift_update`
+- **`supercorners`** — removed from Brewfile.utils (cask deleted from Homebrew)
+
+---
+
 ## 26.04.7
 
 ### Changed

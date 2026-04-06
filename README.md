@@ -28,8 +28,8 @@
 
 Fresh Mac → full setup in minutes.
 
-- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 60+ tweaks across 8 categories, all audited
-- **83 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
+- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 60+ tweaks across 7 categories, all audited
+- **82 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
 - **12 bundled configs** — terminal profiles, shell aliases, Catppuccin theme, editor settings, dock layout — ready to apply
 - **Profile save/restore** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout, Raycast) to Desktop, Documents, or iCloud Drive and restore it anywhere
 
@@ -47,11 +47,15 @@ Installs to `~/.macrift`, creates a global `macrift` command, and launches autom
 Doesn't touch your system until you choose what to apply.
 
 <details>
-<summary>Alternative: manual clone</summary>
+<summary>Alternative install methods</summary>
+
+**Git clone:**
 
 ```bash
 git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift.sh
 ```
+
+**Manual download:** grab the [latest archive](https://github.com/emylfy/macrift/archive/main.tar.gz), extract to `~/.macrift`, and run `~/.macrift/macrift.sh`
 
 </details>
 
@@ -76,7 +80,7 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 
 |     | Feature                | What it does                                                                |
 | :-- | :--------------------- | :-------------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**      | Dock, Finder, Safari, Keyboard, Trackpad, Screenshots, Hot Corners, Misc    |
+| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc            |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                 |
 | 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers      |
 | 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets                 |
@@ -90,19 +94,18 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | :--------------- | :----------------------------------------------------------------------------- |
 | Dock             | Autohide, tile size, animation speed, minimize effect, Spaces, recents         |
 | Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders |
-| Safari           | DuckDuckGo as default search engine                                            |
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions            |
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere |
 | Screenshots      | Format, save location, shadow, date in filename                                |
 | Hot Corners      | Arrow-key menu per corner, no codes to memorize                                |
-| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled window margins |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled window margins, Safari search engine |
 
 ### 📦 Apps & Packages
 
 **Homebrew Bundles** — multi-select installer with 7 curated Brewfiles:
 
 - **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, neovim, tmux, fzf, ripgrep, bat, eza, fd, fastfetch, claude, claude-code, zed, t3-code...
-- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keka, BetterDisplay, Cork, Keyboard Cowboy, SuperCorners, Logi Options+...
+- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keka, BetterDisplay, Cork, Keyboard Cowboy, Logi Options+...
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
 - **Communication** — Ayugram, Telegram, Discord, Vesktop, Slack, Zoom
 - **Media** — IINA, OBS, Spotify, Figma, Affinity

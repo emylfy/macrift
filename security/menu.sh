@@ -10,24 +10,12 @@ privacy_menu() {
     while true; do
         clear
 
+        local items=("Security Status" "Hostname" "DNS" "Hardening (privacy.sexy)")
+        [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
+        items+=("Back")
 
         local choice
-        if [[ -d "/Applications/Microsoft Defender Shim.app" ]]; then
-            choice=$(show_menu "Privacy & Security" \
-                "Security Status" \
-                "Hostname" \
-                "DNS" \
-                "Hardening (privacy.sexy)" \
-                "Remove Microsoft Defender" \
-                "Back")
-        else
-            choice=$(show_menu "Privacy & Security" \
-                "Security Status" \
-                "Hostname" \
-                "DNS" \
-                "Hardening (privacy.sexy)" \
-                "Back")
-        fi
+        choice=$(show_menu "Privacy & Security" "${items[@]}")
 
         case "$choice" in
             1) show_security_status ;;
@@ -46,7 +34,6 @@ hardening_menu() {
     crumb_push "Hardening"
     while true; do
         clear
-
 
         local choice
         choice=$(show_menu "Hardening (privacy.sexy)" \
@@ -78,11 +65,14 @@ show_security_status() {
 
     fv_status=$(_match_status "$(fdesetup status 2>/dev/null)" "On" "Off")
 
+    # Firewall: defaults returns "0", "1", or "2" but may include whitespace/newlines
     local fw_raw
-    fw_raw=$(defaults read /Library/Preferences/com.apple.alf globalstate 2>/dev/null || echo "")
-    fw_raw="${fw_raw// /}"; fw_raw="${fw_raw%%$'\n'*}"
+    fw_raw=$(defaults read /Library/Preferences/com.apple.alf globalstate 2>/dev/null | tr -d ' \n' || echo "")
     case "$fw_raw" in
-        0) fw_status="Off" ;; 1) fw_status="On" ;; 2) fw_status="On (stealth mode)" ;; *) fw_status="unknown" ;;
+        0) fw_status="Off" ;;
+        1) fw_status="On" ;;
+        2) fw_status="On (stealth mode)" ;;
+        *) fw_status="unknown" ;;
     esac
 
     sip_status=$(_match_status "$(csrutil status 2>/dev/null)" "enabled" "disabled" "Enabled" "Disabled")
@@ -129,36 +119,25 @@ show_security_status() {
 }
 
 run_standard_preset() {
-    while true; do
-        clear
+    clear
+    log_info "privacy.sexy — standard preset"
+    printf '  %bReview: %s%b\n\n' "$DIM" "$PRIVACY_MACOS_REVIEW" "$RESET"
 
-        local choice
-        choice=$(show_menu "privacy.sexy — standard preset" \
-            "Run preset" \
-            "Review source" \
-            "Back")
+    if ! confirm "Download and run standard preset?"; then return; fi
 
-        case "$choice" in
-            1)
-                log_info "Downloading preset..."
-                local tmp
-                tmp=$(mktemp /tmp/macrift_privacy_XXXXXX.sh)
-                if curl -fsSL "$PRIVACY_MACOS_PRESET" -o "$tmp"; then
-                    require_sudo
-                    chmod +x "$tmp"
-                    sudo bash "$tmp" < /dev/tty
-                    log_ok "Privacy preset applied"
-                else
-                    log_err "Failed to download preset"
-                fi
-                rm -f "$tmp"
-                wait_enter
-                return
-                ;;
-            2) open "$PRIVACY_MACOS_REVIEW"; log_ok "Opened in browser" ;;
-            0) return ;;
-        esac
-    done
+    log_info "Downloading preset..."
+    local tmp
+    tmp=$(mktemp /tmp/macrift_privacy_XXXXXX.sh)
+    if curl -fsSL "$PRIVACY_MACOS_PRESET" -o "$tmp"; then
+        require_sudo
+        chmod +x "$tmp"
+        sudo bash "$tmp" < /dev/tty
+        log_ok "Privacy preset applied"
+    else
+        log_err "Failed to download preset"
+    fi
+    rm -f "$tmp"
+    wait_enter
 }
 
 remove_defender() {
@@ -226,7 +205,7 @@ DNS_PROVIDERS=(
 
 _dns_label()   { echo "${1%%|*}"; }
 _dns_primary() { local t="${1#*|}"; echo "${t%%|*}"; }
-_dns_second()  { echo "${1##*|}"; }
+_dns_secondary()  { echo "${1##*|}"; }
 
 _active_service() {
     local iface svc
@@ -260,24 +239,26 @@ _apply_dns() {
 
 _ensure_dnspyre() {
     if command -v dnspyre &>/dev/null; then
-        DNSPYRE_WAS_INSTALLED=true
+        _DNSPYRE_INSTALLED_BY_US=false
         return 0
     fi
-    DNSPYRE_WAS_INSTALLED=false
     log_warn "dnspyre not found"
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install dnspyre"
         return 1
     fi
     if confirm "Install dnspyre via Homebrew?"; then
-        brew install tantalor93/dnspyre/dnspyre && return 0
+        if brew install tantalor93/dnspyre/dnspyre; then
+            _DNSPYRE_INSTALLED_BY_US=true
+            return 0
+        fi
         log_err "Failed to install dnspyre"
     fi
     return 1
 }
 
 _cleanup_dnspyre() {
-    if [[ "${DNSPYRE_WAS_INSTALLED:-true}" == false ]] && command -v dnspyre &>/dev/null; then
+    if [[ "${_DNSPYRE_INSTALLED_BY_US:-false}" == true ]] && command -v dnspyre &>/dev/null; then
         brew uninstall tantalor93/dnspyre/dnspyre &>/dev/null
         log_info "Removed dnspyre"
     fi
@@ -453,7 +434,7 @@ _dns_benchmark_dig() {
         printf '\n'
     fi
 
-    log_info "Testing latency with dig (3 queries per provider)..."
+    log_info "Testing all ${#DNS_PROVIDERS[@]} providers with dig (3 queries each)..."
     printf "\n"
 
     local best_label="" best_avg=999999
@@ -491,7 +472,7 @@ _dns_offer_apply() {
 
     if [[ -n "$best_entry" ]]; then
         if confirm "Apply $best_label?"; then
-            _apply_dns "$best_label" "$(_dns_primary "$best_entry")" "$(_dns_second "$best_entry")"
+            _apply_dns "$best_label" "$(_dns_primary "$best_entry")" "$(_dns_secondary "$best_entry")"
             return
         fi
     fi
@@ -510,11 +491,11 @@ _dns_offer_apply() {
     pick=$(show_menu "Apply DNS" "${labels[@]}" "Back")
     MENU_NO_NUMBERS=false
 
-    local idx=0
+    [[ "$pick" == "0" || -z "$pick" ]] && return
+    local picked_label="${labels[$((pick - 1))]}"
     for entry in "${DNS_PROVIDERS[@]}"; do
-        idx=$((idx + 1))
-        if [[ "$pick" == "$idx" ]]; then
-            _apply_dns "$(_dns_label "$entry")" "$(_dns_primary "$entry")" "$(_dns_second "$entry")"
+        if [[ "$(_dns_label "$entry")" == "$picked_label" ]]; then
+            _apply_dns "$picked_label" "$(_dns_primary "$entry")" "$(_dns_secondary "$entry")"
             return
         fi
     done
@@ -530,7 +511,7 @@ dns_pick_provider() {
         local label primary secondary
         label=$(_dns_label "$entry")
         primary=$(_dns_primary "$entry")
-        secondary=$(_dns_second "$entry")
+        secondary=$(_dns_secondary "$entry")
         menu_items+=("$label  ($primary, $secondary)")
     done
     menu_items+=("Back")
@@ -538,15 +519,12 @@ dns_pick_provider() {
     local choice
     choice=$(show_menu "Pick DNS Provider" "${menu_items[@]}")
 
-    local idx=0
-    for entry in "${DNS_PROVIDERS[@]}"; do
-        idx=$((idx + 1))
-        if [[ "$choice" == "$idx" ]]; then
-            _apply_dns "$(_dns_label "$entry")" "$(_dns_primary "$entry")" "$(_dns_second "$entry")"
-            wait_enter
-            return
-        fi
-    done
+    [[ "$choice" == "0" || -z "$choice" ]] && return
+    local picked="${DNS_PROVIDERS[$((choice - 1))]}"
+    if [[ -n "$picked" ]]; then
+        _apply_dns "$(_dns_label "$picked")" "$(_dns_primary "$picked")" "$(_dns_secondary "$picked")"
+        wait_enter
+    fi
 }
 
 # Custom DNS
