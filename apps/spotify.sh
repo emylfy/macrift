@@ -52,12 +52,14 @@ spotify_menu() {
             "SpotX — ad blocker (macOS)" \
             "Spicetify — customization framework" \
             "Restore marketplace settings" \
+            "Save marketplace settings" \
             "Back")
 
         case "$choice" in
             1) install_spotx ;;
             2) install_spicetify ;;
             3) source "$MACRIFT_DIR/apps/spicetify.sh" && restore_marketplace ;;
+            4) source "$MACRIFT_DIR/apps/spicetify.sh" && save_marketplace ;;
             0) break ;;
             *) ;;
         esac

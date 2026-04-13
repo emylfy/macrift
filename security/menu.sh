@@ -5,12 +5,15 @@ PRIVACY_SEXY_URL="https://privacy.sexy"
 PRIVACY_MACOS_PRESET="https://www.privacylearn.com/downloads/macos/standard.sh"
 PRIVACY_MACOS_REVIEW="https://www.privacylearn.com/macos?level=normal"
 
+UPDATE_PROFILE_ID="dev.macrift.update-deferral"
+UPDATE_PROFILE_TEMPLATE="$MACRIFT_DIR/config/profiles/defer-updates.mobileconfig"
+
 privacy_menu() {
     crumb_push "Privacy & Security"
     while true; do
         clear
 
-        local items=("Security Status" "Hostname" "DNS" "Hardening (privacy.sexy)")
+        local items=("Security Status" "Hostname" "DNS" "Update Control" "Hardening (privacy.sexy)")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
         items+=("Back")
 
@@ -21,8 +24,9 @@ privacy_menu() {
             1) show_security_status ;;
             2) set_hostname ;;
             3) dns_menu ;;
-            4) hardening_menu ;;
-            5) remove_defender ;;
+            4) update_control_menu ;;
+            5) hardening_menu ;;
+            6) remove_defender ;;
             0) break ;;
             *) ;;
         esac
@@ -556,6 +560,163 @@ dns_custom() {
     else
         networksetup -setdnsservers "$svc" "$primary"
         log_ok "DNS set to $primary"
+    fi
+
+    wait_enter
+}
+
+# Update Control — defer macOS upgrades via MDM configuration profile
+
+update_control_menu() {
+    crumb_push "Update Control"
+    while true; do
+        clear
+
+        local choice
+        choice=$(show_menu "Update Control" \
+            "Status" \
+            "Defer Updates — install profile" \
+            "Remove Deferral" \
+            "Back")
+
+        case "$choice" in
+            1) update_control_status ;;
+            2) update_control_install ;;
+            3) update_control_remove ;;
+            0) break ;;
+            *) ;;
+        esac
+    done
+    crumb_pop
+}
+
+update_control_status() {
+    clear
+
+    local macos_ver
+    macos_ver="$(sw_vers -productVersion 2>/dev/null || echo 'unknown')"
+
+    local profile_status="Not installed"
+    local deferral_info=""
+    if /usr/bin/profiles show -type configuration 2>/dev/null | grep -q "$UPDATE_PROFILE_ID"; then
+        profile_status="Installed"
+        deferral_info=$(/usr/bin/profiles show -type configuration 2>/dev/null \
+            | grep -E "forceDelayed|enforcedSoftwareUpdate" || true)
+    fi
+
+    local su_auto su_dl
+    su_auto=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticallyInstallMacOSUpdates 2>/dev/null || echo "default")
+    su_dl=$(defaults read /Library/Preferences/com.apple.SoftwareUpdate AutomaticDownload 2>/dev/null || echo "default")
+
+    show_info_box "Update Control · macOS $macos_ver" \
+        "Deferral profile:  $profile_status" \
+        "Auto-install:      $su_auto" \
+        "Auto-download:     $su_dl"
+
+    if [[ -n "$deferral_info" ]]; then
+        printf '\n  %bActive deferral keys:%b\n' "$DIM" "$RESET"
+        echo "$deferral_info" | while IFS= read -r line; do
+            printf '    %s\n' "$line"
+        done
+    fi
+
+    printf '\n'
+    wait_enter
+}
+
+update_control_install() {
+    clear
+
+    if /usr/bin/profiles show -type configuration 2>/dev/null | grep -q "$UPDATE_PROFILE_ID"; then
+        log_warn "Deferral profile already installed"
+        log_info "Remove the existing profile first to change settings"
+        wait_enter
+        return
+    fi
+
+    if [[ ! -f "$UPDATE_PROFILE_TEMPLATE" ]]; then
+        log_err "Profile template not found: $UPDATE_PROFILE_TEMPLATE"
+        wait_enter
+        return
+    fi
+
+    local choice
+    choice=$(show_menu "Defer major updates for" \
+        "30 days" \
+        "60 days" \
+        "90 days (recommended)" \
+        "Back")
+
+    local major_delay
+    case "$choice" in
+        1) major_delay=30 ;;
+        2) major_delay=60 ;;
+        3) major_delay=90 ;;
+        0|*) return ;;
+    esac
+
+    log_info "Major updates: ${major_delay}d · Minor/other: 30d"
+    if ! confirm "Install deferral profile?"; then return; fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Would install update deferral profile (major: ${major_delay}d)"
+        wait_enter
+        return
+    fi
+
+    local uuid1 uuid2 dl_profile
+    uuid1=$(uuidgen)
+    uuid2=$(uuidgen)
+    dl_profile="$HOME/Downloads/macrift-defer-updates.mobileconfig"
+
+    sed -e "s/PAYLOAD-UUID/$uuid1/" \
+        -e "s/PROFILE-UUID/$uuid2/" \
+        -e "s/MAJOR-DELAY/$major_delay/" \
+        -e "s/MINOR-DELAY/30/g" \
+        "$UPDATE_PROFILE_TEMPLATE" > "$dl_profile"
+
+    open "$dl_profile"
+    sleep 1
+    open "x-apple.systempreferences:com.apple.preferences.configurationprofiles"
+    log_info "Approve the profile in System Settings > General > Device Management"
+    printf '\n  %bPress Enter after approving or declining%b ' "$DIM" "$RESET"
+    read -r </dev/tty
+
+    rm -f "$dl_profile"
+
+    if /usr/bin/profiles show -type configuration 2>/dev/null | grep -q "$UPDATE_PROFILE_ID"; then
+        log_ok "Deferral profile installed (major: ${major_delay}d)"
+    else
+        log_warn "Profile not detected — check System Settings > Profiles"
+    fi
+
+    wait_enter
+}
+
+update_control_remove() {
+    clear
+
+    if ! /usr/bin/profiles show -type configuration 2>/dev/null | grep -q "$UPDATE_PROFILE_ID"; then
+        log_info "No deferral profile installed"
+        wait_enter
+        return
+    fi
+
+    if ! confirm "Remove update deferral profile?"; then return; fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Would run: profiles remove -identifier $UPDATE_PROFILE_ID"
+        wait_enter
+        return
+    fi
+
+    require_sudo
+    if sudo /usr/bin/profiles remove -identifier "$UPDATE_PROFILE_ID" 2>/dev/null; then
+        log_ok "Deferral profile removed"
+    else
+        log_warn "Could not remove via CLI"
+        log_info "Remove manually: System Settings > General > Device Management"
+        open "x-apple.systempreferences:com.apple.preferences.configurationprofiles"
     fi
 
     wait_enter

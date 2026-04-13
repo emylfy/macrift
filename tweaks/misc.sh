@@ -19,6 +19,14 @@ misc_tweaks() {
     audit_default "com.apple.WindowManager" "EnableStandardClickToShowDesktop" "-bool" "false" "Click wallpaper shows desktop"
     audit_default "com.apple.WindowManager" "EnableTiledWindowMargins" "-bool" "false" "Tiled window margins"
 
+    # macOS 26+ (Tahoe): context menu icons
+    local macos_ver
+    macos_ver="$(sw_vers -productVersion 2>/dev/null)"
+    if [[ "${macos_ver%%.*}" -ge 26 ]]; then
+        audit_sep
+        audit_default "NSGlobalDomain" "NSMenuEnableActionImages" "-bool" "false" "Context menu icons"
+    fi
+
     # Boot sound
     local boot_current="true"
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then

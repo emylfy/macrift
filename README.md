@@ -83,7 +83,7 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 | ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Hot Corners, Misc       |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup            |
 | 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers |
-| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, hardening presets            |
+| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control, hardening    |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
 
 ### ⚙️ System Tweaks
@@ -98,7 +98,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                           |
 | Screenshots      | Format, save location, shadow, date in filename                                                               |
 | Hot Corners      | Single grid screen, space to cycle actions per corner                                                         |
-| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled window margins, Safari search engine |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled margins, context menu icons (Tahoe)  |
 
 ### 📦 Apps & Packages
 
@@ -116,7 +116,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 
 Export/import your packages with `.brewbak` backup files.
 
-**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace backup restore.
+**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace settings save/restore.
 
 ### 🛡️ Security & Privacy
 
@@ -125,6 +125,7 @@ Export/import your packages with `.brewbak` backup files.
 | **Security Status** | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off     |
 | **Hostname**        | Set custom hostname — hide your name from the network                            |
 | **DNS**             | 11 providers, benchmark with current DNS comparison, VPN detection               |
+| **Update Control**  | Defer macOS upgrades via MDM profile — 30/60/90 days, status, install/remove     |
 | **Hardening**       | [privacy.sexy](https://privacy.sexy) — custom or standard macOS hardening preset |
 
 ### 🧹 Cleanup
