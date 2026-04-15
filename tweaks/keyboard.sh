@@ -17,7 +17,4 @@ keyboard_tweaks() {
     audit_default "NSGlobalDomain" "NSAutomaticQuoteSubstitutionEnabled" "-bool" "false" "Smart quotes"
     audit_default "NSGlobalDomain" "NSAutomaticPeriodSubstitutionEnabled" "-bool" "false" "Double-space period"
 
-    audit_sep
-
-    audit_default "com.apple.HIToolbox" "AppleDictationAutoEnable" "-bool" "false" "Dictation"
 }

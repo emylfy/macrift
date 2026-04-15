@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # macrift — Security & Privacy
 
-PRIVACY_SEXY_URL="https://privacy.sexy"
-PRIVACY_MACOS_PRESET="https://www.privacylearn.com/downloads/macos/standard.sh"
-PRIVACY_MACOS_REVIEW="https://www.privacylearn.com/macos?level=normal"
-
 UPDATE_PROFILE_ID="dev.macrift.update-deferral"
 UPDATE_PROFILE_TEMPLATE="$MACRIFT_DIR/config/profiles/defer-updates.mobileconfig"
 
@@ -13,7 +9,7 @@ privacy_menu() {
     while true; do
         clear
 
-        local items=("Security Status" "Hostname" "DNS" "Update Control" "Hardening (privacy.sexy)")
+        local items=("Security Status" "Hostname" "DNS" "Update Control")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
         items+=("Back")
 
@@ -25,8 +21,7 @@ privacy_menu() {
             2) set_hostname ;;
             3) dns_menu ;;
             4) update_control_menu ;;
-            5) hardening_menu ;;
-            6) remove_defender ;;
+            5) remove_defender ;;
             0) break ;;
             *) ;;
         esac
@@ -34,26 +29,6 @@ privacy_menu() {
     crumb_pop
 }
 
-hardening_menu() {
-    crumb_push "Hardening"
-    while true; do
-        clear
-
-        local choice
-        choice=$(show_menu "Hardening (privacy.sexy)" \
-            "Custom — open privacy.sexy" \
-            "Standard preset — run script" \
-            "Back")
-
-        case "$choice" in
-            1) open "$PRIVACY_SEXY_URL"; log_ok "Opened in browser"; wait_enter ;;
-            2) run_standard_preset ;;
-            0) break ;;
-            *) ;;
-        esac
-    done
-    crumb_pop
-}
 
 _match_status() {
     local raw="$1" on_pat="$2" off_pat="$3" on_label="${4:-On}" off_label="${5:-Off}"
@@ -122,27 +97,6 @@ show_security_status() {
     wait_enter
 }
 
-run_standard_preset() {
-    clear
-    log_info "privacy.sexy — standard preset"
-    printf '  %bReview: %s%b\n\n' "$DIM" "$PRIVACY_MACOS_REVIEW" "$RESET"
-
-    if ! confirm "Download and run standard preset?"; then return; fi
-
-    log_info "Downloading preset..."
-    local tmp
-    tmp=$(mktemp /tmp/macrift_privacy_XXXXXX.sh)
-    if curl -fsSL "$PRIVACY_MACOS_PRESET" -o "$tmp"; then
-        require_sudo
-        chmod +x "$tmp"
-        sudo bash "$tmp" < /dev/tty
-        log_ok "Privacy preset applied"
-    else
-        log_err "Failed to download preset"
-    fi
-    rm -f "$tmp"
-    wait_enter
-}
 
 remove_defender() {
     clear

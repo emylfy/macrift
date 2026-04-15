@@ -2,7 +2,6 @@
 # macrift — Dock tweaks
 
 dock_tweaks() {
-    audit_default "com.apple.dock" "autohide" "-bool" "true" "Autohide"
     audit_default "com.apple.dock" "autohide-delay" "-float" "0" "Autohide delay"
     audit_default "com.apple.dock" "autohide-time-modifier" "-float" "0.3" "Animation speed"
 

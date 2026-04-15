@@ -74,7 +74,7 @@ _tweak_wizard() {
             IFS='|' read -r label rest <<< "${AUDIT_ENTRIES[$i]}"
             [[ "$label" == *"~"* ]] && warn_lines=$(( warn_lines + 1 ))
         done
-        local total_lines=$(( 1 + 1 + csize + warn_lines + 1 ))
+        local total_lines=$(( 1 + 1 + 1 + csize + warn_lines + 1 + 1 ))
         local first_draw=true
 
         while true; do
@@ -96,6 +96,7 @@ _tweak_wizard() {
             done
             printf '  %b%s%b  %b%s%b\033[K\n' \
                 "${BOLD}${ICE}" "$cname" "${RESET}" "$DIM" "$dots" "$R" >&2
+            printf '\033[K\n' >&2
 
             # Render entries
             local si=0
@@ -160,6 +161,7 @@ _tweak_wizard() {
             done
 
             # Hint line
+            printf '\033[K\n' >&2
             local hint="↑↓ move  ␣ apply  d reset  a all"
             if [[ $cat_count -eq 1 ]]; then hint+="  ↵ review"
             elif [[ $cat_idx -eq 0 ]]; then hint+="  →/↵ next"
@@ -336,6 +338,15 @@ select_tweaks() {
     source "$MACRIFT_DIR/tweaks/misc.sh" && misc_tweaks
     local misc_e=${#AUDIT_ENTRIES[@]}
 
+    local privacy_s=$misc_e
+    source "$MACRIFT_DIR/tweaks/privacy.sh"
+    privacy_recommended
+    local privacy_e=${#AUDIT_ENTRIES[@]}
+
+    local strict_s=$privacy_e
+    privacy_strict
+    local strict_e=${#AUDIT_ENTRIES[@]}
+
     local specs=(
         "Dock:${dock_s}:${dock_e}"
         "Finder:${finder_s}:${finder_e}"
@@ -343,6 +354,8 @@ select_tweaks() {
         "Trackpad & Mouse:${input_s}:${input_e}"
         "Screenshots:${screenshots_s}:${screenshots_e}"
         "Misc:${misc_s}:${misc_e}"
+        "Privacy:${privacy_s}:${privacy_e}"
+        "Privacy (Strict):${strict_s}:${strict_e}"
     )
 
     # Wizard: walk through all categories, skip/apply/reset per item

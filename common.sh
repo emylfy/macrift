@@ -78,9 +78,11 @@ fi
 
 _friendly_val() {
     case "$1" in
-        SCcf)    echo "current folder" ;;
-        Nlsv)    echo "list" ;;
-        PfHm)    echo "home" ;;
+        SCcf)                echo "current folder" ;;
+        Nlsv)                echo "list" ;;
+        PfHm)                echo "home" ;;
+        none)                echo "off" ;;
+        ZeroDiagnosticData)  echo "off" ;;
         file://*) echo "$HOME/" ;;
         default) echo "not set" ;;
         *)       echo "$1" ;;
