@@ -82,7 +82,7 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 | :-- | :--------------------- | :--------------------------------------------------------------------- |
 | ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy           |
 | 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup            |
-| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Wallpapers |
+| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Launchpad, Wallpapers |
 | 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control               |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
 
@@ -189,6 +189,16 @@ Dock management via [dockutil](https://github.com/kcrawford/dockutil):
 - **Clear Dock** — remove all apps for a clean start
 - **Add spacer** — visual separator between groups
 - **Reset** — restore macOS default dock
+
+</details>
+
+<details>
+<summary>🚀 Launchpad</summary>
+
+Organize Launchpad apps into folders by App Store category:
+
+- **Sort by category** — auto-detects app categories via metadata, creates folders (Developer Tools, Productivity, Utilities, etc.), merges small categories into Other
+- **Reset to default** — full Launchpad reset to factory layout
 
 </details>
 
