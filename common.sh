@@ -39,13 +39,28 @@ _detect_theme() {
 
     # 2. Query terminal background via OSC 11 (iTerm2, Ghostty, Kitty, WezTerm)
     if [[ -t 2 ]] && [[ -r /dev/tty ]]; then
-        local old_stty response=""
+        local old_stty response="" _dd_pid _timer_pid
+        local _dd_tmp
+        _dd_tmp=$(mktemp)
         old_stty=$(stty -g </dev/tty 2>/dev/null) || true
         stty raw -echo min 0 time 2 </dev/tty 2>/dev/null
         printf '\033]11;?\a' > /dev/tty 2>/dev/null
-        response=$(dd bs=1 count=30 </dev/tty 2>/dev/null) || true
+        # Read with kill-timer to prevent hang in non-standard terminals
+        dd bs=1 count=30 </dev/tty >"$_dd_tmp" 2>/dev/null &
+        _dd_pid=$!
+        (sleep 1 && kill "$_dd_pid" 2>/dev/null) &
+        _timer_pid=$!
+        wait "$_dd_pid" 2>/dev/null
+        kill "$_timer_pid" 2>/dev/null; wait "$_timer_pid" 2>/dev/null
+        response=$(cat "$_dd_tmp")
+        rm -f "$_dd_tmp"
         # Drain any leftover bytes from terminal response
-        dd bs=1 count=64 </dev/tty >/dev/null 2>&1 || true
+        dd bs=1 count=64 </dev/tty >/dev/null 2>&1 &
+        _dd_pid=$!
+        (sleep 1 && kill "$_dd_pid" 2>/dev/null) &
+        _timer_pid=$!
+        wait "$_dd_pid" 2>/dev/null
+        kill "$_timer_pid" 2>/dev/null; wait "$_timer_pid" 2>/dev/null
         stty "$old_stty" </dev/tty 2>/dev/null
         if [[ "$response" =~ rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+) ]]; then
             local r=$((16#${BASH_REMATCH[1]:0:2}))
@@ -130,10 +145,17 @@ spinner() {
 run_with_spinner() {
     local msg="$1"
     shift
-    "$@" &>/dev/null &
+    local _rws_log
+    _rws_log=$(mktemp)
+    "$@" &>"$_rws_log" &
     spinner $! "$msg"
     wait $! 2>/dev/null
-    return $?
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        cat "$_rws_log" >&2
+    fi
+    rm -f "$_rws_log"
+    return $rc
 }
 
 # Progress bar — inline redraw
@@ -1056,15 +1078,16 @@ macrift_update() {
     local tmp
     tmp="$(mktemp -d)"
     if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp" && [[ -d "$tmp/macrift-main" ]]; then
-        rm -rf "$MACRIFT_DIR"
+        # Atomic swap: backup old → move new → remove backup
+        mv "$MACRIFT_DIR" "$MACRIFT_DIR.bak"
         if mv "$tmp/macrift-main" "$MACRIFT_DIR"; then
             chmod +x "$MACRIFT_DIR/macrift.sh"
             find "$MACRIFT_DIR" -name "*.sh" -exec chmod +x {} +
+            rm -rf "$MACRIFT_DIR.bak"
             log_ok "Updated to $(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo 'latest')"
         else
             log_err "Failed to replace install directory"
-            # Restore from tmp if possible
-            [[ -d "$tmp/macrift-main" ]] && mv "$tmp/macrift-main" "$MACRIFT_DIR"
+            mv "$MACRIFT_DIR.bak" "$MACRIFT_DIR"
             rm -rf "$tmp"
             return 1
         fi

@@ -26,7 +26,7 @@ for arg in "$@"; do
                 rm -f "$HOME/.local/bin/macrift"
                 [[ -L "/usr/local/bin/macrift" ]] && sudo rm -f "/usr/local/bin/macrift"
                 if [[ -f "$HOME/.zshrc" ]]; then
-                    sed -i '' '/\.local\/bin/d' "$HOME/.zshrc" 2>/dev/null || true
+                    sed -i '' '/# added by macrift/d' "$HOME/.zshrc" 2>/dev/null || true
                 fi
                 printf '  Done. macrift removed.\n\n'
             fi
@@ -45,7 +45,9 @@ done
 
 # Resolve symlink — global 'macrift' command is a symlink to this file
 MACRIFT_ENTRY="${BASH_SOURCE[0]}"
-[[ -L "$MACRIFT_ENTRY" ]] && MACRIFT_ENTRY="$(readlink "$MACRIFT_ENTRY")"
+while [[ -L "$MACRIFT_ENTRY" ]]; do
+    MACRIFT_ENTRY="$(readlink "$MACRIFT_ENTRY")"
+done
 source "$(cd "$(dirname "$MACRIFT_ENTRY")" && pwd)/common.sh"
 
 # Init log file

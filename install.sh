@@ -38,8 +38,16 @@ printf '\n  %bmacrift installer%b\n\n' "$BOLD" "$RESET"
 info "Downloading macrift..."
 tmp="$(mktemp -d)"
 if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
-    [[ -d "$INSTALL_DIR" ]] && rm -rf "$INSTALL_DIR"
-    mv "$tmp/macrift-main" "$INSTALL_DIR"
+    # Atomic swap: backup old → move new → remove backup
+    [[ -d "$INSTALL_DIR" ]] && mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
+    if mv "$tmp/macrift-main" "$INSTALL_DIR"; then
+        rm -rf "$INSTALL_DIR.bak"
+    else
+        err "Failed to move files into place"
+        [[ -d "$INSTALL_DIR.bak" ]] && mv "$INSTALL_DIR.bak" "$INSTALL_DIR"
+        rm -rf "$tmp"
+        exit 1
+    fi
     rm -rf "$tmp"
     ok "Downloaded → $INSTALL_DIR"
 else
@@ -69,8 +77,8 @@ else
 
         if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
             local_zshrc="$HOME/.zshrc"
-            path_line='export PATH="$HOME/.local/bin:$PATH"'
-            if ! grep -qF '.local/bin' "$local_zshrc" 2>/dev/null; then
+            path_line='export PATH="$HOME/.local/bin:$PATH" # added by macrift'
+            if ! grep -qF '# added by macrift' "$local_zshrc" 2>/dev/null; then
                 printf '\n%s\n' "$path_line" >> "$local_zshrc"
                 ok "Added ~/.local/bin to PATH in .zshrc"
             fi
