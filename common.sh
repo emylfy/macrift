@@ -242,7 +242,7 @@ _adjust_viewport() {
     if $need_scroll && [[ $cursor -lt $item_count ]]; then
         if [[ $cursor -lt $vp_top ]]; then
             vp_top=$cursor
-            while [[ $vp_top -gt 0 && "${items[$((vp_top-1))]}" == "---" ]]; do
+            while [[ $vp_top -gt 0 && ( "${items[$((vp_top-1))]}" == "---" || "${items[$((vp_top-1))]}" == "## "* ) ]]; do
                 vp_top=$((vp_top - 1))
             done
         fi
@@ -334,6 +334,7 @@ show_menu() {
     local i num=0
     for ((i=0; i<last_idx; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
+        [[ "${items[$i]}" == "## "* ]] && continue
         num=$((num + 1))
         sel_nums+=("$num")
         sel_to_item+=("$i")
@@ -346,7 +347,9 @@ show_menu() {
     local max_len=0
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
-        [[ ${#items[$i]} -gt $max_len ]] && max_len=${#items[$i]}
+        local _wtext="${items[$i]}"
+        [[ "$_wtext" == "## "* ]] && _wtext="${_wtext#\#\# }"
+        [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
     local no_nums="${MENU_NO_NUMBERS:-false}"
     local num_w=${#num}; local num_pad=3
@@ -410,17 +413,33 @@ show_menu() {
         # Items
         local cur_num=0 sel_idx=0 rendered=0
         for ((i=0; i<last_idx; i++)); do
-            [[ "${items[$i]}" != "---" ]] && cur_num=$((cur_num + 1))
+            if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
+                cur_num=$((cur_num + 1))
+            fi
 
             if $need_scroll; then
                 if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
-                    [[ "${items[$i]}" != "---" ]] && sel_idx=$((sel_idx + 1))
+                    if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
+                        sel_idx=$((sel_idx + 1))
+                    fi
                     continue
                 fi
             fi
 
             if [[ "${items[$i]}" == "---" ]]; then
                 _box_empty "$inner_w"
+                rendered=$((rendered + 1))
+                continue
+            fi
+
+            if [[ "${items[$i]}" == "## "* ]]; then
+                local htext="${items[$i]#\#\# }"
+                local hindent=$((num_w + num_pad))
+                local hvis=$((2 + hindent + ${#htext}))
+                local hpad=$((inner_w - hvis))
+                local hcontent
+                hcontent=$(printf '%*s%b%s%b' "$hindent" "" "${BOLD}${GRAY}" "$htext" "$R")
+                _box_row "$inner_w" "$hcontent" "$hpad"
                 rendered=$((rendered + 1))
                 continue
             fi

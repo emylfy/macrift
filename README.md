@@ -78,28 +78,30 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 
 ## Features
 
-|     | Feature                | What it does                                                           |
-| :-- | :--------------------- | :--------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy           |
-| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup            |
+|     | Feature                | What it does                                                                      |
+| :-- | :--------------------- | :-------------------------------------------------------------------------------- |
+| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy                      |
+| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                       |
 | 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Launchpad, Wallpapers |
-| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control               |
-| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
+| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control                          |
+| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                                 |
 
 ### ⚙️ System Tweaks
 
 Tweak wizard with per-item skip, apply, or reset to system default. Batch apply or pick individually.
 
-| Category         | What it does                                                                                                  |
-| :--------------- | :------------------------------------------------------------------------------------------------------------ |
-| Dock             | Tile size, animation speed, minimize effect, Spaces, recents                                                  |
-| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders     |
-| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                           |
-| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                           |
-| Screenshots      | Format, save location, shadow, date in filename                                                               |
-| Hot Corners      | Single grid screen, space to cycle actions per corner                                                         |
-| Misc             | Boot sound, app open dialog, Safari search engine, save/print panels, window animations, tiled margins        |
-| Privacy          | Ad tracking, firewall, stealth mode, guest access, screen lock, analytics, Siri, AirDrop, Gatekeeper          |
+| Category         | What it does                                                                                                                                                |
+| :--------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dock             | Tile size, animation speed, minimize effect, Spaces, recents                                                                                                |
+| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders                                                   |
+| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                                                                         |
+| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                                                                         |
+| Screenshots      | Format, save location, shadow, date in filename                                                                                                             |
+| Hot Corners      | Single grid screen, space to cycle actions per corner                                                                                                       |
+| Misc             | Boot sound, app open dialog, Safari search engine, save/print panels, window animations, tiled margins                                                      |
+| Privacy          | Ad tracking, firewall, stealth mode, guest access, screen lock, analytics, Siri, AirDrop, Gatekeeper                                                        |
+| Dithering        | Apple Silicon — disable GPU/DCP temporal dithering ([Stillcolor](https://github.com/aiaf/Stillcolor) port) via headless LaunchAgent daemon, no menu bar app |
+| Space Switcher   | Instant macOS workspace switching — Instant macOS workspace switching via Ctrl+←/→ daemon                                                                   |
 
 ### 📦 Apps & Packages
 
@@ -121,12 +123,12 @@ Export/import your packages with `.brewbak` backup files.
 
 ### 🛡️ Security & Privacy
 
-| Tool                | Description                                                                      |
-| :------------------ | :------------------------------------------------------------------------------- |
-| **Security Status** | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off     |
-| **Hostname**        | Set custom hostname — hide your name from the network                            |
-| **DNS**             | 11 providers, benchmark with current DNS comparison, VPN detection               |
-| **Update Control**  | Defer macOS upgrades via MDM profile — 30/60/90 days, status, install/remove     |
+| Tool                | Description                                                                  |
+| :------------------ | :--------------------------------------------------------------------------- |
+| **Security Status** | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off |
+| **Hostname**        | Set custom hostname — hide your name from the network                        |
+| **DNS**             | 11 providers, benchmark with current DNS comparison, VPN detection           |
+| **Update Control**  | Defer macOS upgrades via MDM profile — 30/60/90 days, status, install/remove |
 
 ### 🧹 Cleanup
 

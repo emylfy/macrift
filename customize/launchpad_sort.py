@@ -13,10 +13,17 @@ CATEGORY_OVERRIDES = {
     "dev.zed.Zed": "Developer Tools",
     "com.rogueamoeba.soundsource": "Utilities",
     "com.crystalidea.macsfancontrol": "Utilities",
-    "com.image-line.fl-cloud-plugins": "Music",
-    "com.image-line.flstudio": "Music",
+    "com.image-line.fl-cloud-plugins": "Media",
+    "com.image-line.flstudio": "Media",
     "com.anthropic.claude-code-url-handler": "Developer Tools",
     "com.logi.pluginservice": "Utilities",
+}
+
+CATEGORY_ALIASES = {
+    "Music": "Media",
+    "Video": "Media",
+    "Photo & Video": "Media",
+    "Entertainment": "Media",
 }
 
 MIN_CATEGORY_SIZE = 2
@@ -81,11 +88,12 @@ def build_category_map():
             else:
                 cat = run(f'mdls -name kMDItemAppStoreCategory -raw "{entry.path}"')
                 if cat and cat != "(null)":
-                    result[bid] = cat
+                    result[bid] = CATEGORY_ALIASES.get(cat, cat)
     return result
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "apply"
+    selected_cats = set(sys.argv[2:]) if mode == "apply" and len(sys.argv) > 2 else None
     darwin_dir = run("getconf DARWIN_USER_DIR")
     lp_db = os.path.join(darwin_dir, "com.apple.dock.launchpad", "db", "db")
 
@@ -143,7 +151,17 @@ def main():
         conn.close()
         sys.exit(0)
 
-    # Apply
+    # Apply: filter groups by user selection, rest become loose apps on the page
+    loose_apps = []
+    if selected_cats is not None:
+        kept = {}
+        for c, items in groups.items():
+            if c in selected_cats:
+                kept[c] = items
+            else:
+                loose_apps.extend(items)
+        groups = kept
+
     if not sort_pages:
         print("ERROR: No pages with third-party apps", file=sys.stderr)
         conn.close()
@@ -186,6 +204,13 @@ def main():
 
         for app_order, (iid, _) in enumerate(groups[cat]):
             cur.execute("UPDATE items SET parent_id=?,ordering=? WHERE rowid=?", (inner_page_id, app_order, iid))
+
+    # Place unselected apps loose on the target page after the folders
+    loose_apps.sort(key=lambda x: (x[1] or "").lower())
+    base_order = len(groups)
+    for offset, (iid, _) in enumerate(loose_apps):
+        cur.execute("UPDATE items SET parent_id=?,ordering=? WHERE rowid=?",
+                    (target_page, base_order + offset, iid))
 
     cur.execute("COMMIT")
 

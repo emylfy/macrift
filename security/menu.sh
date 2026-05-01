@@ -9,7 +9,7 @@ privacy_menu() {
     while true; do
         clear
 
-        local items=("Security Status" "Hostname" "DNS" "Update Control")
+        local items=("Security Status" "Privacy Shortcuts" "Hostname" "DNS" "Update Control")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
         items+=("Back")
 
@@ -18,13 +18,55 @@ privacy_menu() {
 
         case "$choice" in
             1) show_security_status ;;
-            2) set_hostname ;;
-            3) dns_menu ;;
-            4) update_control_menu ;;
-            5) remove_defender ;;
+            2) privacy_shortcuts_menu ;;
+            3) set_hostname ;;
+            4) dns_menu ;;
+            5) update_control_menu ;;
+            6) remove_defender ;;
             0) break ;;
             *) ;;
         esac
+    done
+    crumb_pop
+}
+
+# Privacy Shortcuts — open System Settings panes for permissions.
+# TCC permissions (FDA, Accessibility, Camera, Mic, etc.) all live in one pane,
+# so we open that pane as a single shortcut rather than dispatching per-tab.
+# Format: "Label|x-apple.systempreferences URL"
+PRIVACY_SHORTCUTS=(
+    "Privacy & Security|x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"
+    "Login Items & Extensions|x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+    "Notifications|x-apple.systempreferences:com.apple.preference.notifications"
+)
+
+privacy_shortcuts_menu() {
+    crumb_push "Privacy Shortcuts"
+    while true; do
+        clear
+
+        local labels=() entry
+        for entry in "${PRIVACY_SHORTCUTS[@]}"; do
+            labels+=("${entry%%|*}")
+        done
+        labels+=("Back")
+
+        local choice
+        choice=$(show_menu "Privacy Shortcuts · opens System Settings" "${labels[@]}")
+
+        if [[ "$choice" == "0" || -z "$choice" ]]; then
+            break
+        fi
+
+        local picked="${PRIVACY_SHORTCUTS[$((choice - 1))]}"
+        local url="${picked#*|}"
+
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Would open: $url"
+            wait_enter
+        else
+            open "$url"
+        fi
     done
     crumb_pop
 }

@@ -409,13 +409,20 @@ tweaks_menu() {
 
         local choice
         choice=$(show_menu "System Tweaks" \
-            "All Tweaks" \
+            "## Defaults" \
+            "Browse & Apply" \
+            "---" \
+            "## Tools" \
             "Hot Corners" \
+            "Dithering" \
+            "Space Switcher" \
             "Back")
 
         case "$choice" in
             1) select_tweaks ;;
             2) source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks ;;
+            3) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
+            4) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
             0) break ;;
             *) ;;
         esac
