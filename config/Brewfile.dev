@@ -23,6 +23,7 @@ brew "fd"
 brew "bat"
 brew "eza"
 brew "jq"
+brew "tlrc"
 
 # Network & Media
 brew "httpie"
