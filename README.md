@@ -227,7 +227,7 @@ Includes: Brewfile, macOS defaults (Dock, Finder, Keyboard, Screenshots), dotfil
 
 <div align="center">
 
-[MIT License](LICENSE) · [Changelog](CHANGELOG.md) · [Report a Bug](https://github.com/emylfy/macrift/issues)
+[MIT License](LICENSE) · [Releases](https://github.com/emylfy/macrift/releases) · [Report a Bug](https://github.com/emylfy/macrift/issues)
 
 <sub>If this saved you time, a star helps others find it</sub>
 
