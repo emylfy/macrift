@@ -6,11 +6,24 @@ CC_CONFIG="$MACRIFT_DIR/config/claude-code"
 CC_ENV_MARKER="# macrift:claude-code env"
 CC_RALIAS_MARKER="# macrift:claude-code r-alias"
 
-# Telegram bridge (anthropics/claude-plugins-official telegram plugin)
-CC_TG_LAUNCHER="$HOME/.local/bin/ctg"
-CC_TG_LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.claude-tg.plist"
-CC_TG_LAUNCH_AGENT_LABEL="com.claude-tg"
-CC_TG_ENV_FILE="$HOME/.claude/channels/telegram/.env"
+# Telegram bot (linuz90/claude-telegram-bot)
+# Replaces the old anthropics/claude-plugins-official telegram plugin approach,
+# which was unreliable: 409 conflicts when multiple claude sessions opened, no
+# way to attach to running session, MCP server died on idle. linuz90's bot
+# runs as a standalone Bun process via Claude Agent SDK CLI auth.
+CC_TGBOT_REPO_URL="https://github.com/linuz90/claude-telegram-bot"
+CC_TGBOT_DIR="$HOME/Documents/Code/Claude/claude-telegram-bot"
+CC_TGBOT_LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist"
+CC_TGBOT_LAUNCH_AGENT_LABEL="com.claude-telegram-ts"
+
+# Legacy paths from the old plugin setup — kept here so cleanup can find them.
+CC_TG_LEGACY_LAUNCHER="$HOME/.local/bin/ctg"
+CC_TG_LEGACY_LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.claude-tg.plist"
+CC_TG_LEGACY_LAUNCH_AGENT_LABEL="com.claude-tg"
+CC_TG_LEGACY_ENV_FILE="$HOME/.claude/channels/telegram/.env"
+CC_TG_LEGACY_OLD_PLIST="$HOME/Library/LaunchAgents/com.emylfy.claude-telegram.plist"
+CC_TG_LEGACY_OLD_LABEL="com.emylfy.claude-telegram"
+CC_TG_LEGACY_OLD_LAUNCHER="$HOME/.local/bin/claude-telegram.sh"
 CC_TG_PATH_MARKER="# macrift:claude-code local-bin-path"
 
 claude_code_menu() {
@@ -24,7 +37,7 @@ claude_code_menu() {
             "Full Setup — install everything to ~/.claude/" \
             "Custom Setup — pick what to install" \
             "---" \
-            "Telegram bridge — plugin, token, launcher, autostart" \
+            "Telegram bot — linuz90/claude-telegram-bot setup" \
             "---" \
             "Reset — wipe macrift-managed Claude state" \
             "Back")
@@ -32,7 +45,7 @@ claude_code_menu() {
         case "$choice" in
             1)  _cc_full_setup ;;
             2)  _cc_custom_menu ;;
-            3)  _cc_telegram_menu ;;
+            3)  _cc_tgbot_menu ;;
             4)  _cc_reset; wait_enter ;;
             0)  break ;;
             *)  ;;
@@ -600,32 +613,36 @@ _cc_install_r_alias_copy() {
     log_ok "'r' alias added to .zshrc"
 }
 
-# Telegram bridge
+# Telegram bot (linuz90/claude-telegram-bot)
 
-_cc_telegram_menu() {
+_cc_tgbot_menu() {
     crumb_push "Telegram"
     while true; do
         clear
 
         local choice
-        choice=$(show_menu "Telegram bridge" \
-            "Full setup — plugin + token + launcher + autostart" \
+        choice=$(show_menu "Telegram bot" \
+            "Full setup — clone, configure, patch, autostart" \
             "---" \
-            "Plugin only — claude plugin install telegram@…" \
-            "Bot token — saved to ~/.claude/channels/telegram/.env (chmod 600)" \
-            "Launcher 'ctg' — ~/.local/bin/ctg" \
-            "Autostart on login — LaunchAgent" \
+            "Clone repo + bun install" \
+            "Configure .env (token + user_id)" \
+            "Patch source (fix grammy 409 conflicts)" \
+            "Update Claude Agent SDK to latest" \
+            "Install LaunchAgent (autostart on login)" \
             "---" \
-            "Remove launcher + autostart (keeps token)" \
+            "Migrate from old plugin (cleanup remnants)" \
+            "Remove launcher + autostart" \
             "Back")
 
         case "$choice" in
-            1)  _cc_install_tg_full; wait_enter ;;
-            2)  _cc_install_tg_plugin; wait_enter ;;
-            3)  _cc_install_tg_token; wait_enter ;;
-            4)  _cc_install_tg_launcher; wait_enter ;;
-            5)  _cc_install_tg_launchagent; wait_enter ;;
-            6)  _cc_remove_tg_launcher_autostart; wait_enter ;;
+            1)  _cc_install_tgbot_full; wait_enter ;;
+            2)  _cc_install_tgbot_clone; wait_enter ;;
+            3)  _cc_install_tgbot_env; wait_enter ;;
+            4)  _cc_install_tgbot_patch; wait_enter ;;
+            5)  _cc_install_tgbot_sdk_update; wait_enter ;;
+            6)  _cc_install_tgbot_launchagent; wait_enter ;;
+            7)  _cc_uninstall_legacy_plugin; wait_enter ;;
+            8)  _cc_remove_tgbot; wait_enter ;;
             0)  break ;;
             *)  ;;
         esac
@@ -633,110 +650,11 @@ _cc_telegram_menu() {
     crumb_pop
 }
 
-_cc_install_tg_plugin() {
-    if ! command -v claude >/dev/null 2>&1; then
-        log_err "claude CLI not found. Install: https://claude.com/code"
-        return 1
-    fi
-    printf '\n'
-    log_info "Adds anthropics/claude-plugins-official marketplace + installs telegram plugin"
-    printf '\n'
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install plugin"
-        return
-    fi
-    if ! confirm "Install Telegram plugin?"; then return; fi
-    _cc_install_tg_plugin_copy
-}
+# Clone + bun install
 
-_cc_install_tg_plugin_copy() {
-    if ! command -v claude >/dev/null 2>&1; then
-        log_err "claude CLI not found"
-        return 1
-    fi
-    if ! claude plugin marketplace list 2>/dev/null | grep -q claude-plugins-official; then
-        log_info "Adding marketplace claude-plugins-official…"
-        if ! claude plugin marketplace add anthropics/claude-plugins-official </dev/null >/dev/null 2>&1; then
-            log_err "Failed to add marketplace"
-            return 1
-        fi
-        log_ok "Marketplace added"
-    else
-        log_skip "Marketplace already configured"
-    fi
-    if ! claude plugin list 2>/dev/null | grep -q '^telegram@claude-plugins-official'; then
-        log_info "Installing telegram@claude-plugins-official…"
-        if ! claude plugin install telegram@claude-plugins-official </dev/null >/dev/null 2>&1; then
-            log_err "Failed to install plugin"
-            return 1
-        fi
-        log_ok "Plugin installed"
-    else
-        log_skip "Plugin already installed"
-    fi
-}
-
-_cc_install_tg_token() {
-    printf '\n'
-    log_info "Stores bot token in $CC_TG_ENV_FILE (chmod 600)"
-    log_info "Get one from @BotFather: /newbot"
-    printf '\n'
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would prompt for bot token"
-        return
-    fi
-
-    local existing=""
-    if [[ -f "$CC_TG_ENV_FILE" ]]; then
-        existing=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$CC_TG_ENV_FILE" 2>/dev/null | tail -1 \
-                   | sed 's/^TELEGRAM_BOT_TOKEN=//' | tr -d '"' | tr -d "'")
-    fi
-    if [[ -n "$existing" ]]; then
-        log_info "Existing token: ${existing%%:*}:…${existing: -4}"
-        if ! confirm "Replace it?" "n"; then
-            log_skip "Token unchanged"
-            return
-        fi
-    fi
-
-    local token
-    printf '  Bot token: '
-    read -r token
-    if [[ ! "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; then
-        log_err "Invalid token format (expected NNNNN:AA…)"
-        return 1
-    fi
-
-    if command -v curl >/dev/null 2>&1; then
-        local resp
-        resp=$(curl -fsSL --max-time 8 "https://api.telegram.org/bot${token}/getMe" 2>/dev/null || true)
-        if [[ "$resp" == *'"ok":true'* ]]; then
-            local username
-            username=$(printf '%s' "$resp" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
-            log_ok "Bot verified: @$username (https://t.me/$username)"
-        else
-            log_warn "Could not verify online — saving anyway"
-        fi
-    fi
-
-    mkdir -p "$(dirname "$CC_TG_ENV_FILE")"
-    if [[ -f "$CC_TG_ENV_FILE" ]]; then
-        backup_file "$CC_TG_ENV_FILE"
-        local tmp
-        tmp=$(mktemp)
-        grep -v '^TELEGRAM_BOT_TOKEN=' "$CC_TG_ENV_FILE" >"$tmp" 2>/dev/null || true
-        printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token" >>"$tmp"
-        mv "$tmp" "$CC_TG_ENV_FILE"
-    else
-        printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token" >"$CC_TG_ENV_FILE"
-    fi
-    chmod 600 "$CC_TG_ENV_FILE"
-    log_ok "Token saved to $CC_TG_ENV_FILE"
-}
-
-_cc_install_tg_launcher() {
-    if ! command -v claude >/dev/null 2>&1; then
-        log_err "claude CLI not found"
+_cc_install_tgbot_clone() {
+    if ! command -v git >/dev/null 2>&1; then
+        log_err "git not found"
         return 1
     fi
     if ! command -v bun >/dev/null 2>&1; then
@@ -744,164 +662,456 @@ _cc_install_tg_launcher() {
         return 1
     fi
     printf '\n'
-    log_info "Creates $CC_TG_LAUNCHER — runs: claude --channels plugin:telegram@…"
+    log_info "Clones $CC_TGBOT_REPO_URL into $CC_TGBOT_DIR + runs bun install"
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install launcher"
+        log_info "Dry run — would clone repo"
         return
     fi
-    if ! confirm "Install ctg launcher?"; then return; fi
-    _cc_install_tg_launcher_copy
+    if ! confirm "Clone the bot repo?"; then return; fi
+    _cc_install_tgbot_clone_copy
 }
 
-_cc_install_tg_launcher_copy() {
-    local claude_bin bun_bin
-    claude_bin=$(command -v claude || true)
-    bun_bin=$(command -v bun || true)
-    if [[ -z "$claude_bin" || -z "$bun_bin" ]]; then
-        log_err "claude or bun not found — cannot bake launcher"
+_cc_install_tgbot_clone_copy() {
+    if [[ -d "$CC_TGBOT_DIR" ]]; then
+        log_skip "$CC_TGBOT_DIR already exists, pulling latest"
+        if ! git -C "$CC_TGBOT_DIR" pull --ff-only 2>&1 | tail -5; then
+            log_warn "git pull failed — leaving repo as is"
+        fi
+    else
+        mkdir -p "$(dirname "$CC_TGBOT_DIR")"
+        if ! git clone "$CC_TGBOT_REPO_URL" "$CC_TGBOT_DIR" 2>&1 | tail -5; then
+            log_err "git clone failed"
+            return 1
+        fi
+        log_ok "Cloned to $CC_TGBOT_DIR"
+    fi
+
+    log_info "Running bun install..."
+    if ! ( cd "$CC_TGBOT_DIR" && bun install --no-summary 2>&1 | tail -5 ); then
+        log_err "bun install failed"
         return 1
     fi
-
-    local path_dirs=("$(dirname "$claude_bin")" "$(dirname "$bun_bin")" "/opt/homebrew/bin" "/usr/local/bin")
-    local path_line="" seen=":"
-    local d
-    for d in "${path_dirs[@]}"; do
-        case "$seen" in *":$d:"*) ;; *) path_line+="$d:"; seen+="$d:" ;; esac
-    done
-    path_line="${path_line%:}"
-
-    mkdir -p "$(dirname "$CC_TG_LAUNCHER")"
-    cat >"$CC_TG_LAUNCHER" <<SH
-#!/bin/zsh
-export PATH="$path_line:\$PATH"
-exec "$claude_bin" --channels plugin:telegram@claude-plugins-official
-SH
-    chmod +x "$CC_TG_LAUNCHER"
-    log_ok "Launcher installed: $CC_TG_LAUNCHER"
-
-    _cc_ensure_local_bin_on_path
+    log_ok "Dependencies installed"
 }
 
-# Idempotent: writes a marker-bounded `export PATH=…` block to ~/.zshrc only if
-# ~/.local/bin isn't already on PATH (current shell or .zshrc text). Re-running
-# replaces the macrift block in place; user-added PATH lines are left alone.
-_cc_ensure_local_bin_on_path() {
-    case ":$PATH:" in
-        *":$HOME/.local/bin:"*)
-            log_info "~/.local/bin already on PATH — run: ctg"
-            return
-            ;;
-    esac
+# Configure .env (token + user_id)
 
-    local zshrc="$HOME/.zshrc"
-    # If user has their own .local/bin entry (not ours), don't fight it — just inform.
-    if [[ -f "$zshrc" ]] && grep -q '\.local/bin' "$zshrc" 2>/dev/null \
-        && ! grep -qF "$CC_TG_PATH_MARKER" "$zshrc" 2>/dev/null; then
-        log_warn "~/.local/bin appears in ~/.zshrc but isn't active in current shell"
-        log_info "Run: source ~/.zshrc  (or open a new terminal)"
-        return
-    fi
-
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would add ~/.local/bin to PATH in $zshrc"
-        return
-    fi
-
-    printf 'export PATH="$HOME/.local/bin:$PATH"\n' \
-        | _cc_replace_marked_block "$zshrc" "$CC_TG_PATH_MARKER"
-    log_ok "Added ~/.local/bin to PATH in ~/.zshrc"
-    log_info "Run: source ~/.zshrc  (or open a new terminal) — then: ctg"
-}
-
-_cc_install_tg_launchagent() {
-    if [[ ! -x "$CC_TG_LAUNCHER" ]]; then
-        log_err "Launcher missing at $CC_TG_LAUNCHER — install it first"
+_cc_install_tgbot_env() {
+    if [[ ! -d "$CC_TGBOT_DIR" ]]; then
+        log_err "Bot repo not found. Run Clone first."
         return 1
     fi
     printf '\n'
-    log_info "Opens claude+telegram on login via Ghostty (or Terminal)"
-    log_info "plist: $CC_TG_LAUNCH_AGENT"
+    log_info "Bot token from @BotFather, your numeric Telegram ID from @userinfobot"
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would configure .env"
+        return
+    fi
+    if ! confirm "Configure .env now?"; then return; fi
+    _cc_install_tgbot_env_copy
+}
+
+_cc_install_tgbot_env_copy() {
+    local env_file="$CC_TGBOT_DIR/.env"
+
+    # Token
+    local existing_token=""
+    if [[ -f "$env_file" ]]; then
+        existing_token=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$env_file" 2>/dev/null \
+                         | tail -1 | sed 's/^TELEGRAM_BOT_TOKEN=//' | tr -d '"' | tr -d "'")
+    fi
+    local token="$existing_token"
+    if [[ -n "$existing_token" ]]; then
+        log_info "Existing token: ${existing_token%%:*}:…${existing_token: -4}"
+        if confirm "Replace it?" "n"; then token=""; fi
+    fi
+    if [[ -z "$token" ]]; then
+        printf '  Bot token: '
+        read -r token
+        if [[ ! "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; then
+            log_err "Invalid token format (expected NNNNN:AA…)"
+            return 1
+        fi
+        if command -v curl >/dev/null 2>&1; then
+            local resp
+            resp=$(curl -fsSL --max-time 8 "https://api.telegram.org/bot${token}/getMe" 2>/dev/null || true)
+            if [[ "$resp" == *'"ok":true'* ]]; then
+                local username
+                username=$(printf '%s' "$resp" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
+                log_ok "Bot verified: @$username"
+            else
+                log_warn "Could not verify online — saving anyway"
+            fi
+        fi
+    fi
+
+    # User ID — auto-detect from old plugin's access.json if present
+    local user_id=""
+    local legacy_access="$HOME/.claude/channels/telegram/access.json"
+    if [[ -f "$legacy_access" ]] && command -v jq >/dev/null 2>&1; then
+        user_id=$(jq -r '.allowFrom[0] // empty' "$legacy_access" 2>/dev/null)
+        [[ -n "$user_id" ]] && log_info "Found paired user_id $user_id in legacy access.json"
+    fi
+    if [[ -z "$user_id" ]]; then
+        printf '  Your Telegram user ID (numeric, from @userinfobot): '
+        read -r user_id
+    fi
+    if [[ ! "$user_id" =~ ^[0-9]+$ ]]; then
+        log_err "Invalid user_id (expected numeric)"
+        return 1
+    fi
+
+    # Resolve claude binary path for SDK
+    local claude_bin
+    claude_bin=$(command -v claude || echo "")
+    if [[ -z "$claude_bin" ]]; then
+        log_warn "claude CLI not on PATH — SDK may not find it. Run 'claude' once to authenticate."
+    fi
+
+    local working_dir="${CLAUDE_WORKING_DIR:-$HOME/Documents/Code}"
+
+    [[ -f "$env_file" ]] && backup_file "$env_file"
+    cat > "$env_file" <<ENV
+TELEGRAM_BOT_TOKEN=$token
+TELEGRAM_ALLOWED_USERS=$user_id
+CLAUDE_WORKING_DIR=$working_dir
+ALLOWED_PATHS=$HOME/Documents,$HOME/Downloads,$HOME/Desktop,$HOME/.claude
+CLAUDE_CODE_PATH=$claude_bin
+ENV
+    chmod 600 "$env_file"
+    log_ok "Wrote $env_file (chmod 600)"
+}
+
+# Patch source — fixes the 409 conflicts we hit
+
+_cc_install_tgbot_patch() {
+    if [[ ! -f "$CC_TGBOT_DIR/src/index.ts" ]]; then
+        log_err "src/index.ts not found in $CC_TGBOT_DIR. Run Clone first."
+        return 1
+    fi
+    printf '\n'
+    log_info "Replaces run(bot) → bot.start() and removes sequentialize middleware."
+    log_info "Both pull in @grammyjs/runner internals that spawn a competing"
+    log_info "getUpdates loop — Telegram rejects this with 409 conflicts."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would patch src/index.ts"
+        return
+    fi
+    if ! confirm "Apply patch to src/index.ts?"; then return; fi
+    _cc_install_tgbot_patch_copy
+}
+
+_cc_install_tgbot_patch_copy() {
+    local index_ts="$CC_TGBOT_DIR/src/index.ts"
+
+    # Idempotency check: patch already applied if `bot.start({` is in file
+    # AND the original `run(bot)` is gone.
+    if grep -q '^bot\.start({' "$index_ts" && ! grep -q '^const runner = run(bot)' "$index_ts"; then
+        log_skip "Patch already applied"
+        return 0
+    fi
+
+    backup_file "$index_ts"
+
+    # Remove sequentialize middleware (keep import for other uses if any)
+    # Replace import line: drop `run,`
+    sed -i '' \
+        -e 's/import { run, sequentialize } from "@grammyjs\/runner";/import { sequentialize } from "@grammyjs\/runner";/' \
+        "$index_ts"
+
+    # Replace `const runner = run(bot);` with `bot.start({...})`
+    # And replace stopRunner block
+    local tmp
+    tmp=$(mktemp)
+    awk '
+        /^const runner = run\(bot\);/ {
+            print "// PATCHED by macrift: use bot.start() (single fetcher) instead of run(bot)."
+            print "// run(bot) caused concurrent getUpdates → 409 conflicts."
+            print "bot.start({"
+            print "  onStart: (info) => console.log(`Bot polling: @${info.username}`),"
+            print "});"
+            next
+        }
+        /^const stopRunner = \(\) => \{$/ {
+            print "// PATCHED by macrift: simplified shutdown (no runner to check)."
+            print "const stopRunner = () => {"
+            print "  console.log(\"Stopping bot...\");"
+            print "  bot.stop();"
+            print "};"
+            in_stop = 1
+            next
+        }
+        in_stop && /^};$/ { in_stop = 0; next }
+        in_stop { next }
+        { print }
+    ' "$index_ts" > "$tmp"
+
+    # Comment out bot.use(sequentialize(...)) block — multi-line.
+    # The block opens with `bot.use(\n  sequentialize((ctx) => {` and closes with `})`.
+    awk '
+        /^bot\.use\($/ { in_use = 1; print "/* PATCHED by macrift: sequentialize disabled — see runner patch above"; print; next }
+        in_use && /^\);$/ { print; print "*/"; in_use = 0; next }
+        { print }
+    ' "$tmp" > "$index_ts"
+    rm -f "$tmp"
+
+    log_ok "Patched $index_ts (backup: ${index_ts##*/}.bak)"
+}
+
+# Update SDK — required because 0.1.76 has error_during_execution bug fixed in 0.1.77+
+
+_cc_install_tgbot_sdk_update() {
+    if [[ ! -d "$CC_TGBOT_DIR" ]]; then
+        log_err "Bot repo not found"
+        return 1
+    fi
+    if ! command -v bun >/dev/null 2>&1; then
+        log_err "bun not found"
+        return 1
+    fi
+    printf '\n'
+    log_info "@anthropic-ai/claude-agent-sdk 0.1.76 has an error_during_execution bug"
+    log_info "(SDK returns empty/fake result events). Fixed in 0.1.77+."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would update SDK"
+        return
+    fi
+    if ! confirm "Update SDK to latest?"; then return; fi
+    _cc_install_tgbot_sdk_update_copy
+}
+
+_cc_install_tgbot_sdk_update_copy() {
+    log_info "Running bun update..."
+    if ! ( cd "$CC_TGBOT_DIR" && bun update @anthropic-ai/claude-agent-sdk --no-cache 2>&1 | tail -5 ); then
+        log_err "bun update failed"
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        local v
+        v=$(jq -r .version "$CC_TGBOT_DIR/node_modules/@anthropic-ai/claude-agent-sdk/package.json" 2>/dev/null)
+        log_ok "SDK now at $v"
+    else
+        log_ok "SDK updated"
+    fi
+}
+
+# LaunchAgent — autostart on login + auto-restart on crash
+
+_cc_install_tgbot_launchagent() {
+    if [[ ! -f "$CC_TGBOT_DIR/.env" ]]; then
+        log_err ".env missing. Configure it first."
+        return 1
+    fi
+    if [[ ! -f "$CC_TGBOT_DIR/src/index.ts" ]]; then
+        log_err "src/index.ts missing. Clone first."
+        return 1
+    fi
+    printf '\n'
+    log_info "plist: $CC_TGBOT_LAUNCH_AGENT"
+    log_info "logs:  /tmp/claude-telegram-bot-ts.{log,err}"
+    log_info "KeepAlive=true (auto-restart on crash); RunAtLoad=true (start on login)"
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install LaunchAgent"
         return
     fi
     if ! confirm "Install autostart?"; then return; fi
-    _cc_install_tg_launchagent_copy
+    _cc_install_tgbot_launchagent_copy
 }
 
-_cc_install_tg_launchagent_copy() {
-    local term="/Applications/Ghostty.app"
-    [[ -d "$term" ]] || term="/System/Applications/Utilities/Terminal.app"
-    log_info "Terminal app: $term"
+_cc_install_tgbot_launchagent_copy() {
+    local env_file="$CC_TGBOT_DIR/.env"
+    local bun_bin
+    bun_bin=$(command -v bun || echo /Users/$USER/.bun/bin/bun)
 
-    cat >"$CC_TG_LAUNCH_AGENT" <<PLIST
+    # Read each env var so we can bake them into the plist (launchd doesn't read .env)
+    local token users wd ap cc_path
+    token=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$env_file" | tail -1 | sed 's/^TELEGRAM_BOT_TOKEN=//')
+    users=$(grep -E '^TELEGRAM_ALLOWED_USERS=' "$env_file" | tail -1 | sed 's/^TELEGRAM_ALLOWED_USERS=//')
+    wd=$(grep -E '^CLAUDE_WORKING_DIR=' "$env_file" | tail -1 | sed 's/^CLAUDE_WORKING_DIR=//')
+    ap=$(grep -E '^ALLOWED_PATHS=' "$env_file" | tail -1 | sed 's/^ALLOWED_PATHS=//')
+    cc_path=$(grep -E '^CLAUDE_CODE_PATH=' "$env_file" | tail -1 | sed 's/^CLAUDE_CODE_PATH=//')
+
+    cat > "$CC_TGBOT_LAUNCH_AGENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>$CC_TG_LAUNCH_AGENT_LABEL</string>
-  <key>ProgramArguments</key><array>
-    <string>/usr/bin/open</string><string>-na</string><string>$term</string>
-    <string>--args</string><string>-e</string><string>$CC_TG_LAUNCHER</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>/tmp/claude-tg.log</string>
-  <key>StandardErrorPath</key><string>/tmp/claude-tg.err</string>
-</dict></plist>
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$CC_TGBOT_LAUNCH_AGENT_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$bun_bin</string>
+        <string>run</string>
+        <string>$CC_TGBOT_DIR/src/index.ts</string>
+    </array>
+    <key>WorkingDirectory</key><string>$CC_TGBOT_DIR</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TELEGRAM_BOT_TOKEN</key><string>$token</string>
+        <key>TELEGRAM_ALLOWED_USERS</key><string>$users</string>
+        <key>CLAUDE_WORKING_DIR</key><string>$wd</string>
+        <key>ALLOWED_PATHS</key><string>$ap</string>
+        <key>CLAUDE_CODE_PATH</key><string>$cc_path</string>
+        <key>RATE_LIMIT_ENABLED</key><string>true</string>
+        <key>RATE_LIMIT_REQUESTS</key><string>40</string>
+        <key>RATE_LIMIT_WINDOW</key><string>60</string>
+        <key>PATH</key>
+        <string>$HOME/.bun/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>StandardOutPath</key><string>/tmp/claude-telegram-bot-ts.log</string>
+    <key>StandardErrorPath</key><string>/tmp/claude-telegram-bot-ts.err</string>
+</dict>
+</plist>
 PLIST
 
-    if ! plutil -lint "$CC_TG_LAUNCH_AGENT" >/dev/null 2>&1; then
+    if ! plutil -lint "$CC_TGBOT_LAUNCH_AGENT" >/dev/null 2>&1; then
         log_err "Generated plist is invalid"
+        plutil -lint "$CC_TGBOT_LAUNCH_AGENT"
         return 1
     fi
-    launchctl bootout "gui/$UID/$CC_TG_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-    if ! launchctl bootstrap "gui/$UID" "$CC_TG_LAUNCH_AGENT" 2>/tmp/claude-tg.boot.err; then
+
+    launchctl bootout "gui/$UID/$CC_TGBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    if ! launchctl bootstrap "gui/$UID" "$CC_TGBOT_LAUNCH_AGENT" 2>/tmp/cc-tgbot-bootstrap.err; then
         log_err "launchctl bootstrap failed:"
-        cat /tmp/claude-tg.boot.err 2>/dev/null
+        cat /tmp/cc-tgbot-bootstrap.err 2>/dev/null
         return 1
     fi
-    log_ok "Autostart installed"
+    launchctl kickstart -k "gui/$UID/$CC_TGBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    log_ok "LaunchAgent installed and started"
 }
 
-_cc_install_tg_full() {
+# Full setup — orchestrates all steps
+
+_cc_install_tgbot_full() {
     printf '\n'
-    log_info "Full Telegram bridge install: plugin + token + launcher + autostart"
+    log_info "Full setup: clone → bun install → .env → patch → SDK update → LaunchAgent"
+    log_info "Optional: legacy plugin cleanup if old setup detected."
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would run all four steps"
+        log_info "Dry run — would run all steps"
         return
     fi
-    if ! confirm "Run full Telegram bridge setup?"; then return; fi
+    if ! confirm "Run full setup?"; then return; fi
 
-    _cc_install_tg_plugin_copy   || return
-    _cc_install_tg_token         || return
-    _cc_install_tg_launcher_copy || return
-    if confirm "Enable autostart on login?"; then
-        _cc_install_tg_launchagent_copy || return
+    # If old plugin artifacts exist, offer cleanup first (otherwise 409)
+    if [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" ]] \
+        || jq -e '.enabledPlugins["telegram@claude-plugins-official"]' "$CLAUDE_DIR/settings.json" >/dev/null 2>&1; then
+        printf '\n'
+        log_warn "Old plugin setup detected — would cause 409 conflicts."
+        if confirm "Clean it up first?" "y"; then
+            _cc_uninstall_legacy_plugin_copy
+        fi
+    fi
+
+    _cc_install_tgbot_clone_copy        || return 1
+    _cc_install_tgbot_env_copy          || return 1
+    _cc_install_tgbot_patch_copy        || return 1
+    _cc_install_tgbot_sdk_update_copy   || return 1
+    if confirm "Install autostart on login?"; then
+        _cc_install_tgbot_launchagent_copy || return 1
     fi
 
     printf '\n'
-    log_ok "Telegram bridge ready"
-    log_info "Run 'ctg' anytime. In Telegram: message your bot, copy the 6-char code,"
-    log_info "then in Claude say: pair me with code <CODE>"
+    log_ok "Telegram bot ready"
+    log_info "Logs: tail -f /tmp/claude-telegram-bot-ts.log"
+    log_info "Restart: launchctl kickstart -k gui/\$UID/$CC_TGBOT_LAUNCH_AGENT_LABEL"
 }
 
-_cc_remove_tg_launcher_autostart() {
+# Migration cleanup — wipe everything from the old plugin setup
+
+_cc_uninstall_legacy_plugin() {
     printf '\n'
-    log_info "Removes ctg launcher and LaunchAgent. Token at $CC_TG_ENV_FILE preserved."
+    log_info "Removes:"
+    log_info "  enabledPlugins.telegram@... in settings.json"
+    log_info "  $HOME/.claude/plugins/{cache,marketplaces}/.../telegram"
+    log_info "  $CC_TG_LEGACY_LAUNCH_AGENT, $CC_TG_LEGACY_LAUNCHER (ctg)"
+    log_info "  $CC_TG_LEGACY_OLD_PLIST, $CC_TG_LEGACY_OLD_LAUNCHER"
+    log_info "  $CC_TG_LEGACY_ENV_FILE (legacy token)"
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would remove launcher and LaunchAgent"
+        log_info "Dry run — would clean up legacy plugin"
         return
     fi
-    if ! confirm "Remove launcher and autostart?" "n"; then
+    if ! confirm "Clean up old plugin setup?" "y"; then return; fi
+    _cc_uninstall_legacy_plugin_copy
+}
+
+_cc_uninstall_legacy_plugin_copy() {
+    # 1. Disable plugin in settings.json
+    local settings="$CLAUDE_DIR/settings.json"
+    if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
+        if jq -e '.enabledPlugins["telegram@claude-plugins-official"]' "$settings" >/dev/null 2>&1; then
+            backup_file "$settings"
+            local tmp
+            tmp=$(mktemp)
+            jq 'del(.enabledPlugins["telegram@claude-plugins-official"]) |
+                (.permissions.allow // []) |= map(select(test("mcp__plugin_telegram_telegram") | not))' \
+                "$settings" > "$tmp"
+            mv "$tmp" "$settings"
+            log_ok "Disabled plugin in settings.json"
+        fi
+    fi
+
+    # 2. claude plugin uninstall (best-effort)
+    if command -v claude >/dev/null 2>&1; then
+        claude plugin uninstall telegram@claude-plugins-official </dev/null >/dev/null 2>&1 || true
+    fi
+
+    # 3. installed_plugins.json
+    local installed="$HOME/.claude/plugins/installed_plugins.json"
+    if [[ -f "$installed" ]] && command -v jq >/dev/null 2>&1; then
+        if jq -e '.plugins["telegram@claude-plugins-official"]' "$installed" >/dev/null 2>&1; then
+            backup_file "$installed"
+            local tmp
+            tmp=$(mktemp)
+            jq 'del(.plugins["telegram@claude-plugins-official"])' "$installed" > "$tmp"
+            mv "$tmp" "$installed"
+            log_ok "Removed entry from installed_plugins.json"
+        fi
+    fi
+
+    # 4. plugin cache + marketplace dir (auto-respawn source)
+    rm -rf "$HOME/.claude/plugins/cache/claude-plugins-official/telegram" 2>/dev/null
+    rm -rf "$HOME/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/telegram" 2>/dev/null
+
+    # 5. LaunchAgents from both old setups
+    launchctl bootout "gui/$UID/$CC_TG_LEGACY_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    launchctl bootout "gui/$UID/$CC_TG_LEGACY_OLD_LABEL" 2>/dev/null || true
+    rm -f "$CC_TG_LEGACY_LAUNCH_AGENT" "$CC_TG_LEGACY_OLD_PLIST" \
+          "$CC_TG_LEGACY_LAUNCHER" "$CC_TG_LEGACY_OLD_LAUNCHER" \
+          "$CC_TG_LEGACY_ENV_FILE"
+
+    # 6. Kill any orphan plugin polling processes
+    pkill -9 -f "bun.*server\\.ts" 2>/dev/null || true
+    pkill -9 -f "claude.*--channels" 2>/dev/null || true
+
+    log_ok "Legacy plugin cleanup done"
+}
+
+# Remove launcher + LaunchAgent (keeps repo + .env so reinstall is fast)
+
+_cc_remove_tgbot() {
+    printf '\n'
+    log_info "Removes LaunchAgent. Repo at $CC_TGBOT_DIR and its .env are preserved."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would remove LaunchAgent"
+        return
+    fi
+    if ! confirm "Remove LaunchAgent?" "n"; then
         log_skip "Removal cancelled"
         return
     fi
-    launchctl bootout "gui/$UID/$CC_TG_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-    rm -f "$CC_TG_LAUNCH_AGENT" "$CC_TG_LAUNCHER"
-    log_ok "Launcher and autostart removed"
+    launchctl bootout "gui/$UID/$CC_TGBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    rm -f "$CC_TGBOT_LAUNCH_AGENT"
+    pkill -9 -f "$CC_TGBOT_DIR/src/index.ts" 2>/dev/null || true
+    log_ok "LaunchAgent removed"
 }
 
 # Reset
@@ -941,24 +1151,48 @@ _cc_reset() {
 
     log_ok "Claude Code state wiped"
 
-    # Telegram bridge — opt-in (separate confirm so token isn't nuked by accident)
-    if [[ -e "$CC_TG_LAUNCHER" || -e "$CC_TG_LAUNCH_AGENT" || -e "$CC_TG_ENV_FILE" ]] \
-        || grep -qF "$CC_TG_PATH_MARKER" "$HOME/.zshrc" 2>/dev/null; then
+    # Telegram bot — opt-in (separate confirms so token + repo aren't nuked by accident)
+    local has_new=false has_legacy=false
+    [[ -e "$CC_TGBOT_LAUNCH_AGENT" || -d "$CC_TGBOT_DIR" ]] && has_new=true
+    [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" \
+        || -e "$CC_TG_LEGACY_LAUNCHER" || -e "$CC_TG_LEGACY_OLD_LAUNCHER" \
+        || -e "$CC_TG_LEGACY_ENV_FILE" ]] && has_legacy=true
+
+    if $has_new; then
         printf '\n'
-        log_info "Telegram bridge artifacts also present:"
-        [[ -e "$CC_TG_LAUNCHER" ]]     && printf '    %s\n' "$CC_TG_LAUNCHER"
-        [[ -e "$CC_TG_LAUNCH_AGENT" ]] && printf '    %s\n' "$CC_TG_LAUNCH_AGENT"
-        [[ -e "$CC_TG_ENV_FILE" ]]     && printf '    %s (bot token)\n' "$CC_TG_ENV_FILE"
-        grep -qF "$CC_TG_PATH_MARKER" "$HOME/.zshrc" 2>/dev/null \
-            && printf '    PATH block in ~/.zshrc\n'
+        log_info "Telegram bot (linuz90) artifacts:"
+        [[ -e "$CC_TGBOT_LAUNCH_AGENT" ]] && printf '    %s\n' "$CC_TGBOT_LAUNCH_AGENT"
+        [[ -d "$CC_TGBOT_DIR" ]]          && printf '    %s/ (repo + .env)\n' "$CC_TGBOT_DIR"
         printf '\n'
-        if confirm "Also wipe Telegram bridge?" "n"; then
-            launchctl bootout "gui/$UID/$CC_TG_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-            rm -f "$CC_TG_LAUNCH_AGENT" "$CC_TG_LAUNCHER" "$CC_TG_ENV_FILE"
+        if confirm "Also wipe Telegram bot (linuz90)?" "n"; then
+            launchctl bootout "gui/$UID/$CC_TGBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+            pkill -9 -f "$CC_TGBOT_DIR/src/index.ts" 2>/dev/null || true
+            rm -f "$CC_TGBOT_LAUNCH_AGENT"
+            if confirm "Also delete repo dir $CC_TGBOT_DIR (you'll lose .env token)?" "n"; then
+                rm -rf "$CC_TGBOT_DIR"
+            fi
+            log_ok "Telegram bot wiped"
+        fi
+    fi
+
+    if $has_legacy; then
+        printf '\n'
+        log_info "Legacy plugin artifacts:"
+        [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" ]]   && printf '    %s\n' "$CC_TG_LEGACY_LAUNCH_AGENT"
+        [[ -e "$CC_TG_LEGACY_OLD_PLIST" ]]      && printf '    %s\n' "$CC_TG_LEGACY_OLD_PLIST"
+        [[ -e "$CC_TG_LEGACY_LAUNCHER" ]]       && printf '    %s\n' "$CC_TG_LEGACY_LAUNCHER"
+        [[ -e "$CC_TG_LEGACY_OLD_LAUNCHER" ]]   && printf '    %s\n' "$CC_TG_LEGACY_OLD_LAUNCHER"
+        [[ -e "$CC_TG_LEGACY_ENV_FILE" ]]       && printf '    %s (bot token)\n' "$CC_TG_LEGACY_ENV_FILE"
+        printf '\n'
+        if confirm "Also wipe legacy plugin remnants?" "n"; then
+            _cc_uninstall_legacy_plugin_copy
+        fi
+    fi
+
+    if grep -qF "$CC_TG_PATH_MARKER" "$HOME/.zshrc" 2>/dev/null; then
+        if confirm "Strip ~/.local/bin PATH block from ~/.zshrc?" "n"; then
             _cc_strip_marked_block "$HOME/.zshrc" "$CC_TG_PATH_MARKER"
-            log_ok "Telegram bridge wiped"
-        else
-            log_skip "Telegram bridge preserved"
+            log_ok "PATH block stripped"
         fi
     fi
 
