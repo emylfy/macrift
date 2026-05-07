@@ -1,4 +1,40 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "bash $HOME/.claude/statusline.sh"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash $HOME/.claude/hooks/format.sh" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash $HOME/.claude/hooks/security-gate.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $HOME/.claude/hooks/stop-notify.sh" }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $HOME/.claude/hooks/wait-notify.sh" }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "github@claude-plugins-official": true,
     "telegram@claude-plugins-official": true
@@ -12,7 +48,6 @@
     }
   },
   "effortLevel": "xhigh",
-  "skipAutoPermissionPrompt": true,
   "attribution": {
     "commit": "",
     "pr": ""
@@ -51,9 +86,6 @@
       "Bash(ls *)",
       "Bash(pwd)",
       "Bash(wc *)",
-      "Bash(head *)",
-      "Bash(tail *)",
-      "Bash(cat *)",
       "Bash(find *)",
       "Bash(sort *)",
       "Bash(uniq *)",
@@ -122,9 +154,6 @@
     ],
     "deny": [
       "Bash(rm *)",
-      "Bash(rm -f *)",
-      "Bash(rm -rf *)",
-      "Bash(rm -r *)",
       "Bash(rmdir *)",
       "Bash(mv *)",
       "Bash(sudo *)",
@@ -142,6 +171,33 @@
       "Bash(git restore *)",
       "Bash(git branch -D *)",
       "Bash(git branch -d *)",
+      "Bash(git stash drop *)",
+      "Bash(git stash clear)",
+      "Bash(git rebase -i *)",
+      "Bash(git update-ref *)",
+      "Bash(git reflog expire *)",
+      "Bash(brew uninstall *)",
+      "Bash(brew cleanup *)",
+      "Bash(brew autoremove *)",
+      "Bash(docker rm *)",
+      "Bash(docker rmi *)",
+      "Bash(docker system prune *)",
+      "Bash(docker volume prune *)",
+      "Bash(docker network prune *)",
+      "Bash(docker-compose down *)",
+      "Bash(kubectl delete *)",
+      "Bash(kubectl drain *)",
+      "Bash(kubectl cordon *)",
+      "Bash(npm publish *)",
+      "Bash(npm publish)",
+      "Bash(npm unpublish *)",
+      "Bash(yarn publish *)",
+      "Bash(pnpm publish *)",
+      "Bash(pip uninstall *)",
+      "Bash(pip3 uninstall *)",
+      "Bash(cargo publish *)",
+      "Bash(cargo yank *)",
+      "Bash(go clean *)",
       "Bash(kill *)",
       "Bash(killall *)",
       "Bash(pkill *)",

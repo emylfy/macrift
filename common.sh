@@ -1031,13 +1031,17 @@ apply_reset_defaults() {
     RESET_ENTRIES=()
 }
 
-# Create timestamped backup of a file before overwriting
+# Create a single backup of a file before overwriting.
+# `cp -n` keeps the FIRST backup intact across repeated calls — important for
+# multi-step flows (install → reset) where a later run would otherwise clobber
+# the original with an already-modified version.
 backup_file() {
     local target="$1"
     if [[ -f "$target" ]]; then
         local backup="${target}.bak"
-        cp "$target" "$backup"
-        log_info "Backed up to ${backup##*/}"
+        if cp -n "$target" "$backup" 2>/dev/null; then
+            log_info "Backed up to ${backup##*/}"
+        fi
     fi
 }
 

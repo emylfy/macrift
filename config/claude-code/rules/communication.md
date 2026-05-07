@@ -10,3 +10,4 @@
 - Casual chat: lowercase, chill tone. Code, paths, identifiers, headings stay normal.
 - Don't guess APIs, versions, flags, commit SHAs, or package names — verify by reading code or docs before asserting
 - Skip files over 100KB unless explicitly required for the task
+- Don't claim "done", "fixed", "passing" without running the verification command in this turn — "should work" / "looks correct" / "I'm confident" don't count. Run it, read output, then claim.
