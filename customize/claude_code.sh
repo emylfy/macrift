@@ -6,7 +6,16 @@ CC_CONFIG="$MACRIFT_DIR/config/claude-code"
 CC_ENV_MARKER="# macrift:claude-code env"
 CC_RALIAS_MARKER="# macrift:claude-code r-alias"
 
-# Telegram bot — see _cc_telegram_menu for the active engine setup.
+# Telegram bot — _cc_telegram_menu offers two engines: supercharged or ccbot.
+# Engine constants are grouped per engine below.
+
+# CCBot engine (six-ddc/ccmux) — tmux-bridge, parallel sessions per Forum topic.
+CC_CCBOT_REPO_URL="https://github.com/six-ddc/ccmux.git"
+CC_CCBOT_CONFIG_DIR="$HOME/.ccbot"
+CC_CCBOT_LAUNCH_AGENT_LABEL="com.user.ccbot"
+CC_CCBOT_LAUNCH_AGENT="$HOME/Library/LaunchAgents/$CC_CCBOT_LAUNCH_AGENT_LABEL.plist"
+CC_CCBOT_LAUNCHER="$HOME/.local/bin/ccbot-launcher.sh"
+
 # Legacy paths from previous plugin / linuz90 setups — kept so cleanup can find them.
 CC_TG_LEGACY_LAUNCHER="$HOME/.local/bin/ctg"
 CC_TG_LEGACY_LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.claude-tg.plist"
@@ -28,7 +37,7 @@ claude_code_menu() {
             "Full Setup — install everything to ~/.claude/" \
             "Custom Setup — pick what to install" \
             "---" \
-            "Telegram bot — k1p1l0/claude-telegram-supercharged" \
+            "Telegram bot — choose engine (supercharged / ccbot)" \
             "---" \
             "Reset — wipe macrift-managed Claude state" \
             "Back")
@@ -36,7 +45,7 @@ claude_code_menu() {
         case "$choice" in
             1)  _cc_full_setup ;;
             2)  _cc_custom_menu ;;
-            3)  _cc_supercharged_menu ;;
+            3)  _cc_telegram_menu ;;
             4)  _cc_reset; wait_enter ;;
             0)  break ;;
             *)  ;;
@@ -602,6 +611,447 @@ _cc_install_r_alias_copy() {
     printf "alias r='bash /tmp/cmd.sh'\n" \
         | _cc_replace_marked_block "$HOME/.zshrc" "$CC_RALIAS_MARKER"
     log_ok "'r' alias added to .zshrc"
+}
+
+# Telegram bot — engine selector
+
+_cc_telegram_menu() {
+    crumb_push "Telegram"
+    while true; do
+        clear
+        printf '\n'
+        printf '  %bChoose engine%b — both manage to ~/.claude/channels/telegram + their own dirs\n\n' "$BOLD" "$RESET"
+        printf '  %bsupercharged%b: drop-in over the official anthropic plugin. DM-friendly,\n' "$CYAN" "$RESET"
+        printf '    pairing flow with 6-char code, SQLite memory, Telegraph instant view,\n'
+        printf '    one shared claude session.  ✓ simpler setup\n\n'
+        printf '  %bccbot%b: tmux-bridge. Each Telegram Forum topic = 1 tmux window =\n' "$CYAN" "$RESET"
+        printf '    1 standalone claude session. /esc interrupts, desktop continuity\n'
+        printf '    via tmux attach.  ✓ parallel sessions, %brequires forum group%b (not DM)\n\n' "$YELLOW" "$RESET"
+
+        local choice
+        choice=$(show_menu "Telegram bot" \
+            "supercharged — drop-in for anthropic plugin (DM, single session)" \
+            "ccbot — tmux-bridge (forum group, parallel sessions per topic)" \
+            "Back")
+
+        case "$choice" in
+            1)  _cc_supercharged_menu ;;
+            2)  _cc_ccbot_menu ;;
+            0)  break ;;
+            *)  ;;
+        esac
+    done
+    crumb_pop
+}
+
+# CCBot engine submenu
+
+_cc_ccbot_menu() {
+    crumb_push "ccbot"
+    while true; do
+        clear
+
+        local choice
+        choice=$(show_menu "Telegram bot (ccbot — six-ddc/ccmux)" \
+            "Full setup — install + env + hook + autostart" \
+            "---" \
+            "Check deps (uv, tmux)" \
+            "Install ccbot via uv (or upgrade if already installed)" \
+            "Configure ~/.ccbot/.env (token + ALLOWED_USERS)" \
+            "Install Claude Code SessionStart hook (ccbot hook --install)" \
+            "Pairing help (manual TG forum group + BotFather steps)" \
+            "Install LaunchAgent (autostart + VPN-wait wrapper)" \
+            "---" \
+            "Migrate from supercharged (stop launchd, keep repo as fallback)" \
+            "Remove ccbot launcher + autostart (keep config + uv tool)" \
+            "Back")
+
+        case "$choice" in
+            1)  _cc_install_ccbot_full; wait_enter ;;
+            2)  _cc_install_ccbot_deps; wait_enter ;;
+            3)  _cc_install_ccbot_install; wait_enter ;;
+            4)  _cc_install_ccbot_env; wait_enter ;;
+            5)  _cc_install_ccbot_hook; wait_enter ;;
+            6)  _cc_install_ccbot_pairing_help; wait_enter ;;
+            7)  _cc_install_ccbot_launchagent; wait_enter ;;
+            8)  _cc_migrate_supercharged_to_ccbot; wait_enter ;;
+            9)  _cc_remove_ccbot; wait_enter ;;
+            0)  break ;;
+            *)  ;;
+        esac
+    done
+    crumb_pop
+}
+
+# 1. Deps check (uv + tmux are mandatory; ccbot won't run without them)
+
+_cc_install_ccbot_deps() {
+    printf '\n'
+    log_info "ccbot needs:"
+    log_info "  uv — Python package manager. Install: brew install uv"
+    log_info "  tmux — terminal multiplexer. Install: brew install tmux"
+    printf '\n'
+
+    local missing=0
+    if command -v uv >/dev/null 2>&1; then
+        log_ok "uv: $(uv --version 2>/dev/null | head -1)"
+    else
+        log_err "uv not found"
+        missing=1
+    fi
+    if command -v tmux >/dev/null 2>&1; then
+        log_ok "tmux: $(tmux -V)"
+    else
+        log_err "tmux not found"
+        missing=1
+    fi
+    if command -v claude >/dev/null 2>&1; then
+        log_ok "claude: $(claude --version 2>/dev/null | head -1)"
+    else
+        log_err "claude not found — Claude Code CLI required"
+        missing=1
+    fi
+
+    return $missing
+}
+
+# 2. Install ccbot via uv tool
+
+_cc_install_ccbot_install() {
+    if ! command -v uv >/dev/null 2>&1; then
+        log_err "uv not found — install: brew install uv"
+        return 1
+    fi
+    printf '\n'
+    log_info "Installs ccbot from $CC_CCBOT_REPO_URL via 'uv tool install'."
+    log_info "If already installed, runs 'uv tool upgrade ccbot' to pull latest."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install ccbot"
+        return
+    fi
+    if ! confirm "Install / upgrade ccbot?"; then return; fi
+    _cc_install_ccbot_install_copy
+}
+
+_cc_install_ccbot_install_copy() {
+    if uv tool list 2>/dev/null | grep -q '^ccbot'; then
+        log_info "Upgrading ccbot..."
+        uv tool upgrade ccbot 2>&1 | tail -3 || \
+            uv tool install --reinstall "git+$CC_CCBOT_REPO_URL" 2>&1 | tail -3
+    else
+        log_info "Installing ccbot..."
+        uv tool install "git+$CC_CCBOT_REPO_URL" 2>&1 | tail -3
+    fi
+
+    if command -v ccbot >/dev/null 2>&1; then
+        log_ok "ccbot binary at: $(command -v ccbot)"
+    else
+        log_warn "ccbot installed but not in PATH. Add to ~/.zshrc:"
+        log_warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+        _cc_ensure_local_bin_on_path 2>/dev/null || true
+    fi
+}
+
+# 3. Configure ~/.ccbot/.env
+
+_cc_install_ccbot_env() {
+    printf '\n'
+    log_info "Stores token + allowed user(s) in $CC_CCBOT_CONFIG_DIR/.env (chmod 600)."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would prompt for token + user_id"
+        return
+    fi
+    _cc_install_ccbot_env_copy
+}
+
+_cc_install_ccbot_env_copy() {
+    local env_file="$CC_CCBOT_CONFIG_DIR/.env"
+    mkdir -p "$CC_CCBOT_CONFIG_DIR"
+
+    # Token — try to reuse from supercharged if available
+    local existing_token=""
+    if [[ -f "$env_file" ]]; then
+        existing_token=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$env_file" 2>/dev/null | tail -1 \
+                         | sed 's/^TELEGRAM_BOT_TOKEN=//' | tr -d '"' | tr -d "'")
+    fi
+    if [[ -z "$existing_token" ]] && [[ -f "$HOME/.claude/channels/telegram/.env" ]]; then
+        existing_token=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$HOME/.claude/channels/telegram/.env" 2>/dev/null | tail -1 \
+                         | sed 's/^TELEGRAM_BOT_TOKEN=//' | tr -d '"' | tr -d "'")
+        [[ -n "$existing_token" ]] && log_info "Reusing token from supercharged (.claude/channels/telegram/.env)"
+    fi
+
+    local token="$existing_token"
+    if [[ -n "$existing_token" ]]; then
+        log_info "Existing token: ${existing_token%%:*}:…${existing_token: -4}"
+        if confirm "Replace it?" "n"; then token=""; fi
+    fi
+    if [[ -z "$token" ]]; then
+        printf '  Bot token: '
+        read -r token
+        if [[ ! "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; then
+            log_err "Invalid format (expected NNNNN:AA…)"
+            return 1
+        fi
+    fi
+
+    # User ID — auto-detect from supercharged access.json
+    local user_id=""
+    local access_json="$HOME/.claude/channels/telegram/access.json"
+    if [[ -f "$access_json" ]] && command -v jq >/dev/null 2>&1; then
+        user_id=$(jq -r '.allowFrom[0] // empty' "$access_json" 2>/dev/null)
+        [[ -n "$user_id" ]] && log_info "Found paired user_id $user_id from supercharged access.json"
+    fi
+    if [[ -z "$user_id" ]] && [[ -f "$env_file" ]]; then
+        user_id=$(grep -E '^ALLOWED_USERS=' "$env_file" 2>/dev/null | tail -1 \
+                  | sed 's/^ALLOWED_USERS=//' | cut -d, -f1)
+        [[ -n "$user_id" ]] && log_info "Using existing ALLOWED_USERS=$user_id"
+    fi
+    if [[ -z "$user_id" ]]; then
+        printf '  Your Telegram user ID (from @userinfobot): '
+        read -r user_id
+    fi
+    if [[ ! "$user_id" =~ ^[0-9]+$ ]]; then
+        log_err "Invalid user_id (expected numeric)"
+        return 1
+    fi
+
+    [[ -f "$env_file" ]] && backup_file "$env_file"
+    cat > "$env_file" <<ENV
+TELEGRAM_BOT_TOKEN=$token
+ALLOWED_USERS=$user_id
+TMUX_SESSION_NAME=ccbot
+CLAUDE_COMMAND=claude
+ENV
+    chmod 600 "$env_file"
+    log_ok "Wrote $env_file"
+}
+
+# 4. Install ccbot SessionStart hook
+
+_cc_install_ccbot_hook() {
+    if ! command -v ccbot >/dev/null 2>&1; then
+        log_err "ccbot not in PATH — install first"
+        return 1
+    fi
+    printf '\n'
+    log_info "Adds 'ccbot hook' as a SessionStart hook in ~/.claude/settings.json."
+    log_info "Each new Claude Code session writes its tmux window↔session mapping"
+    log_info "to $CC_CCBOT_CONFIG_DIR/session_map.json so ccbot can route TG topics to it."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would run 'ccbot hook --install'"
+        return
+    fi
+    if ! confirm "Install hook?"; then return; fi
+
+    backup_file "$CLAUDE_DIR/settings.json"
+    if ccbot hook --install 2>&1 | tail -5; then
+        log_ok "Hook installed"
+    else
+        log_err "ccbot hook --install failed"
+        return 1
+    fi
+}
+
+# 5. Manual pairing help (forum group + BotFather steps)
+
+_cc_install_ccbot_pairing_help() {
+    printf '\n'
+    printf '  %bccbot pairing — manual TG steps (one-time)%b\n\n' "$BOLD" "$RESET"
+    printf '  ccbot routes by Forum topics, not DMs. So you need a Telegram group\n'
+    printf '  with topics enabled, plus the bot configured for thread mode.\n\n'
+    printf '  %b1.%b  In Telegram, open @BotFather:\n' "$CYAN" "$RESET"
+    printf '         /mybots → select your bot → Bot Settings\n'
+    printf '         enable %bThreaded Mode%b\n\n' "$BOLD" "$RESET"
+    printf '  %b2.%b  Create a new group OR open an existing one:\n' "$CYAN" "$RESET"
+    printf '         long-press "New" → "New Group" → enable %bForum/Topics%b mode\n\n' "$BOLD" "$RESET"
+    printf '  %b3.%b  Add your bot to the group as admin:\n' "$CYAN" "$RESET"
+    printf '         group settings → Administrators → Add → @yourbotname\n\n'
+    printf '  %b4.%b  Start ccbot (foreground first to verify):\n' "$CYAN" "$RESET"
+    printf '         %bccbot%b\n\n' "$BOLD" "$RESET"
+    printf '  %b5.%b  In TG group, create a new topic + send any message.\n' "$CYAN" "$RESET"
+    printf '         A directory browser will appear. Choose your project dir.\n'
+    printf '         A tmux window opens, claude starts there, your message goes in.\n\n'
+    printf '  %b6.%b  After verification: Ctrl+C to stop foreground, then install\n' "$CYAN" "$RESET"
+    printf '         LaunchAgent for auto-start.\n\n'
+}
+
+# 6. LaunchAgent — VPN-aware wrapper, exec ccbot
+
+_cc_install_ccbot_launchagent() {
+    if ! command -v ccbot >/dev/null 2>&1; then
+        log_err "ccbot binary not in PATH — install first"
+        return 1
+    fi
+    if [[ ! -f "$CC_CCBOT_CONFIG_DIR/.env" ]]; then
+        log_err ".env missing — configure it first"
+        return 1
+    fi
+    printf '\n'
+    log_info "Installs $CC_CCBOT_LAUNCH_AGENT"
+    log_info "+ $CC_CCBOT_LAUNCHER wrapper that:"
+    log_info "  - opens last-used VPN app (Happ or V2RayTun by mtime)"
+    log_info "  - waits for VPN tunnel + api.anthropic.com NOT 403 (max 180s)"
+    log_info "  - exec's ccbot"
+    log_info "Logs: /tmp/ccbot.{log,err}"
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install LaunchAgent + wrapper"
+        return
+    fi
+    if ! confirm "Install autostart?"; then return; fi
+    _cc_install_ccbot_launchagent_copy
+}
+
+_cc_install_ccbot_launchagent_copy() {
+    local ccbot_bin
+    ccbot_bin=$(command -v ccbot)
+
+    mkdir -p "$(dirname "$CC_CCBOT_LAUNCHER")"
+    cat > "$CC_CCBOT_LAUNCHER" <<'LAUNCHER_EOF'
+#!/bin/zsh
+# ccbot launcher with VPN-aware wait gate. Same logic as supercharged-launcher:
+# pick last-used VPN by mtime, wait until anthropic returns NOT 403, then exec.
+
+set -u
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+happ_mtime=$(stat -f %m "$HOME/Library/Application Support/Happ" 2>/dev/null || echo 0)
+v2ray_mtime=$(stat -f %m "$HOME/Library/Application Support/V2RayTun" 2>/dev/null || echo 0)
+
+if (( v2ray_mtime > happ_mtime )); then
+  echo "[ccbot-launcher] opening V2RayTun (mtime=$v2ray_mtime > Happ=$happ_mtime)"
+  open -a "V2RayTun" 2>/dev/null
+else
+  echo "[ccbot-launcher] opening Happ (mtime=$happ_mtime >= V2RayTun=$v2ray_mtime)"
+  open -a "Happ" 2>/dev/null
+fi
+
+echo "[ccbot-launcher] waiting for VPN + anthropic routing (max 180s)..."
+deadline=$(( $(date +%s) + 180 ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  if scutil --nwi 2>/dev/null | grep -q "VPN server"; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://api.anthropic.com 2>/dev/null || echo 0)
+    if [ "$code" != "0" ] && [ "$code" != "403" ]; then
+      echo "[ccbot-launcher] VPN up + anthropic routed (HTTP $code)"
+      break
+    fi
+  fi
+  sleep 3
+done
+
+echo "[ccbot-launcher] exec'ing ccbot"
+exec ccbot
+LAUNCHER_EOF
+    chmod +x "$CC_CCBOT_LAUNCHER"
+    log_ok "Wrote $CC_CCBOT_LAUNCHER"
+
+    cat > "$CC_CCBOT_LAUNCH_AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$CC_CCBOT_LAUNCH_AGENT_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$CC_CCBOT_LAUNCHER</string>
+    </array>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>ThrottleInterval</key><integer>30</integer>
+    <key>StandardOutPath</key><string>/tmp/ccbot.log</string>
+    <key>StandardErrorPath</key><string>/tmp/ccbot.err</string>
+</dict>
+</plist>
+PLIST
+
+    if ! plutil -lint "$CC_CCBOT_LAUNCH_AGENT" >/dev/null 2>&1; then
+        log_err "Generated plist is invalid"
+        return 1
+    fi
+
+    launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    if ! launchctl bootstrap "gui/$UID" "$CC_CCBOT_LAUNCH_AGENT" 2>/tmp/cc-ccbot-bootstrap.err; then
+        log_err "launchctl bootstrap failed:"
+        cat /tmp/cc-ccbot-bootstrap.err 2>/dev/null
+        return 1
+    fi
+    launchctl kickstart -k "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    log_ok "ccbot LaunchAgent installed and started"
+}
+
+# 7. Full setup orchestrator
+
+_cc_install_ccbot_full() {
+    printf '\n'
+    log_info "Full setup: deps check -> install -> env -> hook -> pairing-help -> launchagent"
+    log_info "Pairing remains manual (TG forum group setup + BotFather Threaded Mode)."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would run all steps"
+        return
+    fi
+    if ! confirm "Run full setup?"; then return; fi
+
+    _cc_install_ccbot_deps                    || return 1
+    _cc_install_ccbot_install_copy            || return 1
+    _cc_install_ccbot_env_copy                || return 1
+    _cc_install_ccbot_hook                    || return 1
+    _cc_install_ccbot_pairing_help
+
+    if confirm "Install LaunchAgent now (recommended after pairing is verified)?" "n"; then
+        _cc_install_ccbot_launchagent_copy    || return 1
+    fi
+
+    printf '\n'
+    log_ok "ccbot setup complete"
+    log_info "Logs: tail -f /tmp/ccbot.log"
+}
+
+# 8. Migrate from supercharged: stop its launchd, leave repo as fallback
+
+_cc_migrate_supercharged_to_ccbot() {
+    printf '\n'
+    log_info "Stops the supercharged supervisor (com.claude-telegram-ts) and deletes"
+    log_info "its plist + launcher. The supercharged repo + plugin install + token"
+    log_info "are PRESERVED so you can revert by reinstalling the LaunchAgent."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would stop supercharged"
+        return
+    fi
+    if ! confirm "Stop supercharged?" "y"; then return; fi
+
+    launchctl bootout "gui/$UID/com.claude-telegram-ts" 2>/dev/null && log_ok "supercharged launchd stopped" || log_skip "supercharged launchd not loaded"
+    rm -fv "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
+           "$HOME/.local/bin/supercharged-launcher.sh" 2>/dev/null
+    pkill -9 -f "telegram-supervisor.ts" 2>/dev/null || true
+    pkill -9 -f "claude --channels" 2>/dev/null || true
+    log_ok "supercharged stopped — repo + plugin + token preserved"
+    log_info "To revert: macrift menu → Telegram → supercharged → Install LaunchAgent"
+}
+
+# 9. Remove ccbot launcher + autostart
+
+_cc_remove_ccbot() {
+    printf '\n'
+    log_info "Removes LaunchAgent + launcher script."
+    log_info "Preserves: ccbot binary (uv tool), $CC_CCBOT_CONFIG_DIR/, hook in settings.json."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would remove LaunchAgent + launcher"
+        return
+    fi
+    if ! confirm "Remove ccbot launcher + autostart?" "n"; then
+        log_skip "Removal cancelled"
+        return
+    fi
+    launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    rm -f "$CC_CCBOT_LAUNCH_AGENT" "$CC_CCBOT_LAUNCHER"
+    pkill -9 -f "/ccbot$\| ccbot$" 2>/dev/null || true
+    log_ok "ccbot launcher and LaunchAgent removed"
 }
 
 # Telegram bot — k1p1l0/claude-telegram-supercharged (drop-in for the official
@@ -1191,13 +1641,15 @@ _cc_reset() {
 
     log_ok "Claude Code state wiped"
 
-    # Telegram supercharged artifacts — opt-in (separate confirm so token + repo
-    # aren't nuked by accident; the supercharged remove flow keeps repo by default)
-    local has_super=false has_legacy=false
+    # Telegram engines (supercharged + ccbot) — opt-in (separate confirms so
+    # tokens + repos + uv-tool installs aren't nuked by accident)
+    local has_super=false has_ccbot=false has_legacy=false
     [[ -e "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
         || -e "$HOME/.local/bin/supercharged-launcher.sh" \
         || -d "$HOME/Documents/Code/Claude/claude-telegram-supercharged" \
         || -f "$HOME/.claude/scripts/telegram-supervisor.ts" ]] && has_super=true
+    [[ -e "$CC_CCBOT_LAUNCH_AGENT" || -e "$CC_CCBOT_LAUNCHER" \
+        || -d "$CC_CCBOT_CONFIG_DIR" ]] && has_ccbot=true
     [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" \
         || -e "$CC_TG_LEGACY_LAUNCHER" || -e "$CC_TG_LEGACY_OLD_LAUNCHER" \
         || -e "$CC_TG_LEGACY_ENV_FILE" ]] && has_legacy=true
@@ -1221,6 +1673,29 @@ _cc_reset() {
                 rm -f "$HOME/.claude/channels/telegram/.env"
             fi
             log_ok "Supercharged wiped"
+        fi
+    fi
+
+    if $has_ccbot; then
+        printf '\n'
+        log_info "Telegram ccbot artifacts:"
+        [[ -e "$CC_CCBOT_LAUNCH_AGENT" ]] && printf '    %s\n' "$CC_CCBOT_LAUNCH_AGENT"
+        [[ -e "$CC_CCBOT_LAUNCHER" ]]     && printf '    %s\n' "$CC_CCBOT_LAUNCHER"
+        [[ -d "$CC_CCBOT_CONFIG_DIR" ]]   && printf '    %s/ (config + state)\n' "$CC_CCBOT_CONFIG_DIR"
+        printf '\n'
+        if confirm "Also wipe Telegram ccbot?" "n"; then
+            launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+            pkill -9 -f "/ccbot$\| ccbot$" 2>/dev/null || true
+            rm -f "$CC_CCBOT_LAUNCH_AGENT" "$CC_CCBOT_LAUNCHER"
+            if confirm "Also delete config dir $CC_CCBOT_CONFIG_DIR (loses .env token + session_map)?" "n"; then
+                rm -rf "$CC_CCBOT_CONFIG_DIR"
+            fi
+            if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^ccbot'; then
+                if confirm "Also uninstall ccbot via 'uv tool uninstall ccbot'?" "n"; then
+                    uv tool uninstall ccbot 2>&1 | tail -3
+                fi
+            fi
+            log_ok "ccbot wiped"
         fi
     fi
 
