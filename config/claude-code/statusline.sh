@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Statusline — minimalist.
-# All segments default text color. Only ctx/rate escalate: yellow @ 50%, red @ 75%.
+# Statusline — minimalist. ctx/rate go yellow at WARN_AT, red at CRIT_AT.
+
+WARN_AT=30
+CRIT_AT=60
 
 ESC=$'\e'
 RESET="${ESC}[0m"
 DIM="${ESC}[2m"         # faint — missing data
-YELLOW="${ESC}[33m"     # warn (50–75%)
-RED="${ESC}[31m"        # critical (75%+)
+YELLOW="${ESC}[33m"     # warn
+RED="${ESC}[31m"        # critical
 
 input=""
 [[ ! -t 0 ]] && input=$(cat)
@@ -41,7 +43,7 @@ five_int=""
 [[ -n "$five_pct" ]] && five_int=$(printf '%.0f' "$five_pct" 2>/dev/null)
 
 five_countdown=""
-if [[ -n "$five_reset" ]] && [[ -n "$five_int" ]] && (( five_int >= 30 )); then
+if [[ -n "$five_reset" ]] && [[ -n "$five_int" ]] && (( five_int >= WARN_AT )); then
   now=$(date +%s)
   reset_int=${five_reset%.*}
   # Accept either epoch seconds or ISO-8601 (e.g. 2026-05-07T03:00:00Z)
@@ -64,13 +66,12 @@ if [[ -n "$five_reset" ]] && [[ -n "$five_int" ]] && (( five_int >= 30 )); then
   fi
 fi
 
-# default → yellow @ 30% → red @ 60% (Dex discipline: aggressively keep ctx <30%)
 pct_color() {
   local p=$1
   [[ -z "$p" ]] && { printf '%s' "$DIM"; return; }
   [[ "$p" =~ ^[0-9]+$ ]] || { printf '%s' "$DIM"; return; }
-  if (( p >= 60 )); then printf '%s' "$RED"
-  elif (( p >= 30 )); then printf '%s' "$YELLOW"
+  if (( p >= CRIT_AT )); then printf '%s' "$RED"
+  elif (( p >= WARN_AT )); then printf '%s' "$YELLOW"
   fi
 }
 
