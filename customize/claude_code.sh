@@ -889,27 +889,68 @@ _cc_install_ccbot_hook() {
     fi
 }
 
-# 5. Manual pairing help (forum group + BotFather steps)
+# 5. Manual pairing help — interactive step-by-step checklist
+# Each step opens the relevant URL when possible (BotFather chat) and waits
+# for user confirmation before moving on. Lets the user pause and resume.
 
 _cc_install_ccbot_pairing_help() {
     printf '\n'
-    printf '  %bccbot pairing — manual TG steps (one-time)%b\n\n' "$BOLD" "$RESET"
-    printf '  ccbot routes by Forum topics, not DMs. So you need a Telegram group\n'
-    printf '  with topics enabled, plus the bot configured for thread mode.\n\n'
-    printf '  %b1.%b  In Telegram, open @BotFather:\n' "$CYAN" "$RESET"
-    printf '         /mybots → select your bot → Bot Settings\n'
-    printf '         enable %bThreaded Mode%b\n\n' "$BOLD" "$RESET"
-    printf '  %b2.%b  Create a new group OR open an existing one:\n' "$CYAN" "$RESET"
-    printf '         long-press "New" → "New Group" → enable %bForum/Topics%b mode\n\n' "$BOLD" "$RESET"
-    printf '  %b3.%b  Add your bot to the group as admin:\n' "$CYAN" "$RESET"
-    printf '         group settings → Administrators → Add → @yourbotname\n\n'
-    printf '  %b4.%b  Start ccbot (foreground first to verify):\n' "$CYAN" "$RESET"
-    printf '         %bccbot%b\n\n' "$BOLD" "$RESET"
-    printf '  %b5.%b  In TG group, create a new topic + send any message.\n' "$CYAN" "$RESET"
-    printf '         A directory browser will appear. Choose your project dir.\n'
-    printf '         A tmux window opens, claude starts there, your message goes in.\n\n'
-    printf '  %b6.%b  After verification: Ctrl+C to stop foreground, then install\n' "$CYAN" "$RESET"
-    printf '         LaunchAgent for auto-start.\n\n'
+    printf '  %bccbot pairing — interactive step-by-step%b\n\n' "$BOLD" "$RESET"
+    printf '  ccbot routes by Forum topics, not DMs. We will walk through 5 manual\n'
+    printf '  Telegram steps. Press %b[Enter]%b to advance, %b[s]%b to skip a step,\n' "$BOLD" "$RESET" "$BOLD" "$RESET"
+    printf '  %b[q]%b to quit the checklist (you can re-run it later from this menu).\n\n' "$BOLD" "$RESET"
+    if ! confirm "Start checklist?" "y"; then return; fi
+
+    _cc_ccbot_step "1/5: Enable Threaded Mode in @BotFather" \
+        "Open @BotFather → /mybots → select your bot → Bot Settings → Threaded Mode → Enable" \
+        "tg://resolve?domain=BotFather" \
+        "https://t.me/BotFather" || return
+
+    _cc_ccbot_step "2/5: Create or pick a Telegram group with Topics" \
+        "In Telegram, create a new group (long-press 'New' → 'New Group') OR open an existing one. In group Settings → enable 'Topics' (forum mode)." \
+        "" "" || return
+
+    _cc_ccbot_step "3/5: Add your bot to the group as admin" \
+        "Group Settings → Administrators → Add Admin → search for your bot → grant message permissions" \
+        "" "" || return
+
+    _cc_ccbot_step "4/5: Verify ccbot is running" \
+        "ccbot is managed by launchd. Status check below — should show 'state = running' with a pid." \
+        "" "" || return
+    if launchctl print "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>&1 | grep -E "^\s*(state|pid)" | head -3; then
+        :
+    else
+        log_warn "ccbot LaunchAgent not loaded — install via 'Install LaunchAgent' menu first"
+    fi
+    printf '  Press [Enter] when verified... '
+    read -r _
+
+    _cc_ccbot_step "5/5: Send first message in a topic" \
+        "In your TG group, long-press 'New' → 'New Topic' → name it (e.g. 'macrift'). Send any message. Bot replies with a directory browser — choose your project dir. tmux window opens, claude starts there, your message goes in." \
+        "" "" || return
+
+    printf '\n'
+    log_ok "All 5 steps acknowledged. Watch live with: tail -f /tmp/ccbot.log"
+}
+
+# Helper: print a step, optionally open URL(s), wait for input
+_cc_ccbot_step() {
+    local title="$1" body="$2" tg_url="$3" web_url="$4"
+    printf '\n'
+    printf '  %b%s%b\n' "$BOLD" "$title" "$RESET"
+    printf '  %s\n' "$body"
+    if [[ -n "$tg_url" ]]; then
+        printf '  %b›%b opening %s\n' "$CYAN" "$RESET" "$tg_url"
+        open "$tg_url" 2>/dev/null || open "$web_url" 2>/dev/null || true
+    fi
+    printf '  Press %b[Enter]%b to mark done · %b[s]%b skip · %b[q]%b quit: ' "$BOLD" "$RESET" "$DIM" "$RESET" "$DIM" "$RESET"
+    local key
+    read -r key
+    case "$key" in
+        q|Q) log_skip "checklist quit at: $title"; return 1 ;;
+        s|S) log_skip "skipped: $title"; return 0 ;;
+        *)   log_ok "done: $title"; return 0 ;;
+    esac
 }
 
 # 6. LaunchAgent — VPN-aware wrapper, exec ccbot
