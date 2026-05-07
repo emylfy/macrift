@@ -806,11 +806,21 @@ _cc_install_tgbot_patch() {
 
 _cc_install_tgbot_patch_copy() {
     local index_ts="$CC_TGBOT_DIR/src/index.ts"
+    local session_ts="$CC_TGBOT_DIR/src/session.ts"
 
-    # Idempotency check: patch already applied if `bot.start({` is in file
-    # AND the original `run(bot)` is gone.
+    # Patch session.ts: systemPrompt → appendSystemPrompt so SDK keeps default
+    # system prompt (which honors settingSources and loads ~/.claude/CLAUDE.md)
+    # and just adds linuz90's safety rules on top.
+    if [[ -f "$session_ts" ]] && grep -q '^      systemPrompt: SAFETY_PROMPT,$' "$session_ts"; then
+        backup_file "$session_ts"
+        sed -i '' 's/^      systemPrompt: SAFETY_PROMPT,$/      appendSystemPrompt: SAFETY_PROMPT,/' "$session_ts"
+        log_ok "Patched session.ts (systemPrompt → appendSystemPrompt)"
+    fi
+
+    # Idempotency check for index.ts: patch already applied if `bot.start({` is
+    # in file AND the original `run(bot)` is gone.
     if grep -q '^bot\.start({' "$index_ts" && ! grep -q '^const runner = run(bot)' "$index_ts"; then
-        log_skip "Patch already applied"
+        log_skip "index.ts patch already applied"
         return 0
     fi
 
