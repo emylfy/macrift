@@ -808,13 +808,23 @@ _cc_install_tgbot_patch_copy() {
     local index_ts="$CC_TGBOT_DIR/src/index.ts"
     local session_ts="$CC_TGBOT_DIR/src/session.ts"
 
-    # Patch session.ts: systemPrompt → appendSystemPrompt so SDK keeps default
-    # system prompt (which honors settingSources and loads ~/.claude/CLAUDE.md)
-    # and just adds linuz90's safety rules on top.
+    # Patch session.ts (two fixes):
+    #  1. systemPrompt → appendSystemPrompt so SDK keeps its default system
+    #     prompt (which loads ~/.claude/CLAUDE.md via settingSources) and just
+    #     adds linuz90's safety rules on top.
+    #  2. mcpServers: MCP_SERVERS → conditional spread. The explicit empty {}
+    #     overrides SDK's plugin discovery, so enabledPlugins from user settings
+    #     (github, etc) wouldn't reach the bot's claude. Conditional spread lets
+    #     them through when no override is configured.
     if [[ -f "$session_ts" ]] && grep -q '^      systemPrompt: SAFETY_PROMPT,$' "$session_ts"; then
         backup_file "$session_ts"
         sed -i '' 's/^      systemPrompt: SAFETY_PROMPT,$/      appendSystemPrompt: SAFETY_PROMPT,/' "$session_ts"
         log_ok "Patched session.ts (systemPrompt → appendSystemPrompt)"
+    fi
+    if [[ -f "$session_ts" ]] && grep -q '^      mcpServers: MCP_SERVERS,$' "$session_ts"; then
+        backup_file "$session_ts"
+        sed -i '' 's|^      mcpServers: MCP_SERVERS,$|      ...(Object.keys(MCP_SERVERS).length > 0 ? { mcpServers: MCP_SERVERS } : {}),|' "$session_ts"
+        log_ok "Patched session.ts (mcpServers conditional — lets enabledPlugins through)"
     fi
 
     # Idempotency check for index.ts: patch already applied if `bot.start({` is
