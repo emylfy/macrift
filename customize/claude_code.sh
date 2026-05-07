@@ -28,13 +28,16 @@ claude_code_menu() {
             "Full Setup — install everything to ~/.claude/" \
             "Custom Setup — pick what to install" \
             "---" \
+            "Telegram bot — k1p1l0/claude-telegram-supercharged" \
+            "---" \
             "Reset — wipe macrift-managed Claude state" \
             "Back")
 
         case "$choice" in
             1)  _cc_full_setup ;;
             2)  _cc_custom_menu ;;
-            3)  _cc_reset; wait_enter ;;
+            3)  _cc_supercharged_menu ;;
+            4)  _cc_reset; wait_enter ;;
             0)  break ;;
             *)  ;;
         esac
@@ -601,6 +604,484 @@ _cc_install_r_alias_copy() {
     log_ok "'r' alias added to .zshrc"
 }
 
+# Telegram bot — k1p1l0/claude-telegram-supercharged (drop-in for the official
+# anthropic plugin, with 15+ extra features: SQLite history, conversation
+# memory, context watchdog, single-instance lock, forum topics, Telegraph
+# instant view, supervisor daemon. supercharged inherits the official plugin's
+# pairing flow and respects user settings.json — unlike standalone bots).
+
+_cc_supercharged_menu() {
+    crumb_push "Telegram"
+    while true; do
+        clear
+
+        local choice
+        choice=$(show_menu "Telegram bot (supercharged)" \
+            "Full setup — plugin + apply + dirs + token + autostart" \
+            "---" \
+            "1. Install/restore official plugin (with upstream fallback)" \
+            "2. Apply supercharged (drop server.ts + supervisor + skills)" \
+            "3. Create runtime dirs (data/inbox)" \
+            "4. Set bot token (writes ~/.claude/channels/telegram/.env)" \
+            "5. Pairing help (manual step in fresh claude --channels session)" \
+            "6. Install LaunchAgent (autostart + VPN-wait wrapper)" \
+            "---" \
+            "Re-apply after plugin auto-update overwrote server.ts" \
+            "Migrate from old plugin / linuz90 (cleanup remnants)" \
+            "Remove launcher + autostart (keep repo + token)" \
+            "Back")
+
+        case "$choice" in
+            1)  _cc_install_supercharged_full; wait_enter ;;
+            2)  _cc_install_supercharged_plugin; wait_enter ;;
+            3)  _cc_install_supercharged_apply; wait_enter ;;
+            4)  _cc_install_supercharged_dirs; wait_enter ;;
+            5)  _cc_install_supercharged_token; wait_enter ;;
+            6)  _cc_install_supercharged_pairing_help; wait_enter ;;
+            7)  _cc_install_supercharged_launchagent; wait_enter ;;
+            8)  _cc_install_supercharged_reapply; wait_enter ;;
+            9)  _cc_uninstall_legacy_plugin; wait_enter ;;
+            10) _cc_remove_supercharged; wait_enter ;;
+            0)  break ;;
+            *)  ;;
+        esac
+    done
+    crumb_pop
+}
+
+# 1. Install official plugin (supercharged is a drop-in on top of it)
+
+_cc_install_supercharged_plugin() {
+    if ! command -v claude >/dev/null 2>&1; then
+        log_err "claude CLI not found"
+        return 1
+    fi
+    printf '\n'
+    log_info "Adds telegram@claude-plugins-official to enabledPlugins,"
+    log_info "fetches plugin source from upstream if marketplace dir is empty,"
+    log_info "and runs claude plugin install to populate cache."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install plugin"
+        return
+    fi
+    if ! confirm "Install / restore the official telegram plugin?"; then return; fi
+    _cc_install_supercharged_plugin_copy
+}
+
+_cc_install_supercharged_plugin_copy() {
+    local marketplace_tg="$HOME/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/telegram"
+    local plugin_base="$HOME/.claude/plugins/cache/claude-plugins-official/telegram"
+    local installed="$HOME/.claude/plugins/installed_plugins.json"
+
+    # If marketplace's external_plugins/telegram is empty (we hit this in real
+    # debugging — the dir gets removed during cleanup runs and `marketplace
+    # update` doesn't restore the source files, only metadata), sparse-clone
+    # the directory directly from upstream.
+    if [[ ! -d "$marketplace_tg" ]] || [[ -z "$(ls -A "$marketplace_tg" 2>/dev/null)" ]]; then
+        log_info "Marketplace telegram source missing — sparse-cloning from upstream"
+        local tmp="/tmp/claude-plugins-official-fetch-$$"
+        rm -rf "$tmp"
+        if ! git clone --depth 1 --filter=blob:none --sparse \
+                https://github.com/anthropics/claude-plugins-official.git "$tmp" 2>&1 | tail -3; then
+            log_err "git clone failed"
+            return 1
+        fi
+        git -C "$tmp" sparse-checkout set external_plugins/telegram >/dev/null 2>&1
+        mkdir -p "$(dirname "$marketplace_tg")"
+        cp -R "$tmp/external_plugins/telegram" "$marketplace_tg"
+        rm -rf "$tmp"
+        log_ok "Restored marketplace source"
+    fi
+
+    # Force-clean half-state (entry in installed_plugins.json but no cache),
+    # which can happen if a previous install was interrupted.
+    if [[ -f "$installed" ]] && command -v jq >/dev/null 2>&1; then
+        if jq -e '.plugins["telegram@claude-plugins-official"]' "$installed" >/dev/null 2>&1 \
+            && [[ ! -d "$plugin_base" ]]; then
+            log_info "Removing stale installed_plugins entry (no cache present)"
+            local tmp_json
+            tmp_json=$(mktemp)
+            jq 'del(.plugins["telegram@claude-plugins-official"])' "$installed" > "$tmp_json"
+            mv "$tmp_json" "$installed"
+        fi
+    fi
+
+    if claude plugin install telegram@claude-plugins-official </dev/null >/dev/null 2>&1; then
+        log_ok "claude plugin install reported success"
+    else
+        log_warn "claude plugin install returned error — verifying cache anyway"
+    fi
+
+    if [[ ! -d "$plugin_base" ]] || [[ -z "$(ls -A "$plugin_base" 2>/dev/null)" ]]; then
+        log_err "Plugin cache still empty at $plugin_base"
+        log_info "Try interactively: open a new terminal, run 'claude', then '/plugin install telegram@claude-plugins-official'"
+        return 1
+    fi
+
+    # Enable in settings.json + add tools to allow
+    local settings="$CLAUDE_DIR/settings.json"
+    if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
+        backup_file "$settings"
+        local tools='["mcp__plugin_telegram_telegram__reply","mcp__plugin_telegram_telegram__react","mcp__plugin_telegram_telegram__edit_message","mcp__plugin_telegram_telegram__ask_user","mcp__plugin_telegram_telegram__get_history","mcp__plugin_telegram_telegram__search_messages","mcp__plugin_telegram_telegram__clear_history","mcp__plugin_telegram_telegram__save_memory","mcp__plugin_telegram_telegram__create_telegraph_page"]'
+        local tmp_json
+        tmp_json=$(mktemp)
+        jq --argjson tools "$tools" '
+          .enabledPlugins["telegram@claude-plugins-official"] = true |
+          .permissions.allow = ((.permissions.allow // []) + $tools | unique)
+        ' "$settings" > "$tmp_json"
+        mv "$tmp_json" "$settings"
+        log_ok "Plugin enabled + 9 supercharged tools merged into permissions.allow"
+    fi
+
+    local plugin_version
+    plugin_version=$(ls "$plugin_base" | sort -V | tail -1)
+    log_ok "Plugin installed at $plugin_base/$plugin_version"
+}
+
+# 2. Apply supercharged (drop server.ts + supervisor + skills)
+
+_cc_install_supercharged_apply() {
+    local plugin_base="$HOME/.claude/plugins/cache/claude-plugins-official/telegram"
+    if [[ ! -d "$plugin_base" ]] || [[ -z "$(ls -A "$plugin_base" 2>/dev/null)" ]]; then
+        log_err "Plugin cache missing — run 'Install/restore official plugin' first"
+        return 1
+    fi
+    if ! command -v git >/dev/null 2>&1 || ! command -v bun >/dev/null 2>&1; then
+        log_err "git and bun required"
+        return 1
+    fi
+    printf '\n'
+    log_info "Clones k1p1l0/claude-telegram-supercharged + drops:"
+    log_info "  - server.ts on top of the official plugin"
+    log_info "  - supervisor.ts to ~/.claude/scripts/telegram-supervisor.ts"
+    log_info "  - skills/ to plugin dir (additive)"
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply supercharged"
+        return
+    fi
+    if ! confirm "Apply supercharged?"; then return; fi
+    _cc_install_supercharged_apply_copy
+}
+
+_cc_install_supercharged_apply_copy() {
+    local repo="$HOME/Documents/Code/Claude/claude-telegram-supercharged"
+    local plugin_base="$HOME/.claude/plugins/cache/claude-plugins-official/telegram"
+    local plugin_version
+    plugin_version=$(ls "$plugin_base" | sort -V | tail -1)
+    local plugin_dir="$plugin_base/$plugin_version"
+    local scripts_dir="$HOME/.claude/scripts"
+
+    if [[ -d "$repo" ]]; then
+        log_info "Pulling latest in $repo"
+        git -C "$repo" pull --ff-only 2>&1 | tail -3
+    else
+        mkdir -p "$(dirname "$repo")"
+        git clone https://github.com/k1p1l0/claude-telegram-supercharged "$repo" 2>&1 | tail -3
+    fi
+
+    # Save official server.ts as backup (only if not already saved)
+    if [[ ! -f "$plugin_dir/server.ts.official.bak" ]]; then
+        cp "$plugin_dir/server.ts" "$plugin_dir/server.ts.official.bak"
+    fi
+    cp "$repo/server.ts" "$plugin_dir/server.ts"
+    log_ok "server.ts replaced (official saved as server.ts.official.bak)"
+
+    mkdir -p "$scripts_dir"
+    [[ -f "$repo/supervisor.ts" ]] && cp "$repo/supervisor.ts" "$scripts_dir/telegram-supervisor.ts" \
+        && log_ok "supervisor.ts -> $scripts_dir"
+    [[ -f "$repo/scripts/claude-daemon-wrapper.exp" ]] \
+        && cp "$repo/scripts/claude-daemon-wrapper.exp" "$scripts_dir/" \
+        && log_ok "claude-daemon-wrapper.exp -> $scripts_dir"
+
+    if [[ -d "$repo/skills" ]]; then
+        mkdir -p "$plugin_dir/skills"
+        cp -R "$repo/skills/." "$plugin_dir/skills/"
+        log_ok "skills/ copied (additive)"
+    fi
+
+    # Run bun install in plugin dir to ensure deps current (supercharged may
+    # add deps over time; safe even if package.json unchanged).
+    log_info "Running bun install in plugin dir..."
+    ( cd "$plugin_dir" && bun install --no-summary 2>&1 | tail -3 )
+}
+
+# 3. Create runtime dirs (supercharged crashes without these — we hit ENOENT
+#    on data/telegram.lock during real debugging)
+
+_cc_install_supercharged_dirs() {
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would create ~/.claude/channels/telegram/{data,inbox}"
+        return
+    fi
+    _cc_install_supercharged_dirs_copy
+}
+
+_cc_install_supercharged_dirs_copy() {
+    local data_dir="$HOME/.claude/channels/telegram/data"
+    local inbox_dir="$HOME/.claude/channels/telegram/inbox"
+    mkdir -p "$data_dir" "$inbox_dir"
+    log_ok "Created $data_dir and $inbox_dir"
+}
+
+# 4. Bot token
+
+_cc_install_supercharged_token() {
+    printf '\n'
+    log_info "Stores bot token in ~/.claude/channels/telegram/.env (chmod 600)."
+    log_info "If you already had it from a previous setup, this preserves it."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would prompt for bot token"
+        return
+    fi
+    _cc_install_supercharged_token_copy
+}
+
+_cc_install_supercharged_token_copy() {
+    local env_file="$HOME/.claude/channels/telegram/.env"
+
+    local existing=""
+    if [[ -f "$env_file" ]]; then
+        existing=$(grep -E '^TELEGRAM_BOT_TOKEN=' "$env_file" 2>/dev/null | tail -1 \
+                   | sed 's/^TELEGRAM_BOT_TOKEN=//' | tr -d '"' | tr -d "'")
+    fi
+    if [[ -n "$existing" ]]; then
+        log_info "Existing token: ${existing%%:*}:…${existing: -4}"
+        if ! confirm "Replace it?" "n"; then
+            log_skip "Token unchanged"
+            return
+        fi
+    fi
+
+    local token
+    printf '  Bot token: '
+    read -r token
+    if [[ ! "$token" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]]; then
+        log_err "Invalid format (expected NNNNN:AA…)"
+        return 1
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        local resp
+        resp=$(curl -fsSL --max-time 8 "https://api.telegram.org/bot${token}/getMe" 2>/dev/null || true)
+        if [[ "$resp" == *'"ok":true'* ]]; then
+            local username
+            username=$(printf '%s' "$resp" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
+            log_ok "Bot verified: @$username"
+        else
+            log_warn "Could not verify online — saving anyway"
+        fi
+    fi
+
+    mkdir -p "$(dirname "$env_file")"
+    [[ -f "$env_file" ]] && backup_file "$env_file"
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token" > "$env_file"
+    chmod 600 "$env_file"
+    log_ok "Token saved to $env_file"
+}
+
+# 5. Pairing instructions (manual; pairing requires interactive claude session)
+
+_cc_install_supercharged_pairing_help() {
+    printf '\n'
+    printf '  %bSupercharged pairing — manual step%b\n\n' "$BOLD" "$RESET"
+    printf '  Pairing requires an interactive `claude --channels` session, which\n'
+    printf '  cannot be done from inside this tool. Open a NEW terminal window and:\n\n'
+    printf '  %b1.%b  claude --channels plugin:telegram@claude-plugins-official\n' "$CYAN" "$RESET"
+    printf '      (wait for "Listening for channel messages from: ..." line)\n\n'
+    printf '  %b2.%b  In Telegram, DM your bot. Bot replies with a 6-character code.\n' "$CYAN" "$RESET"
+    printf '      For groups: add bot, @-mention it, get the same pairing code.\n\n'
+    printf '  %b3.%b  In the Claude window, type:\n' "$CYAN" "$RESET"
+    printf '         /telegram:access pair <CODE>\n'
+    printf '         /telegram:access policy allowlist\n\n'
+    printf '  %b4.%b  Close that Claude window — pairing is saved in access.json.\n\n' "$CYAN" "$RESET"
+    printf '  Then come back and run "Install LaunchAgent" so the bot stays alive\n'
+    printf '  across reboots.\n\n'
+}
+
+# 6. LaunchAgent (supervisor + VPN-wait wrapper)
+
+_cc_install_supercharged_launchagent() {
+    if [[ ! -f "$HOME/.claude/scripts/telegram-supervisor.ts" ]]; then
+        log_err "supervisor.ts missing — run 'Apply supercharged' first"
+        return 1
+    fi
+    printf '\n'
+    log_info "Installs ~/Library/LaunchAgents/com.claude-telegram-ts.plist"
+    log_info "+ ~/.local/bin/supercharged-launcher.sh wrapper that:"
+    log_info "  - opens last-used VPN app (Happ or V2RayTun by mtime)"
+    log_info "  - waits for api.anthropic.com reachability (max 60s)"
+    log_info "  - exec's bun ~/.claude/scripts/telegram-supervisor.ts"
+    log_info "Logs: /tmp/claude-telegram-bot-ts.{log,err}"
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install LaunchAgent + wrapper"
+        return
+    fi
+    if ! confirm "Install autostart?"; then return; fi
+    _cc_install_supercharged_launchagent_copy
+}
+
+_cc_install_supercharged_launchagent_copy() {
+    local launcher="$HOME/.local/bin/supercharged-launcher.sh"
+    local plist="$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist"
+    local label="com.claude-telegram-ts"
+    local bun_bin
+    bun_bin=$(command -v bun || echo "$HOME/.bun/bin/bun")
+
+    mkdir -p "$(dirname "$launcher")"
+    cat > "$launcher" <<LAUNCHER
+#!/bin/zsh
+# Supercharged supervisor launcher with VPN-wait gate.
+# Picks whichever VPN app (Happ / V2RayTun) was used most recently, opens it
+# (assuming "Connect on launch" is configured in the app's own settings),
+# then waits for api.anthropic.com to be reachable before exec'ing supervisor.
+
+set -u
+export PATH="\$HOME/.bun/bin:\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
+
+happ_mtime=\$(stat -f %m "\$HOME/Library/Application Support/Happ" 2>/dev/null || echo 0)
+v2ray_mtime=\$(stat -f %m "\$HOME/Library/Application Support/V2RayTun" 2>/dev/null || echo 0)
+if (( v2ray_mtime > happ_mtime )); then
+  open -a "V2RayTun" 2>/dev/null
+else
+  open -a "Happ" 2>/dev/null
+fi
+
+for i in \$(seq 1 30); do
+  curl -s --max-time 5 -o /dev/null https://api.anthropic.com && break
+  sleep 2
+done
+
+exec "$bun_bin" "\$HOME/.claude/scripts/telegram-supervisor.ts"
+LAUNCHER
+    chmod +x "$launcher"
+    log_ok "Wrote $launcher"
+
+    cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$label</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$launcher</string>
+    </array>
+    <key>KeepAlive</key><true/>
+    <key>RunAtLoad</key><true/>
+    <key>ThrottleInterval</key><integer>30</integer>
+    <key>StandardOutPath</key><string>/tmp/claude-telegram-bot-ts.log</string>
+    <key>StandardErrorPath</key><string>/tmp/claude-telegram-bot-ts.err</string>
+</dict>
+</plist>
+PLIST
+
+    if ! plutil -lint "$plist" >/dev/null 2>&1; then
+        log_err "Generated plist is invalid"
+        return 1
+    fi
+
+    launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+    if ! launchctl bootstrap "gui/$UID" "$plist" 2>/tmp/cc-supercharged-bootstrap.err; then
+        log_err "launchctl bootstrap failed:"
+        cat /tmp/cc-supercharged-bootstrap.err 2>/dev/null
+        return 1
+    fi
+    launchctl kickstart -k "gui/$UID/$label" 2>/dev/null || true
+    log_ok "LaunchAgent installed and started"
+
+    _cc_ensure_local_bin_on_path 2>/dev/null || true
+}
+
+# 7. Full setup orchestrator
+
+_cc_install_supercharged_full() {
+    printf '\n'
+    log_info "Full setup: plugin -> apply -> dirs -> token -> pairing-help -> launchagent"
+    log_info "Pairing remains a manual step (requires interactive claude session)."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would run all steps"
+        return
+    fi
+    if ! confirm "Run full setup?"; then return; fi
+
+    # If old plugin/linuz90 artifacts exist, offer cleanup first
+    if [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" ]]; then
+        printf '\n'
+        log_warn "Old plugin/linuz90 artifacts detected — would conflict with supercharged."
+        if confirm "Clean them up first?" "y"; then
+            _cc_uninstall_legacy_plugin_copy
+        fi
+    fi
+
+    _cc_install_supercharged_plugin_copy   || return 1
+    _cc_install_supercharged_apply_copy    || return 1
+    _cc_install_supercharged_dirs_copy     || return 1
+    _cc_install_supercharged_token_copy    || return 1
+    _cc_install_supercharged_pairing_help
+
+    if confirm "Install LaunchAgent now (recommended after pairing is done)?" "n"; then
+        _cc_install_supercharged_launchagent_copy || return 1
+    fi
+
+    printf '\n'
+    log_ok "Supercharged setup complete"
+    log_info "Logs: tail -f /tmp/claude-telegram-bot-ts.log"
+}
+
+# 8. Re-apply after plugin auto-update overwrote server.ts (known supercharged
+#    pain — the official plugin auto-updates and clobbers our drop)
+
+_cc_install_supercharged_reapply() {
+    printf '\n'
+    log_info "When the official plugin auto-updates, it overwrites server.ts with"
+    log_info "the official version. This re-applies the supercharged drop."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would re-apply supercharged"
+        return
+    fi
+    if ! confirm "Re-apply now?"; then return; fi
+
+    _cc_install_supercharged_apply_copy || return 1
+
+    # Restart launchd if it was active
+    local label="com.claude-telegram-ts"
+    if launchctl list 2>/dev/null | grep -q "$label"; then
+        launchctl kickstart -k "gui/$UID/$label" 2>/dev/null
+        log_ok "Restarted LaunchAgent"
+    fi
+}
+
+# 9. Remove launcher + LaunchAgent (preserves repo + token + plugin)
+
+_cc_remove_supercharged() {
+    local launcher="$HOME/.local/bin/supercharged-launcher.sh"
+    local plist="$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist"
+    local label="com.claude-telegram-ts"
+
+    printf '\n'
+    log_info "Removes LaunchAgent + launcher script."
+    log_info "Preserves: repo (~/Documents/Code/Claude/claude-telegram-supercharged),"
+    log_info "  ~/.claude/channels/telegram/.env (token), plugin install, supervisor.ts."
+    printf '\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would remove LaunchAgent + launcher"
+        return
+    fi
+    if ! confirm "Remove launcher + autostart?" "n"; then
+        log_skip "Removal cancelled"
+        return
+    fi
+    launchctl bootout "gui/$UID/$label" 2>/dev/null || true
+    rm -f "$plist" "$launcher"
+    log_ok "Launcher and LaunchAgent removed"
+}
+
 _cc_uninstall_legacy_plugin() {
     printf '\n'
     log_info "Removes:"
@@ -710,12 +1191,38 @@ _cc_reset() {
 
     log_ok "Claude Code state wiped"
 
-    # Telegram legacy plugin artifacts — opt-in cleanup (separate confirm so
-    # token isn't nuked by accident; the active engine has its own remove flow)
-    local has_legacy=false
+    # Telegram supercharged artifacts — opt-in (separate confirm so token + repo
+    # aren't nuked by accident; the supercharged remove flow keeps repo by default)
+    local has_super=false has_legacy=false
+    [[ -e "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
+        || -e "$HOME/.local/bin/supercharged-launcher.sh" \
+        || -d "$HOME/Documents/Code/Claude/claude-telegram-supercharged" \
+        || -f "$HOME/.claude/scripts/telegram-supervisor.ts" ]] && has_super=true
     [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" \
         || -e "$CC_TG_LEGACY_LAUNCHER" || -e "$CC_TG_LEGACY_OLD_LAUNCHER" \
         || -e "$CC_TG_LEGACY_ENV_FILE" ]] && has_legacy=true
+
+    if $has_super; then
+        printf '\n'
+        log_info "Telegram supercharged artifacts:"
+        [[ -e "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" ]] && printf '    %s\n' "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist"
+        [[ -e "$HOME/.local/bin/supercharged-launcher.sh" ]]               && printf '    %s\n' "$HOME/.local/bin/supercharged-launcher.sh"
+        [[ -d "$HOME/Documents/Code/Claude/claude-telegram-supercharged" ]] && printf '    %s/ (repo)\n' "$HOME/Documents/Code/Claude/claude-telegram-supercharged"
+        [[ -f "$HOME/.claude/scripts/telegram-supervisor.ts" ]]            && printf '    %s\n' "$HOME/.claude/scripts/telegram-supervisor.ts"
+        printf '\n'
+        if confirm "Also wipe Telegram supercharged?" "n"; then
+            launchctl bootout "gui/$UID/com.claude-telegram-ts" 2>/dev/null || true
+            rm -f "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
+                  "$HOME/.local/bin/supercharged-launcher.sh" \
+                  "$HOME/.claude/scripts/telegram-supervisor.ts" \
+                  "$HOME/.claude/scripts/claude-daemon-wrapper.exp"
+            if confirm "Also delete repo + token (~/.claude/channels/telegram/.env)?" "n"; then
+                rm -rf "$HOME/Documents/Code/Claude/claude-telegram-supercharged"
+                rm -f "$HOME/.claude/channels/telegram/.env"
+            fi
+            log_ok "Supercharged wiped"
+        fi
+    fi
 
     if $has_legacy; then
         printf '\n'
