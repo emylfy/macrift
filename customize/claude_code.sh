@@ -687,32 +687,66 @@ _cc_ccbot_menu() {
 
 _cc_install_ccbot_deps() {
     printf '\n'
-    log_info "ccbot needs:"
-    log_info "  uv — Python package manager. Install: brew install uv"
-    log_info "  tmux — terminal multiplexer. Install: brew install tmux"
+    log_info "ccbot needs: uv (Python tool), tmux (terminal multiplexer), claude (Claude Code CLI)"
     printf '\n'
 
-    local missing=0
+    local missing=()
     if command -v uv >/dev/null 2>&1; then
         log_ok "uv: $(uv --version 2>/dev/null | head -1)"
     else
         log_err "uv not found"
-        missing=1
+        missing+=("uv")
     fi
     if command -v tmux >/dev/null 2>&1; then
         log_ok "tmux: $(tmux -V)"
     else
         log_err "tmux not found"
-        missing=1
+        missing+=("tmux")
     fi
     if command -v claude >/dev/null 2>&1; then
         log_ok "claude: $(claude --version 2>/dev/null | head -1)"
     else
-        log_err "claude not found — Claude Code CLI required"
-        missing=1
+        log_err "claude not found — install from https://claude.com/code"
+        # claude isn't on brew; user must install separately. Treat as fatal.
+        return 1
     fi
 
-    return $missing
+    if (( ${#missing[@]} == 0 )); then
+        return 0
+    fi
+
+    if ! command -v brew >/dev/null 2>&1; then
+        log_err "Homebrew not installed — can't auto-install missing deps. Install brew first: https://brew.sh"
+        return 1
+    fi
+
+    printf '\n'
+    log_info "Missing brew packages: ${missing[*]}"
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would run: brew install ${missing[*]}"
+        return 1
+    fi
+    if ! confirm "Install via 'brew install ${missing[*]}'?" "y"; then
+        log_skip "Skipped — install manually then re-run"
+        return 1
+    fi
+
+    if brew install "${missing[@]}" 2>&1 | tail -8; then
+        log_ok "brew install completed"
+    else
+        log_err "brew install failed"
+        return 1
+    fi
+
+    # Re-verify
+    local still_missing=0
+    for pkg in "${missing[@]}"; do
+        if ! command -v "$pkg" >/dev/null 2>&1; then
+            log_err "$pkg still not found after install"
+            still_missing=1
+        fi
+    done
+    return $still_missing
 }
 
 # 2. Install ccbot via uv tool
