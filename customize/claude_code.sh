@@ -901,20 +901,25 @@ _cc_install_ccbot_pairing_help() {
     printf '  %b[q]%b to quit the checklist (you can re-run it later from this menu).\n\n' "$BOLD" "$RESET"
     if ! confirm "Start checklist?" "y"; then return; fi
 
-    _cc_ccbot_step "1/5: Enable Threaded Mode in @BotFather" \
+    _cc_ccbot_step "1/6: Enable Threaded Mode in @BotFather" \
         "Open @BotFather → /mybots → select your bot → Bot Settings → Threaded Mode → Enable" \
         "tg://resolve?domain=BotFather" \
         "https://t.me/BotFather" || return
 
-    _cc_ccbot_step "2/5: Create or pick a Telegram group with Topics" \
+    _cc_ccbot_step "2/6: DISABLE Group Privacy in @BotFather (critical!)" \
+        "Same Bot Settings menu → Group Privacy → Turn OFF. Without this, the bot sees ONLY @-mentions in groups, NOT regular messages — ccbot will receive nothing and topics won't trigger directory browser. This is the #1 reason ccbot 'doesn't respond'." \
+        "tg://resolve?domain=BotFather" \
+        "https://t.me/BotFather" || return
+
+    _cc_ccbot_step "3/6: Create or pick a Telegram group with Topics" \
         "In Telegram, create a new group (long-press 'New' → 'New Group') OR open an existing one. In group Settings → enable 'Topics' (forum mode)." \
         "" "" || return
 
-    _cc_ccbot_step "3/5: Add your bot to the group as admin" \
-        "Group Settings → Administrators → Add Admin → search for your bot → grant message permissions" \
+    _cc_ccbot_step "4/6: Add your bot to the group as admin" \
+        "Group Settings → Administrators → Add Admin → search for your bot → grant 'Send Messages' permission → Save" \
         "" "" || return
 
-    _cc_ccbot_step "4/5: Verify ccbot is running" \
+    _cc_ccbot_step "5/6: Verify ccbot is running" \
         "ccbot is managed by launchd. Status check below — should show 'state = running' with a pid." \
         "" "" || return
     if launchctl print "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>&1 | grep -E "^\s*(state|pid)" | head -3; then
@@ -925,12 +930,12 @@ _cc_install_ccbot_pairing_help() {
     printf '  Press [Enter] when verified... '
     read -r _
 
-    _cc_ccbot_step "5/5: Send first message in a topic" \
+    _cc_ccbot_step "6/6: Send first message in a topic" \
         "In your TG group, long-press 'New' → 'New Topic' → name it (e.g. 'macrift'). Send any message. Bot replies with a directory browser — choose your project dir. tmux window opens, claude starts there, your message goes in." \
         "" "" || return
 
     printf '\n'
-    log_ok "All 5 steps acknowledged. Watch live with: tail -f /tmp/ccbot.log"
+    log_ok "All 6 steps acknowledged. Watch live with: tail -f /tmp/ccbot.log"
 }
 
 # Helper: print a step, optionally open URL(s), wait for input
