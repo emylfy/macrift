@@ -1,3 +1,7 @@
+---
+description: Run the `debugger` agent for error analysis
+---
+
 Run the `debugger` agent for error analysis.
 
 Pass it:

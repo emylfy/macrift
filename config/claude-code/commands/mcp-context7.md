@@ -1,3 +1,7 @@
+---
+description: Create .mcp.json in cwd with context7 MCP server config
+---
+
 Create `.mcp.json` in the current working directory with context7 MCP config so Claude Code activates context7 for this project.
 
 Steps:

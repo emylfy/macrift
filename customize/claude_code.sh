@@ -6,15 +6,15 @@ CC_CONFIG="$MACRIFT_DIR/config/claude-code"
 CC_ENV_MARKER="# macrift:claude-code env"
 CC_RALIAS_MARKER="# macrift:claude-code r-alias"
 
-# Telegram bot — _cc_telegram_menu offers two engines: supercharged or ccbot.
+# Telegram bot — _cc_telegram_menu offers two engines: supercharged or ccgram.
 # Engine constants are grouped per engine below.
 
-# CCBot engine (six-ddc/ccmux) — tmux-bridge, parallel sessions per Forum topic.
-CC_CCBOT_REPO_URL="https://github.com/six-ddc/ccmux.git"
-CC_CCBOT_CONFIG_DIR="$HOME/.ccbot"
-CC_CCBOT_LAUNCH_AGENT_LABEL="com.user.ccbot"
-CC_CCBOT_LAUNCH_AGENT="$HOME/Library/LaunchAgents/$CC_CCBOT_LAUNCH_AGENT_LABEL.plist"
-CC_CCBOT_LAUNCHER="$HOME/.local/bin/ccbot-launcher.sh"
+# ccgram engine (alexei-led/ccgram) — tmux-bridge, parallel sessions per Forum topic.
+CC_CCGRAM_REPO_URL="https://github.com/alexei-led/ccgram"
+CC_CCGRAM_CONFIG_DIR="$HOME/.ccgram"
+CC_CCGRAM_LAUNCH_AGENT_LABEL="com.user.ccgram"
+CC_CCGRAM_LAUNCH_AGENT="$HOME/Library/LaunchAgents/$CC_CCGRAM_LAUNCH_AGENT_LABEL.plist"
+CC_CCGRAM_LAUNCHER="$HOME/.local/bin/ccgram-launcher.sh"
 
 # Legacy paths from previous plugin / linuz90 setups — kept so cleanup can find them.
 CC_TG_LEGACY_LAUNCHER="$HOME/.local/bin/ctg"
@@ -37,7 +37,7 @@ claude_code_menu() {
             "Full Setup — install everything to ~/.claude/" \
             "Custom Setup — pick what to install" \
             "---" \
-            "Telegram bot — choose engine (supercharged / ccbot)" \
+            "Telegram bot — choose engine (supercharged / ccgram)" \
             "---" \
             "Reset — wipe macrift-managed Claude state" \
             "Back")
@@ -70,6 +70,7 @@ _cc_custom_menu() {
             "Environment — CLAUDE_CODE_* env vars in .zshrc" \
             "CLAUDE.md (rule imports) — load rules into every session" \
             "'r' alias — alias r='bash /tmp/cmd.sh' for workflow rule" \
+            "MCP Servers — context7 (live docs), playwright (E2E)" \
             "Back")
 
         case "$choice" in
@@ -82,6 +83,7 @@ _cc_custom_menu() {
             7)  _cc_install_env; wait_enter ;;
             8)  _cc_install_claude_md; wait_enter ;;
             9)  _cc_install_r_alias; wait_enter ;;
+            10) _cc_install_mcp ;;
             0)  break ;;
             *)  ;;
         esac
@@ -98,6 +100,7 @@ _cc_full_setup() {
     printf '  This will install all components to %b~/.claude/%b:\n\n' "$CYAN" "$RESET"
     printf '  %b›%b  User settings (permissions, plugins, effort level)\n' "$CYAN" "$RESET"
     printf '  %b›%b  Statusline (project, branch, model, ctx%%, rate%%)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Doctor (~/.claude/doctor.sh + /doctor command — health check)\n' "$CYAN" "$RESET"
     printf '  %b›%b  Agents (debugger, reviewer, simplifier)\n' "$CYAN" "$RESET"
     printf '  %b›%b  Slash commands (/debug, /review, /simplify)\n' "$CYAN" "$RESET"
     printf '  %b›%b  Rules (code-style, git, security, workflow)\n' "$CYAN" "$RESET"
@@ -105,6 +108,7 @@ _cc_full_setup() {
     printf '  %b›%b  Environment variables in .zshrc\n' "$CYAN" "$RESET"
     printf '  %b›%b  CLAUDE.md with rule imports\n' "$CYAN" "$RESET"
     printf "  %b›%b  'r' alias for /tmp/cmd.sh in .zshrc\n" "$CYAN" "$RESET"
+    printf '  %b›%b  MCP servers (context7, playwright)\n' "$CYAN" "$RESET"
     printf '\n'
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -117,9 +121,11 @@ _cc_full_setup() {
         return
     fi
 
+    _cc_bootstrap_deps
     _cc_ensure_dir
     _cc_install_settings_user --full
     _cc_install_statusline_copy
+    _cc_install_doctor_copy
     _cc_install_dir "agents"
     _cc_install_dir "commands"
     _cc_install_dir "rules"
@@ -127,6 +133,7 @@ _cc_full_setup() {
     _cc_install_env_copy
     _cc_install_claude_md_copy
     _cc_install_r_alias_copy
+    _cc_install_mcp_copy
 
     printf '\n'
     log_ok "Claude Code fully configured"
@@ -195,7 +202,6 @@ _cc_install_settings_user() {
                 return
             fi
             if [[ -f "$target" ]]; then
-                backup_file "$target"
                 local merged jq_err err_log
                 # jq `*` deep-merges objects but REPLACES arrays — so any user-added
                 # entries in permissions.allow/deny will be overwritten by macrift's lists.
@@ -214,6 +220,41 @@ _cc_install_settings_user() {
                     log_err "jq produced empty output — settings unchanged"
                     return 1
                 fi
+
+                # Dry-run preview: show diff between current settings and proposed merge.
+                # Bake $HOME before diff so the preview reflects the file that will
+                # actually be written (the post-merge sed step expands $HOME literals).
+                # Skipped in --full to keep batch flow uninterrupted; user can re-run
+                # the interactive variant if they want to inspect.
+                if ! $full_setup; then
+                    local merged_baked
+                    merged_baked=$(printf '%s\n' "$merged" | sed "s|\\\$HOME|$HOME|g")
+                    local diff_out
+                    diff_out=$(diff -u \
+                        <(jq -S . "$target" 2>/dev/null) \
+                        <(printf '%s\n' "$merged_baked" | jq -S . 2>/dev/null) \
+                        2>/dev/null)
+                    if [[ -n "$diff_out" ]]; then
+                        printf '\n'
+                        log_info "Proposed changes to ~/.claude/settings.json (current → merged):"
+                        printf '%s\n' "$diff_out" | head -50
+                        local diff_lines
+                        diff_lines=$(printf '%s\n' "$diff_out" | wc -l | tr -d ' ')
+                        if (( diff_lines > 50 )); then
+                            log_info "($((diff_lines - 50)) more lines truncated)"
+                        fi
+                        printf '\n'
+                        if ! confirm "Apply this merge?" "y"; then
+                            log_skip "Settings unchanged"
+                            return
+                        fi
+                    else
+                        log_info "No effective changes — current settings already match merge result"
+                        return
+                    fi
+                fi
+
+                backup_file "$target"
                 printf '%s\n' "$merged" > "$target"
                 log_ok "User settings merged (objects deep-merged, arrays replaced)"
             else
@@ -240,6 +281,73 @@ _cc_install_settings_user() {
 }
 
 # Statusline
+
+# Dependency bootstrap — run at start of Full Setup to surface missing tools
+
+_cc_bootstrap_deps() {
+    if ! command -v brew >/dev/null 2>&1; then
+        log_warn "brew not found in PATH — skipping dependency check (install jq + formatters manually)"
+        return 0
+    fi
+
+    local missing_required=()
+    local missing_optional_brew=()
+    local missing_optional_note=()
+
+    command -v jq >/dev/null 2>&1 || missing_required+=("jq")
+
+    if ! command -v prettier >/dev/null 2>&1; then
+        missing_optional_brew+=("prettier")
+        missing_optional_note+=("prettier — .ts/.js/.json/.yaml/.css/.html")
+    fi
+    if ! command -v ruff >/dev/null 2>&1; then
+        missing_optional_brew+=("ruff")
+        missing_optional_note+=("ruff — .py")
+    fi
+    if ! command -v shfmt >/dev/null 2>&1; then
+        missing_optional_brew+=("shfmt")
+        missing_optional_note+=("shfmt — .sh/.bash")
+    fi
+    command -v gofmt   >/dev/null 2>&1 || missing_optional_note+=("gofmt — comes with: brew install go")
+    command -v rustfmt >/dev/null 2>&1 || missing_optional_note+=("rustfmt — comes with: brew install rust")
+
+    if [[ ${#missing_required[@]} -eq 0 && ${#missing_optional_note[@]} -eq 0 ]]; then
+        log_ok "All Claude Code dependencies present"
+        return 0
+    fi
+
+    printf '\n'
+    log_info "Dependency check"
+
+    if [[ ${#missing_required[@]} -gt 0 ]]; then
+        log_warn "Missing REQUIRED: ${missing_required[*]}"
+        log_info "(hooks will silently fail without jq)"
+        if confirm "Install required deps via brew now? (${missing_required[*]})" "y"; then
+            for dep in "${missing_required[@]}"; do
+                log_info "brew install $dep"
+                brew install "$dep" 2>&1 | tail -3 || log_err "brew install $dep failed"
+            done
+        fi
+    fi
+
+    if [[ ${#missing_optional_note[@]} -gt 0 ]]; then
+        log_info "Optional formatters missing (hooks/format.sh skips silently if absent):"
+        local item
+        for item in "${missing_optional_note[@]}"; do
+            printf '    - %s\n' "$item"
+        done
+        if [[ ${#missing_optional_brew[@]} -gt 0 ]]; then
+            if confirm "Install brew-available optional formatters? (${missing_optional_brew[*]})" "n"; then
+                for dep in "${missing_optional_brew[@]}"; do
+                    log_info "brew install $dep"
+                    brew install "$dep" 2>&1 | tail -3 || log_err "brew install $dep failed"
+                done
+            fi
+        fi
+    fi
+
+    printf '\n'
+}
 
 _cc_install_statusline() {
     local source="$CC_CONFIG/statusline.sh"
@@ -276,6 +384,21 @@ _cc_install_statusline_copy() {
     fi
     _cc_ensure_dir
     copy_config "$source" "$target"
+}
+
+# Doctor — health check script, runnable both standalone and via /doctor
+
+_cc_install_doctor_copy() {
+    local source="$CC_CONFIG/doctor.sh"
+    local target="$CLAUDE_DIR/doctor.sh"
+    [[ -f "$source" ]] || return
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Would copy doctor.sh → $target"
+        return
+    fi
+    _cc_ensure_dir
+    copy_config "$source" "$target"
+    chmod +x "$target" 2>/dev/null || true
 }
 
 # Hooks
@@ -505,10 +628,15 @@ _cc_install_env() {
 
     log_info "Environment variables to add to .zshrc:"
     printf '\n'
+    log_info "  Universal:"
     while IFS= read -r line; do
-        [[ -z "$line" || "$line" == \#* ]] && continue
         printf '  %b›%b %s\n' "$CYAN" "$RESET" "$line"
-    done < "$source"
+    done < <(_cc_env_filter "$source" universal)
+    printf '\n'
+    log_info "  Max-tier only:"
+    while IFS= read -r line; do
+        printf '  %b›%b %s\n' "$CYAN" "$RESET" "$line"
+    done < <(_cc_env_filter "$source" max)
     printf '\n'
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -522,6 +650,22 @@ _cc_install_env() {
     log_info "Restart shell to apply"
 }
 
+# Emit non-comment, non-blank lines from env.sh.
+# section = universal | max | all
+_cc_env_filter() {
+    local source=$1 section=$2
+    awk -v section="$section" '
+        /^# === MAX_TIER ===/ { in_max=1; next }
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*#/ { next }
+        {
+            if (section == "all" ||
+                (section == "universal" && !in_max) ||
+                (section == "max" && in_max)) print
+        }
+    ' "$source"
+}
+
 _cc_install_env_copy() {
     local source="$CC_CONFIG/env.sh"
     [[ -f "$source" ]] || return
@@ -529,9 +673,18 @@ _cc_install_env_copy() {
         log_info "Would write env block to .zshrc"
         return
     fi
-    grep -v '^#' "$source" | grep -v '^$' \
+
+    local include_max=false
+    if confirm "On Claude Max tier? (adds AUTOCOMPACT_PCT_OVERRIDE + concurrency=15)" "n"; then
+        include_max=true
+    fi
+
+    local section=universal
+    $include_max && section=all
+
+    _cc_env_filter "$source" "$section" \
         | _cc_replace_marked_block "$HOME/.zshrc" "$CC_ENV_MARKER"
-    log_ok "Environment variables added to .zshrc"
+    log_ok "Environment variables added to .zshrc ($section)"
 }
 
 # CLAUDE.md (rule imports)
@@ -542,9 +695,10 @@ _cc_install_claude_md() {
         return
     fi
 
-    log_info "Adds @~/.claude/rules/<rule>.md imports to ~/.claude/CLAUDE.md"
+    log_info "Syncs @~/.claude/rules/<rule>.md imports in ~/.claude/CLAUDE.md"
+    log_info "Adds imports for new rules; removes imports whose rule files no longer exist."
     printf '\n'
-    if ! confirm "Write CLAUDE.md rule imports?"; then return; fi
+    if ! confirm "Sync CLAUDE.md rule imports?"; then return; fi
 
     _cc_install_claude_md_copy
 }
@@ -556,18 +710,49 @@ _cc_install_claude_md_copy() {
     [[ -d "$rules_dir" ]] || { log_err "No rules dir at $rules_dir"; return; }
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would write rule imports to $claude_md"
+        log_info "Would sync rule imports in $claude_md"
         return
     fi
 
     _cc_ensure_dir
     [[ -f "$claude_md" ]] || touch "$claude_md"
 
-    local added=0 backed_up=false
+    local present=()
+    local f rule_name
     for f in "$rules_dir"/*.md; do
         [[ -f "$f" ]] || continue
-        local rule_name
         rule_name="$(basename "$f" .md)"
+        present+=("$rule_name")
+    done
+
+    local backed_up=false
+    local removed=0
+    local stale_rules=()
+    while IFS= read -r line; do
+        [[ "$line" =~ ^@~/.claude/rules/(.+)\.md$ ]] || continue
+        rule_name="${BASH_REMATCH[1]}"
+        local found=false
+        local p
+        for p in "${present[@]}"; do
+            [[ "$p" == "$rule_name" ]] && { found=true; break; }
+        done
+        $found || stale_rules+=("$rule_name")
+    done < "$claude_md"
+
+    if [[ ${#stale_rules[@]} -gt 0 ]]; then
+        backup_file "$claude_md"
+        backed_up=true
+        for rule_name in "${stale_rules[@]}"; do
+            local line="@~/.claude/rules/$rule_name.md"
+            local escaped
+            escaped=$(printf '%s' "$line" | sed 's/[\/&]/\\&/g')
+            sed -i.tmp "/^${escaped}$/d" "$claude_md" && rm -f "$claude_md.tmp"
+            removed=$((removed + 1))
+        done
+    fi
+
+    local added=0
+    for rule_name in "${present[@]}"; do
         local line="@~/.claude/rules/$rule_name.md"
         if ! grep -qF "$line" "$claude_md"; then
             if ! $backed_up; then
@@ -580,10 +765,10 @@ _cc_install_claude_md_copy() {
         fi
     done
 
-    if [[ $added -gt 0 ]]; then
-        log_ok "CLAUDE.md updated ($added import(s) added)"
+    if [[ $added -gt 0 || $removed -gt 0 ]]; then
+        log_ok "CLAUDE.md synced (+$added import(s), -$removed stale)"
     else
-        log_skip "CLAUDE.md already has all rule imports"
+        log_skip "CLAUDE.md already in sync"
     fi
 }
 
@@ -613,6 +798,94 @@ _cc_install_r_alias_copy() {
     log_ok "'r' alias added to .zshrc"
 }
 
+# MCP servers
+# Installed user-scoped via `claude mcp add --scope user`, so they apply
+# across every project without per-repo .mcp.json. Idempotent: skips any
+# server already present in `claude mcp list`.
+
+_cc_mcp_names() {
+    printf '%s\n' "context7" "playwright"
+}
+
+_cc_mcp_desc() {
+    case "$1" in
+        context7)  printf 'live library docs (eliminates hallucinated APIs)' ;;
+        playwright) printf 'browser automation / E2E test generation' ;;
+    esac
+}
+
+_cc_mcp_install_one() {
+    case "$1" in
+        context7)
+            claude mcp add --scope user --transport http context7 \
+                https://mcp.context7.com/mcp >/dev/null 2>&1
+            ;;
+        playwright)
+            claude mcp add --scope user playwright -- \
+                npx -y @playwright/mcp@latest >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+_cc_install_mcp() {
+    if ! command -v claude >/dev/null 2>&1; then
+        log_err "'claude' CLI not found — install Claude Code first"
+        wait_enter
+        return 1
+    fi
+
+    local names=()
+    while IFS= read -r n; do names+=("$n"); done < <(_cc_mcp_names)
+
+    printf '\n'
+    log_info "MCP servers — installed user-scoped (apply to every project):"
+    local n
+    for n in "${names[@]}"; do
+        log_info "  $n — $(_cc_mcp_desc "$n")"
+    done
+    printf '\n'
+    local selected
+    selected=$(show_multiselect "MCP Servers" "${names[@]}")
+    [[ -z "$selected" ]] && return
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install: $(echo "$selected" | tr '\n' ' ')"
+        wait_enter
+        return
+    fi
+
+    local existing
+    existing=$(claude mcp list 2>/dev/null | awk -F: 'NF{print $1}')
+
+    local count=0 skipped=0 failed=0
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        if grep -qx "$name" <<<"$existing"; then
+            log_skip "$name already configured"
+            skipped=$((skipped + 1))
+            continue
+        fi
+        if _cc_mcp_install_one "$name"; then
+            log_ok "$name installed"
+            count=$((count + 1))
+        else
+            log_err "$name install failed"
+            failed=$((failed + 1))
+        fi
+    done <<<"$selected"
+
+    printf '\n'
+    log_info "$count installed, $skipped already present, $failed failed"
+    wait_enter
+}
+
+_cc_install_mcp_copy() {
+    _cc_install_mcp
+}
+
 # Telegram bot — engine selector
 
 _cc_telegram_menu() {
@@ -624,19 +897,19 @@ _cc_telegram_menu() {
         printf '  %bsupercharged%b: drop-in over the official anthropic plugin. DM-friendly,\n' "$CYAN" "$RESET"
         printf '    pairing flow with 6-char code, SQLite memory, Telegraph instant view,\n'
         printf '    one shared claude session.  ✓ simpler setup\n\n'
-        printf '  %bccbot%b: tmux-bridge. Each Telegram Forum topic = 1 tmux window =\n' "$CYAN" "$RESET"
+        printf '  %bccgram%b: tmux-bridge. Each Telegram Forum topic = 1 tmux window =\n' "$CYAN" "$RESET"
         printf '    1 standalone claude session. /esc interrupts, desktop continuity\n'
         printf '    via tmux attach.  ✓ parallel sessions, %brequires forum group%b (not DM)\n\n' "$YELLOW" "$RESET"
 
         local choice
         choice=$(show_menu "Telegram bot" \
             "supercharged — drop-in for anthropic plugin (DM, single session)" \
-            "ccbot — tmux-bridge (forum group, parallel sessions per topic)" \
+            "ccgram — tmux-bridge (forum group, parallel sessions per topic)" \
             "Back")
 
         case "$choice" in
             1)  _cc_supercharged_menu ;;
-            2)  _cc_ccbot_menu ;;
+            2)  _cc_ccgram_menu ;;
             0)  break ;;
             *)  ;;
         esac
@@ -644,38 +917,38 @@ _cc_telegram_menu() {
     crumb_pop
 }
 
-# CCBot engine submenu
+# ccgram engine submenu
 
-_cc_ccbot_menu() {
-    crumb_push "ccbot"
+_cc_ccgram_menu() {
+    crumb_push "ccgram"
     while true; do
         clear
 
         local choice
-        choice=$(show_menu "Telegram bot (ccbot — six-ddc/ccmux)" \
+        choice=$(show_menu "Telegram bot (ccgram — alexei-led/ccgram)" \
             "Full setup — install + env + hook + autostart" \
             "---" \
             "Check deps (uv, tmux)" \
-            "Install ccbot via uv (or upgrade if already installed)" \
-            "Configure ~/.ccbot/.env (token + ALLOWED_USERS)" \
-            "Install Claude Code SessionStart hook (ccbot hook --install)" \
+            "Install ccgram via uv (or upgrade if already installed)" \
+            "Configure ~/.ccgram/.env (token + ALLOWED_USERS)" \
+            "Install Claude Code SessionStart hook (ccgram hook --install)" \
             "Pairing help (manual TG forum group + BotFather steps)" \
             "Install LaunchAgent (autostart + VPN-wait wrapper)" \
             "---" \
             "Migrate from supercharged (stop launchd, keep repo as fallback)" \
-            "Remove ccbot launcher + autostart (keep config + uv tool)" \
+            "Remove ccgram launcher + autostart (keep config + uv tool)" \
             "Back")
 
         case "$choice" in
-            1)  _cc_install_ccbot_full; wait_enter ;;
-            2)  _cc_install_ccbot_deps; wait_enter ;;
-            3)  _cc_install_ccbot_install; wait_enter ;;
-            4)  _cc_install_ccbot_env; wait_enter ;;
-            5)  _cc_install_ccbot_hook; wait_enter ;;
-            6)  _cc_install_ccbot_pairing_help; wait_enter ;;
-            7)  _cc_install_ccbot_launchagent; wait_enter ;;
-            8)  _cc_migrate_supercharged_to_ccbot; wait_enter ;;
-            9)  _cc_remove_ccbot; wait_enter ;;
+            1)  _cc_install_ccgram_full; wait_enter ;;
+            2)  _cc_install_ccgram_deps; wait_enter ;;
+            3)  _cc_install_ccgram_install; wait_enter ;;
+            4)  _cc_install_ccgram_env; wait_enter ;;
+            5)  _cc_install_ccgram_hook; wait_enter ;;
+            6)  _cc_install_ccgram_pairing_help; wait_enter ;;
+            7)  _cc_install_ccgram_launchagent; wait_enter ;;
+            8)  _cc_migrate_supercharged_to_ccgram; wait_enter ;;
+            9)  _cc_remove_ccgram; wait_enter ;;
             0)  break ;;
             *)  ;;
         esac
@@ -683,11 +956,11 @@ _cc_ccbot_menu() {
     crumb_pop
 }
 
-# 1. Deps check (uv + tmux are mandatory; ccbot won't run without them)
+# 1. Deps check (uv + tmux are mandatory; ccgram won't run without them)
 
-_cc_install_ccbot_deps() {
+_cc_install_ccgram_deps() {
     printf '\n'
-    log_info "ccbot needs: uv (Python tool), tmux (terminal multiplexer), claude (Claude Code CLI)"
+    log_info "ccgram needs: uv (Python tool), tmux (terminal multiplexer), claude (Claude Code CLI)"
     printf '\n'
 
     local missing=()
@@ -749,60 +1022,60 @@ _cc_install_ccbot_deps() {
     return $still_missing
 }
 
-# 2. Install ccbot via uv tool
+# 2. Install ccgram via uv tool
 
-_cc_install_ccbot_install() {
+_cc_install_ccgram_install() {
     if ! command -v uv >/dev/null 2>&1; then
         log_err "uv not found — install: brew install uv"
         return 1
     fi
     printf '\n'
-    log_info "Installs ccbot from $CC_CCBOT_REPO_URL via 'uv tool install'."
-    log_info "If already installed, runs 'uv tool upgrade ccbot' to pull latest."
+    log_info "Installs ccgram from PyPI via 'uv tool install ccgram' (upstream: $CC_CCGRAM_REPO_URL)."
+    log_info "If already installed, runs 'uv tool upgrade ccgram' to pull latest."
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install ccbot"
+        log_info "Dry run — would install ccgram"
         return
     fi
-    if ! confirm "Install / upgrade ccbot?"; then return; fi
-    _cc_install_ccbot_install_copy
+    if ! confirm "Install / upgrade ccgram?"; then return; fi
+    _cc_install_ccgram_install_copy
 }
 
-_cc_install_ccbot_install_copy() {
-    if uv tool list 2>/dev/null | grep -q '^ccbot'; then
-        log_info "Upgrading ccbot..."
-        uv tool upgrade ccbot 2>&1 | tail -3 || \
-            uv tool install --reinstall "git+$CC_CCBOT_REPO_URL" 2>&1 | tail -3
+_cc_install_ccgram_install_copy() {
+    if uv tool list 2>/dev/null | grep -q '^ccgram'; then
+        log_info "Upgrading ccgram..."
+        uv tool upgrade ccgram 2>&1 | tail -3 || \
+            uv tool install --reinstall ccgram 2>&1 | tail -3
     else
-        log_info "Installing ccbot..."
-        uv tool install "git+$CC_CCBOT_REPO_URL" 2>&1 | tail -3
+        log_info "Installing ccgram..."
+        uv tool install ccgram 2>&1 | tail -3
     fi
 
-    if command -v ccbot >/dev/null 2>&1; then
-        log_ok "ccbot binary at: $(command -v ccbot)"
+    if command -v ccgram >/dev/null 2>&1; then
+        log_ok "ccgram binary at: $(command -v ccgram)"
     else
-        log_warn "ccbot installed but not in PATH. Add to ~/.zshrc:"
+        log_warn "ccgram installed but not in PATH. Add to ~/.zshrc:"
         log_warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
         _cc_ensure_local_bin_on_path 2>/dev/null || true
     fi
 }
 
-# 3. Configure ~/.ccbot/.env
+# 3. Configure ~/.ccgram/.env
 
-_cc_install_ccbot_env() {
+_cc_install_ccgram_env() {
     printf '\n'
-    log_info "Stores token + allowed user(s) in $CC_CCBOT_CONFIG_DIR/.env (chmod 600)."
+    log_info "Stores token + allowed user(s) in $CC_CCGRAM_CONFIG_DIR/.env (chmod 600)."
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would prompt for token + user_id"
         return
     fi
-    _cc_install_ccbot_env_copy
+    _cc_install_ccgram_env_copy
 }
 
-_cc_install_ccbot_env_copy() {
-    local env_file="$CC_CCBOT_CONFIG_DIR/.env"
-    mkdir -p "$CC_CCBOT_CONFIG_DIR"
+_cc_install_ccgram_env_copy() {
+    local env_file="$CC_CCGRAM_CONFIG_DIR/.env"
+    mkdir -p "$CC_CCGRAM_CONFIG_DIR"
 
     # Token — try to reuse from supercharged if available
     local existing_token=""
@@ -855,36 +1128,36 @@ _cc_install_ccbot_env_copy() {
     cat > "$env_file" <<ENV
 TELEGRAM_BOT_TOKEN=$token
 ALLOWED_USERS=$user_id
-TMUX_SESSION_NAME=ccbot
+TMUX_SESSION_NAME=ccgram
 CLAUDE_COMMAND=claude
 ENV
     chmod 600 "$env_file"
     log_ok "Wrote $env_file"
 }
 
-# 4. Install ccbot SessionStart hook
+# 4. Install ccgram SessionStart hook
 
-_cc_install_ccbot_hook() {
-    if ! command -v ccbot >/dev/null 2>&1; then
-        log_err "ccbot not in PATH — install first"
+_cc_install_ccgram_hook() {
+    if ! command -v ccgram >/dev/null 2>&1; then
+        log_err "ccgram not in PATH — install first"
         return 1
     fi
     printf '\n'
-    log_info "Adds 'ccbot hook' as a SessionStart hook in ~/.claude/settings.json."
+    log_info "Adds 'ccgram hook' as a SessionStart hook in ~/.claude/settings.json."
     log_info "Each new Claude Code session writes its tmux window↔session mapping"
-    log_info "to $CC_CCBOT_CONFIG_DIR/session_map.json so ccbot can route TG topics to it."
+    log_info "to $CC_CCGRAM_CONFIG_DIR/session_map.json so ccgram can route TG topics to it."
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would run 'ccbot hook --install'"
+        log_info "Dry run — would run 'ccgram hook --install'"
         return
     fi
     if ! confirm "Install hook?"; then return; fi
 
     backup_file "$CLAUDE_DIR/settings.json"
-    if ccbot hook --install 2>&1 | tail -5; then
+    if ccgram hook --install 2>&1 | tail -5; then
         log_ok "Hook installed"
     else
-        log_err "ccbot hook --install failed"
+        log_err "ccgram hook --install failed"
         return 1
     fi
 }
@@ -893,53 +1166,53 @@ _cc_install_ccbot_hook() {
 # Each step opens the relevant URL when possible (BotFather chat) and waits
 # for user confirmation before moving on. Lets the user pause and resume.
 
-_cc_install_ccbot_pairing_help() {
+_cc_install_ccgram_pairing_help() {
     printf '\n'
-    printf '  %bccbot pairing — interactive step-by-step%b\n\n' "$BOLD" "$RESET"
-    printf '  ccbot routes by Forum topics, not DMs. We will walk through 5 manual\n'
+    printf '  %bccgram pairing — interactive step-by-step%b\n\n' "$BOLD" "$RESET"
+    printf '  ccgram routes by Forum topics, not DMs. We will walk through 5 manual\n'
     printf '  Telegram steps. Press %b[Enter]%b to advance, %b[s]%b to skip a step,\n' "$BOLD" "$RESET" "$BOLD" "$RESET"
     printf '  %b[q]%b to quit the checklist (you can re-run it later from this menu).\n\n' "$BOLD" "$RESET"
     if ! confirm "Start checklist?" "y"; then return; fi
 
-    _cc_ccbot_step "1/6: Enable Threaded Mode in @BotFather" \
+    _cc_ccgram_step "1/6: Enable Threaded Mode in @BotFather" \
         "Open @BotFather → /mybots → select your bot → Bot Settings → Threaded Mode → Enable" \
         "tg://resolve?domain=BotFather" \
         "https://t.me/BotFather" || return
 
-    _cc_ccbot_step "2/6: DISABLE Group Privacy in @BotFather (critical!)" \
-        "Same Bot Settings menu → Group Privacy → Turn OFF. Without this, the bot sees ONLY @-mentions in groups, NOT regular messages — ccbot will receive nothing and topics won't trigger directory browser. This is the #1 reason ccbot 'doesn't respond'." \
+    _cc_ccgram_step "2/6: DISABLE Group Privacy in @BotFather (critical!)" \
+        "Same Bot Settings menu → Group Privacy → Turn OFF. Without this, the bot sees ONLY @-mentions in groups, NOT regular messages — ccgram will receive nothing and topics won't trigger directory browser. This is the #1 reason ccgram 'doesn't respond'." \
         "tg://resolve?domain=BotFather" \
         "https://t.me/BotFather" || return
 
-    _cc_ccbot_step "3/6: Create or pick a Telegram group with Topics" \
+    _cc_ccgram_step "3/6: Create or pick a Telegram group with Topics" \
         "In Telegram, create a new group (long-press 'New' → 'New Group') OR open an existing one. In group Settings → enable 'Topics' (forum mode)." \
         "" "" || return
 
-    _cc_ccbot_step "4/6: Add your bot to the group as admin" \
+    _cc_ccgram_step "4/6: Add your bot to the group as admin" \
         "Group Settings → Administrators → Add Admin → search for your bot → grant 'Send Messages' permission → Save" \
         "" "" || return
 
-    _cc_ccbot_step "5/6: Verify ccbot is running" \
-        "ccbot is managed by launchd. Status check below — should show 'state = running' with a pid." \
+    _cc_ccgram_step "5/6: Verify ccgram is running" \
+        "ccgram is managed by launchd. Status check below — should show 'state = running' with a pid." \
         "" "" || return
-    if launchctl print "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>&1 | grep -E "^\s*(state|pid)" | head -3; then
+    if launchctl print "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>&1 | grep -E "^\s*(state|pid)" | head -3; then
         :
     else
-        log_warn "ccbot LaunchAgent not loaded — install via 'Install LaunchAgent' menu first"
+        log_warn "ccgram LaunchAgent not loaded — install via 'Install LaunchAgent' menu first"
     fi
     printf '  Press [Enter] when verified... '
     read -r _
 
-    _cc_ccbot_step "6/6: Send first message in a topic" \
+    _cc_ccgram_step "6/6: Send first message in a topic" \
         "In your TG group, long-press 'New' → 'New Topic' → name it (e.g. 'macrift'). Send any message. Bot replies with a directory browser — choose your project dir. tmux window opens, claude starts there, your message goes in." \
         "" "" || return
 
     printf '\n'
-    log_ok "All 6 steps acknowledged. Watch live with: tail -f /tmp/ccbot.log"
+    log_ok "All 6 steps acknowledged. Watch live with: tail -f /tmp/ccgram.log"
 }
 
 # Helper: print a step, optionally open URL(s), wait for input
-_cc_ccbot_step() {
+_cc_ccgram_step() {
     local title="$1" body="$2" tg_url="$3" web_url="$4"
     printf '\n'
     printf '  %b%s%b\n' "$BOLD" "$title" "$RESET"
@@ -958,42 +1231,46 @@ _cc_ccbot_step() {
     esac
 }
 
-# 6. LaunchAgent — VPN-aware wrapper, exec ccbot
+# 6. LaunchAgent — VPN-aware wrapper, exec ccgram
 
-_cc_install_ccbot_launchagent() {
-    if ! command -v ccbot >/dev/null 2>&1; then
-        log_err "ccbot binary not in PATH — install first"
+_cc_install_ccgram_launchagent() {
+    if ! command -v ccgram >/dev/null 2>&1; then
+        log_err "ccgram binary not in PATH — install first"
         return 1
     fi
-    if [[ ! -f "$CC_CCBOT_CONFIG_DIR/.env" ]]; then
+    if [[ ! -f "$CC_CCGRAM_CONFIG_DIR/.env" ]]; then
         log_err ".env missing — configure it first"
         return 1
     fi
     printf '\n'
-    log_info "Installs $CC_CCBOT_LAUNCH_AGENT"
-    log_info "+ $CC_CCBOT_LAUNCHER wrapper that:"
-    log_info "  - opens last-used VPN app (Happ or V2RayTun by mtime)"
-    log_info "  - waits for VPN tunnel + api.anthropic.com NOT 403 (max 180s)"
-    log_info "  - exec's ccbot"
-    log_info "Logs: /tmp/ccbot.{log,err}"
+    log_info "Installs $CC_CCGRAM_LAUNCH_AGENT"
+    log_info "+ $CC_CCGRAM_LAUNCHER wrapper (exec's ccgram)"
+    log_info "Optional VPN-wait gate: open Happ/V2RayTun, wait for anthropic NOT 403 (max 180s)"
+    log_info "Logs: /tmp/ccgram.{log,err}"
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install LaunchAgent + wrapper"
         return
     fi
     if ! confirm "Install autostart?"; then return; fi
-    _cc_install_ccbot_launchagent_copy
+    _cc_install_ccgram_launchagent_copy
 }
 
-_cc_install_ccbot_launchagent_copy() {
-    local ccbot_bin
-    ccbot_bin=$(command -v ccbot)
+_cc_install_ccgram_launchagent_copy() {
+    local ccgram_bin
+    ccgram_bin=$(command -v ccgram)
 
-    mkdir -p "$(dirname "$CC_CCBOT_LAUNCHER")"
-    cat > "$CC_CCBOT_LAUNCHER" <<'LAUNCHER_EOF'
+    local with_vpn=false
+    if confirm "Add VPN-wait gate to launcher? (open Happ/V2RayTun, wait until anthropic returns NOT 403)" "n"; then
+        with_vpn=true
+    fi
+
+    mkdir -p "$(dirname "$CC_CCGRAM_LAUNCHER")"
+    if $with_vpn; then
+        cat > "$CC_CCGRAM_LAUNCHER" <<'LAUNCHER_EOF'
 #!/bin/zsh
-# ccbot launcher with VPN-aware wait gate. Same logic as supercharged-launcher:
-# pick last-used VPN by mtime, wait until anthropic returns NOT 403, then exec.
+# ccgram launcher with VPN-aware wait gate.
+# Pick last-used VPN by mtime, wait until anthropic returns NOT 403, then exec.
 
 set -u
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
@@ -1002,69 +1279,81 @@ happ_mtime=$(stat -f %m "$HOME/Library/Application Support/Happ" 2>/dev/null || 
 v2ray_mtime=$(stat -f %m "$HOME/Library/Application Support/V2RayTun" 2>/dev/null || echo 0)
 
 if (( v2ray_mtime > happ_mtime )); then
-  echo "[ccbot-launcher] opening V2RayTun (mtime=$v2ray_mtime > Happ=$happ_mtime)"
+  echo "[ccgram-launcher] opening V2RayTun (mtime=$v2ray_mtime > Happ=$happ_mtime)"
   open -a "V2RayTun" 2>/dev/null
 else
-  echo "[ccbot-launcher] opening Happ (mtime=$happ_mtime >= V2RayTun=$v2ray_mtime)"
+  echo "[ccgram-launcher] opening Happ (mtime=$happ_mtime >= V2RayTun=$v2ray_mtime)"
   open -a "Happ" 2>/dev/null
 fi
 
-echo "[ccbot-launcher] waiting for VPN + anthropic routing (max 180s)..."
+echo "[ccgram-launcher] waiting for VPN + anthropic routing (max 180s)..."
 deadline=$(( $(date +%s) + 180 ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
   if scutil --nwi 2>/dev/null | grep -q "VPN server"; then
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://api.anthropic.com 2>/dev/null || echo 0)
     if [ "$code" != "0" ] && [ "$code" != "403" ]; then
-      echo "[ccbot-launcher] VPN up + anthropic routed (HTTP $code)"
+      echo "[ccgram-launcher] VPN up + anthropic routed (HTTP $code)"
       break
     fi
   fi
   sleep 3
 done
 
-echo "[ccbot-launcher] exec'ing ccbot"
-exec ccbot
+echo "[ccgram-launcher] exec'ing ccgram"
+exec ccgram
 LAUNCHER_EOF
-    chmod +x "$CC_CCBOT_LAUNCHER"
-    log_ok "Wrote $CC_CCBOT_LAUNCHER"
+    else
+        cat > "$CC_CCGRAM_LAUNCHER" <<'LAUNCHER_EOF'
+#!/bin/zsh
+# ccgram launcher (no VPN gate).
 
-    cat > "$CC_CCBOT_LAUNCH_AGENT" <<PLIST
+set -u
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
+echo "[ccgram-launcher] exec'ing ccgram"
+exec ccgram
+LAUNCHER_EOF
+    fi
+    chmod +x "$CC_CCGRAM_LAUNCHER"
+    log_ok "Wrote $CC_CCGRAM_LAUNCHER ($($with_vpn && echo with || echo without) VPN gate)"
+
+    cat > "$CC_CCGRAM_LAUNCH_AGENT" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>$CC_CCBOT_LAUNCH_AGENT_LABEL</string>
+    <key>Label</key><string>$CC_CCGRAM_LAUNCH_AGENT_LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$CC_CCBOT_LAUNCHER</string>
+        <string>$CC_CCGRAM_LAUNCHER</string>
     </array>
     <key>KeepAlive</key><true/>
     <key>RunAtLoad</key><true/>
     <key>ThrottleInterval</key><integer>30</integer>
-    <key>StandardOutPath</key><string>/tmp/ccbot.log</string>
-    <key>StandardErrorPath</key><string>/tmp/ccbot.err</string>
+    <key>StandardOutPath</key><string>/tmp/ccgram.log</string>
+    <key>StandardErrorPath</key><string>/tmp/ccgram.err</string>
 </dict>
 </plist>
 PLIST
 
-    if ! plutil -lint "$CC_CCBOT_LAUNCH_AGENT" >/dev/null 2>&1; then
+    if ! plutil -lint "$CC_CCGRAM_LAUNCH_AGENT" >/dev/null 2>&1; then
         log_err "Generated plist is invalid"
         return 1
     fi
 
-    launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-    if ! launchctl bootstrap "gui/$UID" "$CC_CCBOT_LAUNCH_AGENT" 2>/tmp/cc-ccbot-bootstrap.err; then
+    launchctl bootout "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    if ! launchctl bootstrap "gui/$UID" "$CC_CCGRAM_LAUNCH_AGENT" 2>/tmp/cc-ccgram-bootstrap.err; then
         log_err "launchctl bootstrap failed:"
-        cat /tmp/cc-ccbot-bootstrap.err 2>/dev/null
+        cat /tmp/cc-ccgram-bootstrap.err 2>/dev/null
         return 1
     fi
-    launchctl kickstart -k "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-    log_ok "ccbot LaunchAgent installed and started"
+    launchctl kickstart -k "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    log_ok "ccgram LaunchAgent installed and started"
 }
 
 # 7. Full setup orchestrator
 
-_cc_install_ccbot_full() {
+_cc_install_ccgram_full() {
     printf '\n'
     log_info "Full setup: deps check -> install -> env -> hook -> pairing-help -> launchagent"
     log_info "Pairing remains manual (TG forum group setup + BotFather Threaded Mode)."
@@ -1075,24 +1364,24 @@ _cc_install_ccbot_full() {
     fi
     if ! confirm "Run full setup?"; then return; fi
 
-    _cc_install_ccbot_deps                    || return 1
-    _cc_install_ccbot_install_copy            || return 1
-    _cc_install_ccbot_env_copy                || return 1
-    _cc_install_ccbot_hook                    || return 1
-    _cc_install_ccbot_pairing_help
+    _cc_install_ccgram_deps                    || return 1
+    _cc_install_ccgram_install_copy            || return 1
+    _cc_install_ccgram_env_copy                || return 1
+    _cc_install_ccgram_hook                    || return 1
+    _cc_install_ccgram_pairing_help
 
     if confirm "Install LaunchAgent now (recommended after pairing is verified)?" "n"; then
-        _cc_install_ccbot_launchagent_copy    || return 1
+        _cc_install_ccgram_launchagent_copy    || return 1
     fi
 
     printf '\n'
-    log_ok "ccbot setup complete"
-    log_info "Logs: tail -f /tmp/ccbot.log"
+    log_ok "ccgram setup complete"
+    log_info "Logs: tail -f /tmp/ccgram.log"
 }
 
 # 8. Migrate from supercharged: stop its launchd, leave repo as fallback
 
-_cc_migrate_supercharged_to_ccbot() {
+_cc_migrate_supercharged_to_ccgram() {
     printf '\n'
     log_info "Stops the supercharged supervisor (com.claude-telegram-ts) and deletes"
     log_info "its plist + launcher. The supercharged repo + plugin install + token"
@@ -1104,7 +1393,11 @@ _cc_migrate_supercharged_to_ccbot() {
     fi
     if ! confirm "Stop supercharged?" "y"; then return; fi
 
-    launchctl bootout "gui/$UID/com.claude-telegram-ts" 2>/dev/null && log_ok "supercharged launchd stopped" || log_skip "supercharged launchd not loaded"
+    if launchctl bootout "gui/$UID/com.claude-telegram-ts" 2>/dev/null; then
+        log_ok "supercharged launchd stopped"
+    else
+        log_skip "supercharged launchd not loaded"
+    fi
     rm -fv "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
            "$HOME/.local/bin/supercharged-launcher.sh" 2>/dev/null
     pkill -9 -f "telegram-supervisor.ts" 2>/dev/null || true
@@ -1113,25 +1406,25 @@ _cc_migrate_supercharged_to_ccbot() {
     log_info "To revert: macrift menu → Telegram → supercharged → Install LaunchAgent"
 }
 
-# 9. Remove ccbot launcher + autostart
+# 9. Remove ccgram launcher + autostart
 
-_cc_remove_ccbot() {
+_cc_remove_ccgram() {
     printf '\n'
     log_info "Removes LaunchAgent + launcher script."
-    log_info "Preserves: ccbot binary (uv tool), $CC_CCBOT_CONFIG_DIR/, hook in settings.json."
+    log_info "Preserves: ccgram binary (uv tool), $CC_CCGRAM_CONFIG_DIR/, hook in settings.json."
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would remove LaunchAgent + launcher"
         return
     fi
-    if ! confirm "Remove ccbot launcher + autostart?" "n"; then
+    if ! confirm "Remove ccgram launcher + autostart?" "n"; then
         log_skip "Removal cancelled"
         return
     fi
-    launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-    rm -f "$CC_CCBOT_LAUNCH_AGENT" "$CC_CCBOT_LAUNCHER"
-    pkill -9 -f "/ccbot$\| ccbot$" 2>/dev/null || true
-    log_ok "ccbot launcher and LaunchAgent removed"
+    launchctl bootout "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    rm -f "$CC_CCGRAM_LAUNCH_AGENT" "$CC_CCGRAM_LAUNCHER"
+    pkill -9 -f "/ccgram$\| ccgram$" 2>/dev/null || true
+    log_ok "ccgram launcher and LaunchAgent removed"
 }
 
 # Telegram bot — k1p1l0/claude-telegram-supercharged (drop-in for the official
@@ -1265,7 +1558,7 @@ _cc_install_supercharged_plugin_copy() {
     fi
 
     local plugin_version
-    plugin_version=$(ls "$plugin_base" | sort -V | tail -1)
+    plugin_version=$(find "$plugin_base" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | sort -V | tail -1)
     log_ok "Plugin installed at $plugin_base/$plugin_version"
 }
 
@@ -1299,7 +1592,7 @@ _cc_install_supercharged_apply_copy() {
     local repo="$HOME/Documents/Code/Claude/claude-telegram-supercharged"
     local plugin_base="$HOME/.claude/plugins/cache/claude-plugins-official/telegram"
     local plugin_version
-    plugin_version=$(ls "$plugin_base" | sort -V | tail -1)
+    plugin_version=$(find "$plugin_base" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null | sort -V | tail -1)
     local plugin_dir="$plugin_base/$plugin_version"
     local scripts_dir="$HOME/.claude/scripts"
 
@@ -1440,10 +1733,8 @@ _cc_install_supercharged_launchagent() {
     fi
     printf '\n'
     log_info "Installs ~/Library/LaunchAgents/com.claude-telegram-ts.plist"
-    log_info "+ ~/.local/bin/supercharged-launcher.sh wrapper that:"
-    log_info "  - opens last-used VPN app (Happ or V2RayTun by mtime)"
-    log_info "  - waits for api.anthropic.com reachability (max 60s)"
-    log_info "  - exec's bun ~/.claude/scripts/telegram-supervisor.ts"
+    log_info "+ ~/.local/bin/supercharged-launcher.sh wrapper (exec's bun supervisor.ts)"
+    log_info "Optional VPN-wait gate: open Happ/V2RayTun, wait for anthropic reachability"
     log_info "Logs: /tmp/claude-telegram-bot-ts.{log,err}"
     printf '\n'
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -1461,8 +1752,14 @@ _cc_install_supercharged_launchagent_copy() {
     local bun_bin
     bun_bin=$(command -v bun || echo "$HOME/.bun/bin/bun")
 
+    local with_vpn=false
+    if confirm "Add VPN-wait gate to launcher? (open Happ/V2RayTun, wait for anthropic reachability)" "n"; then
+        with_vpn=true
+    fi
+
     mkdir -p "$(dirname "$launcher")"
-    cat > "$launcher" <<LAUNCHER
+    if $with_vpn; then
+        cat > "$launcher" <<LAUNCHER
 #!/bin/zsh
 # Supercharged supervisor launcher with VPN-wait gate.
 # Picks whichever VPN app (Happ / V2RayTun) was used most recently, opens it
@@ -1487,8 +1784,19 @@ done
 
 exec "$bun_bin" "\$HOME/.claude/scripts/telegram-supervisor.ts"
 LAUNCHER
+    else
+        cat > "$launcher" <<LAUNCHER
+#!/bin/zsh
+# Supercharged supervisor launcher (no VPN gate).
+
+set -u
+export PATH="\$HOME/.bun/bin:\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\$PATH"
+
+exec "$bun_bin" "\$HOME/.claude/scripts/telegram-supervisor.ts"
+LAUNCHER
+    fi
     chmod +x "$launcher"
-    log_ok "Wrote $launcher"
+    log_ok "Wrote $launcher ($($with_vpn && echo with || echo without) VPN gate)"
 
     cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1721,15 +2029,15 @@ _cc_reset() {
 
     log_ok "Claude Code state wiped"
 
-    # Telegram engines (supercharged + ccbot) — opt-in (separate confirms so
+    # Telegram engines (supercharged + ccgram) — opt-in (separate confirms so
     # tokens + repos + uv-tool installs aren't nuked by accident)
-    local has_super=false has_ccbot=false has_legacy=false
+    local has_super=false has_ccgram=false has_legacy=false
     [[ -e "$HOME/Library/LaunchAgents/com.claude-telegram-ts.plist" \
         || -e "$HOME/.local/bin/supercharged-launcher.sh" \
         || -d "$HOME/Documents/Code/Claude/claude-telegram-supercharged" \
         || -f "$HOME/.claude/scripts/telegram-supervisor.ts" ]] && has_super=true
-    [[ -e "$CC_CCBOT_LAUNCH_AGENT" || -e "$CC_CCBOT_LAUNCHER" \
-        || -d "$CC_CCBOT_CONFIG_DIR" ]] && has_ccbot=true
+    [[ -e "$CC_CCGRAM_LAUNCH_AGENT" || -e "$CC_CCGRAM_LAUNCHER" \
+        || -d "$CC_CCGRAM_CONFIG_DIR" ]] && has_ccgram=true
     [[ -e "$CC_TG_LEGACY_LAUNCH_AGENT" || -e "$CC_TG_LEGACY_OLD_PLIST" \
         || -e "$CC_TG_LEGACY_LAUNCHER" || -e "$CC_TG_LEGACY_OLD_LAUNCHER" \
         || -e "$CC_TG_LEGACY_ENV_FILE" ]] && has_legacy=true
@@ -1756,26 +2064,26 @@ _cc_reset() {
         fi
     fi
 
-    if $has_ccbot; then
+    if $has_ccgram; then
         printf '\n'
-        log_info "Telegram ccbot artifacts:"
-        [[ -e "$CC_CCBOT_LAUNCH_AGENT" ]] && printf '    %s\n' "$CC_CCBOT_LAUNCH_AGENT"
-        [[ -e "$CC_CCBOT_LAUNCHER" ]]     && printf '    %s\n' "$CC_CCBOT_LAUNCHER"
-        [[ -d "$CC_CCBOT_CONFIG_DIR" ]]   && printf '    %s/ (config + state)\n' "$CC_CCBOT_CONFIG_DIR"
+        log_info "Telegram ccgram artifacts:"
+        [[ -e "$CC_CCGRAM_LAUNCH_AGENT" ]] && printf '    %s\n' "$CC_CCGRAM_LAUNCH_AGENT"
+        [[ -e "$CC_CCGRAM_LAUNCHER" ]]     && printf '    %s\n' "$CC_CCGRAM_LAUNCHER"
+        [[ -d "$CC_CCGRAM_CONFIG_DIR" ]]   && printf '    %s/ (config + state)\n' "$CC_CCGRAM_CONFIG_DIR"
         printf '\n'
-        if confirm "Also wipe Telegram ccbot?" "n"; then
-            launchctl bootout "gui/$UID/$CC_CCBOT_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-            pkill -9 -f "/ccbot$\| ccbot$" 2>/dev/null || true
-            rm -f "$CC_CCBOT_LAUNCH_AGENT" "$CC_CCBOT_LAUNCHER"
-            if confirm "Also delete config dir $CC_CCBOT_CONFIG_DIR (loses .env token + session_map)?" "n"; then
-                rm -rf "$CC_CCBOT_CONFIG_DIR"
+        if confirm "Also wipe Telegram ccgram?" "n"; then
+            launchctl bootout "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
+            pkill -9 -f "/ccgram$\| ccgram$" 2>/dev/null || true
+            rm -f "$CC_CCGRAM_LAUNCH_AGENT" "$CC_CCGRAM_LAUNCHER"
+            if confirm "Also delete config dir $CC_CCGRAM_CONFIG_DIR (loses .env token + session_map)?" "n"; then
+                rm -rf "$CC_CCGRAM_CONFIG_DIR"
             fi
-            if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^ccbot'; then
-                if confirm "Also uninstall ccbot via 'uv tool uninstall ccbot'?" "n"; then
-                    uv tool uninstall ccbot 2>&1 | tail -3
+            if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^ccgram'; then
+                if confirm "Also uninstall ccgram via 'uv tool uninstall ccgram'?" "n"; then
+                    uv tool uninstall ccgram 2>&1 | tail -3
                 fi
             fi
-            log_ok "ccbot wiped"
+            log_ok "ccgram wiped"
         fi
     fi
 

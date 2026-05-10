@@ -20,24 +20,17 @@
         ]
       }
     ],
-    "Stop": [
+    "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $HOME/.claude/hooks/stop-notify.sh" }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          { "type": "command", "command": "bash $HOME/.claude/hooks/wait-notify.sh" }
+          { "type": "command", "command": "bash $HOME/.claude/hooks/session-start.sh", "timeout": 5 }
         ]
       }
     ]
   },
   "enabledPlugins": {
-    "github@claude-plugins-official": true,
-    "telegram@claude-plugins-official": true
+    "telegram@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -146,11 +139,7 @@
       "Bash(touch *)",
       "Bash(cp *)",
       "Bash(curl *)",
-      "Bash(wget *)",
-      "mcp__plugin_telegram_telegram__reply",
-      "mcp__plugin_telegram_telegram__react",
-      "mcp__plugin_telegram_telegram__edit_message",
-      "mcp__plugin_telegram_telegram__download_attachment"
+      "Bash(wget *)"
     ],
     "deny": [
       "Bash(rm *)",

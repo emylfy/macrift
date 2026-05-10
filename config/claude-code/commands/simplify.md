@@ -1,3 +1,7 @@
+---
+description: Run the `simplifier` agent on recent Write/Edit changes
+---
+
 Run the `simplifier` agent for a fresh-context review of recent Write/Edit changes.
 
 Pick the right scope:

@@ -1,3 +1,7 @@
+---
+description: Post-session retro — surface replayable mistakes and offer to save as rules
+---
+
 Reflect on the current session: surface concrete, replayable mistakes that cost time or required user correction, and offer to save them as rules.
 
 ## What to look for
@@ -28,7 +32,7 @@ RULE  — imperative, testable: "Do X when Y" / "Don't Z, because W"
 Ask the user **per item**: keep / drop, scope (project / global). Suggest scope: project if it references this repo's specifics (build/test, paths, names); global otherwise. Save only after confirmation.
 
 - **project** → append the RULE as a bullet to `CLAUDE.md` at the repo root (create with `# Project Rules` heading if missing).
-- **global** → append to the matching file in `~/.claude/rules/`: tool use → `workflow.md`; verification / comms / sycophancy → `communication.md`; style / naming / comments → `code-style.md`; commits → `git.md`; secrets → `security.md`; Telegram-bot → `tgbot.md`. No fit — ask.
+- **global** → append to the matching file in `~/.claude/rules/`: tool use → `workflow.md`; verification / comms / sycophancy → `communication.md`; style / naming / comments → `code-style.md`; commits → `git.md`; secrets → `security.md`. No fit — ask.
 
 Before writing, grep the target (and rest of `~/.claude/rules/` for global) for a similar rule. If found, show it and ask: refine via Edit, append anyway, or drop. Default: refine.
 

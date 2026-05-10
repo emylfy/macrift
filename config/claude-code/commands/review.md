@@ -1,3 +1,7 @@
+---
+description: Run the `reviewer` agent for code review of current changes
+---
+
 Run the `reviewer` agent for code review of current changes.
 
 Pick the right diff scope:
