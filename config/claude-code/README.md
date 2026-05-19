@@ -5,6 +5,7 @@
 Opinionated drop-in: 4 subagents, 9 slash-commands, 5 behavior rules, 3 hooks, custom statusline, health-check script, broad permission allowlist with destructive-ops deny, and an optional Telegram bot bridge. Every component is independently togglable from `macrift → Claude Code`.
 
 Things you don't get in most other Claude Code configs:
+
 - **`/doctor`** — runs `~/.claude/doctor.sh` to verify hooks, deps, MCP servers, CLAUDE.md @-imports are all wired correctly. Color-coded report. Run after install or when something stops working.
 - **SessionStart hook** — auto-injects branch, working-tree status, recent commits, detected test runner, and latest CI status into Claude's first turn. Saves tokens by not making Claude re-discover the basics every session.
 - **Dependency bootstrap** — at Full Setup, the installer detects missing `jq` / `prettier` / `ruff` / `shfmt` and offers to `brew install` them. Hooks no longer fail silently because a formatter wasn't installed.
@@ -12,13 +13,14 @@ Things you don't get in most other Claude Code configs:
 
 ## Quickstart
 
-| profile | what to install |
-|---|---|
-| **lightweight** — just nicer defaults | `rules/` + `statusline.sh` |
-| **dev sweet spot** — most useful | + `agents/` + `commands/` + `hooks/` + `settings/` |
-| **everything** — incl. Telegram bot | Full Setup, then `Telegram → supercharged \| ccgram` |
+`macrift → Claude Code → Setup` opens one menu with two ways to install:
 
-`macrift → Claude Code → Custom Setup` lets you cherry-pick. Nothing here assumes Claude Max-tier — Max-only env vars (in `env.sh`) are gated behind a separate prompt at install time.
+1. **Setup wizard** (first item) — first asks for **effort level** (`xhigh` / `max` / `high` / `medium` / `low` / `auto`, default `xhigh`), then walks you through each component one at a time. Each panel shows the name, description, use case, and a `y/n` prompt. Keys: `y` (or enter) install, `n` skip, `a` accept-all-remaining, `q` quit.
+2. **Individual components** (items below the wizard) — re-run any single installer on demand. Useful for "update only rules" or "I forgot to add the alias".
+
+After the wizard finishes the components, it asks per-formatter if you want `prettier` / `ruff` / `shfmt` brew-installed.
+
+Reasonable strategy: hit `a` on the first prompt unless you don't do browser automation — then answer `n` on **MCP playwright**.
 
 ## Layout
 
@@ -27,8 +29,7 @@ agents/      → ~/.claude/agents/      — subagents Claude can spawn
 commands/    → ~/.claude/commands/    — /<name> slash commands
 hooks/       → ~/.claude/hooks/       — lifecycle hooks (format + security + session-start)
 rules/       → ~/.claude/rules/       — behavior rules @-imported into CLAUDE.md
-settings/    → ~/.claude/settings.json (merged) — permissions, plugins, hooks wiring
-statusline.sh → ~/.claude/statusline.sh — terminal status row renderer
+settings/    → ~/.claude/settings.json (merged) — permissions, plugins, hooks wiring, statusLine
 doctor.sh    → ~/.claude/doctor.sh   — health check script (also via /doctor)
 env.sh       → marker-bounded block in ~/.zshrc — Claude Code env vars
 ```
@@ -42,107 +43,97 @@ Two more components live in [`customize/claude_code.sh`](../../customize/claude_
 
 Merged into `~/.claude/settings.json` via `jq '.[0] * .[1]'` (existing user keys win on conflict).
 
-| key | purpose |
-|---|---|
-| `effortLevel: xhigh` | maximum reasoning depth (Max-tier only — harmless on lower tiers, just ignored) |
-| `enabledPlugins` | see below |
-| `permissions.allow` | broad allowlist: git/gh, npm/bun/uv/pip, brew, docker, jq/sed/awk, basic file ops |
-| `permissions.deny` | blocks destructive ops: `rm`, `mv`, `sudo`, force git ops (reset --hard, push --force, branch -D, stash drop), brew uninstall, docker rm/prune, kubectl delete/drain, npm/pip/cargo publish/yank, kill/killall/pkill |
-| `hooks` | wires `format.sh` to PostToolUse(Write\|Edit) and `security-gate.sh` to PreToolUse(Bash) |
-| `statusLine.command` | invokes `~/.claude/statusline.sh` |
+| key                  | purpose                                                                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `effortLevel`        | reasoning depth — wizard prompts at install. Valid values per binary: `max` / `xhigh` / `high` / `medium` / `low` / `auto`. Default `xhigh`. `max` is ceiling, `auto` lets the model pick |
+| `enabledPlugins`     | see below                                                                                                                                                                                                            |
+| `permissions.allow`  | broad allowlist: git/gh, npm/bun/uv/pip, brew, docker, jq/sed/awk, basic file ops                                                                                                                                    |
+| `permissions.deny`   | blocks destructive ops: `rm`, `mv`, `sudo`, force git ops (reset --hard, push --force, branch -D, stash drop), brew uninstall, docker rm/prune, kubectl delete/drain, npm/pip/cargo publish/yank, kill/killall/pkill |
+| `hooks`              | wires `format.sh` to PostToolUse(Write\|Edit) and `security-gate.sh` to PreToolUse(Bash)                                                                                                                             |
+| `statusLine.command` | invokes `bun x ccstatusline@latest` — see [statusline](#statusline) below                                                                                                                                            |
 
 **`enabledPlugins`** — two official plugins from the `claude-plugins-official` marketplace:
 
 - **`telegram`** — base for the supercharged drop-in (chat with Claude over Telegram). The supercharged installer adds Telegram-specific MCP tools to `permissions.allow` only when you actually install it.
-- **`commit-commands`** — adds `/commit`, `/commit-push-pr`, `/clean_gone`. Complements `/canpush` (your preflight checker): canpush *checks* before push, commit-commands *do* the push+PR.
+- **`commit-commands`** — adds `/commit`, `/commit-push-pr`, `/clean_gone`. Complements `/canpush` (your preflight checker): canpush _checks_ before push, commit-commands _do_ the push+PR.
 
 The marketplace itself is registered via `extraKnownMarketplaces.claude-plugins-official` pointing to `anthropics/claude-plugins-official` on GitHub.
 
 ## env.sh
 
-Environment variables exported into `~/.zshrc` via marker block. Two sections — the installer prompts whether to include the Max-tier section.
+Two env vars exported into `~/.zshrc` via marker block.
 
-**Universal (any tier):**
-
-| var | value | why |
-|---|---|---|
-| `CLAUDE_CODE_SUBAGENT_MODEL` | `claude-sonnet-4-6` | subagents run on Sonnet to save tokens; main loop stays on whatever the user picked |
-
-**Max-tier only (opt-in at install):**
-
-| var | value | why |
-|---|---|---|
-| `AUTOCOMPACT_PCT_OVERRIDE` | `99` | effectively disables auto-compact — you control when to `/compact` (typically 70-80%) |
-| `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | `15` | max parallel tool calls. Default 10; Max-tier raises the cap to 15. Setting it on lower tiers is harmless (silently capped at 10) |
+| var                          | value               | why                                                                                                          |
+| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | `claude-sonnet-4-6` | force all subagents onto Sonnet — overrides each agent's frontmatter `model:` (e.g. debugger.md says `opus`) |
+| `AUTOCOMPACT_PCT_OVERRIDE`   | `99`                | effectively disables auto-compact — you decide when to `/compact` (typically 70-80%)                         |
 
 ## agents/
 
 Subagents Claude can delegate to. Each runs in fresh context with limited tools.
 
-> All subagents run on `CLAUDE_CODE_SUBAGENT_MODEL` (sonnet-4-6 by default — see [env.sh](#envsh)). The `model:` field in each agent's frontmatter is ignored when that env var is set.
+> All subagents run on `CLAUDE_CODE_SUBAGENT_MODEL` (sonnet-4-6 by default — see [env.sh](#envsh)). The `model:` field in each agent's frontmatter is ignored when that env var is set. Unset the env var to fall back to per-agent frontmatter (debugger=opus, explorer=haiku, reviewer=sonnet, simplifier=sonnet).
 
-| agent | what it does |
-|---|---|
-| `debugger` | Deep error analysis — pass error output or bug description |
-| `explorer` | Read-only codebase search — "where is X defined", "which files reference Y". Caller specifies `quick` / `medium` / `thorough`. Worktree isolation. |
-| `reviewer` | Code review of pending changes — quality, logic, style |
-| `simplifier` | Spots over-engineering and applies fixes via Edit |
+| agent        | what it does                                                                                                                                       |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `debugger`   | Deep error analysis — pass error output or bug description                                                                                         |
+| `explorer`   | Read-only codebase search — "where is X defined", "which files reference Y". Caller specifies `quick` / `medium` / `thorough`. Worktree isolation. |
+| `reviewer`   | Code review of pending changes — quality, logic, style                                                                                             |
+| `simplifier` | Spots over-engineering and applies fixes via Edit                                                                                                  |
 
 ## commands/
 
 `/<name>` slash commands. Most wrap an agent or run a focused task.
 
-| command | wraps / does |
-|---|---|
-| `/canpush` | preflight before push — CI status, test detection, dirty tree check, commits-ahead count. Reports go/no-go without pushing. (Pairs with `commit-commands` plugin: canpush checks, the plugin pushes.) |
-| `/debug` | runs `debugger` agent |
-| `/doctor` | runs `~/.claude/doctor.sh` and reports — verifies hooks, deps, MCP servers, CLAUDE.md @-imports |
-| `/explore <query> [--quick\|--medium\|--thorough]` | runs `explorer` agent for read-only codebase mapping |
-| `/mcp-context7` | creates `.mcp.json` in cwd with context7 MCP server config (per-project; for a repo you share with others — see [MCP servers](#mcp-servers) below for the difference vs user-scoped install) |
-| `/refine <path>` | iterative critique→fix loop on a file until convergence (max 8 rounds) |
-| `/reflect` | post-session retro — surfaces mistakes that cost time across 6 categories (tool use, verification gaps, scope creep, style/comms, rule violations), offers to save fixes as rules |
-| `/review` | runs `reviewer` agent |
-| `/simplify` | runs `simplifier` agent on changed files |
+| command                                            | wraps / does                                                                                                                                                                                          |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/canpush`                                         | preflight before push — CI status, test detection, dirty tree check, commits-ahead count. Reports go/no-go without pushing. (Pairs with `commit-commands` plugin: canpush checks, the plugin pushes.) |
+| `/debug`                                           | runs `debugger` agent                                                                                                                                                                                 |
+| `/doctor`                                          | runs `~/.claude/doctor.sh` and reports — verifies hooks, deps, MCP servers, CLAUDE.md @-imports                                                                                                       |
+| `/explore <query> [--quick\|--medium\|--thorough]` | runs `explorer` agent for read-only codebase mapping                                                                                                                                                  |
+| `/mcp-context7`                                    | creates `.mcp.json` in cwd with context7 MCP server config (per-project; for a repo you share with others — see [MCP servers](#mcp-servers) below for the difference vs user-scoped install)          |
+| `/refine <path>`                                   | iterative critique→fix loop on a file until convergence (max 8 rounds)                                                                                                                                |
+| `/reflect`                                         | post-session retro — surfaces mistakes that cost time across 6 categories (tool use, verification gaps, scope creep, style/comms, rule violations), offers to save fixes as rules                     |
+| `/review`                                          | runs `reviewer` agent                                                                                                                                                                                 |
+| `/simplify`                                        | runs `simplifier` agent on changed files                                                                                                                                                              |
 
 ## rules/
 
 Markdown rule files @-imported into `~/.claude/CLAUDE.md` automatically by the macrift installer (one `@~/.claude/rules/<name>.md` line per `*.md` file). The installer also removes stale imports for rules you've deleted.
 
-| rule | what it constrains |
-|---|---|
-| `code-style.md` | no docstrings on unchanged code, no new deps without ask, match existing style, plain section headers, present alternatives don't pick silently, mention dead code don't delete it, rewrite if 200 lines could be 50 |
-| `communication.md` | no sycophancy, push back when wrong, mark uncertainty, verdict-first, lowercase chill in chat, don't claim done without verification, no emoji unless asked |
-| `git.md` | conventional commits (feat/fix/chore/docs/refactor), commit body bullets only (one per logical unit), no fragmenting one unit across bullets |
-| `security.md` | no logging sensitive data, delete temp files with secrets after use |
-| `workflow.md` | `/tmp/cmd.sh` + show + `r` pattern for user-runnable commands; multi-target tasks → parallel tool calls in one message; no backslash-continuation multi-line commands in chat |
+| rule               | what it constrains                                                                                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `code-style.md`    | no docstrings on unchanged code, no new deps without ask, match existing style, plain section headers, present alternatives don't pick silently, mention dead code don't delete it, rewrite if 200 lines could be 50 |
+| `communication.md` | no sycophancy, push back when wrong, mark uncertainty, verdict-first, lowercase chill in chat, don't claim done without verification, no emoji unless asked                                                          |
+| `git.md`           | conventional commits (feat/fix/chore/docs/refactor), commit body bullets only (one per logical unit), no fragmenting one unit across bullets                                                                         |
+| `security.md`      | no logging sensitive data, delete temp files with secrets after use                                                                                                                                                  |
+| `workflow.md`      | `/tmp/cmd.sh` + show + `r` pattern for user-runnable commands; multi-target tasks → parallel tool calls in one message; no backslash-continuation multi-line commands in chat                                        |
 
 ## hooks/
 
 Lifecycle scripts triggered by events declared in `settings.json`.
 
-| hook | event | does |
-|---|---|---|
-| `format.sh` | PostToolUse(Write\|Edit) | auto-formats just-written file via prettier/ruff/shfmt/gofmt/rustfmt by extension. Skips silently if the formatter is missing or errors; failures land in `/tmp/cc-format.log` for debugging. Markdown is **not** formatted (prettier reflow can mangle tables and prose). |
-| `security-gate.sh` | PreToolUse(Bash) | blocks dangerous patterns the prefix-matched deny list can't catch — piped remote exec (`curl … \| sh`), eval+substitution, `git push --force` (allows `--force-with-lease`), suspect HTTP exfil of `*TOKEN`/`*SECRET`/`*KEY`/`*PASSWORD` env vars |
-| `session-start.sh` | SessionStart | injects branch, `git status -sb`, last 3 commits, detected test runner, and latest CI run into Claude's initial context. Best-effort: silent on non-git dirs or any error. 5s timeout. |
+| hook               | event                    | does                                                                                                                                                                                                                                                                       |
+| ------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format.sh`        | PostToolUse(Write\|Edit) | auto-formats just-written file via prettier/ruff/shfmt/gofmt/rustfmt by extension. Skips silently if the formatter is missing or errors; failures land in `/tmp/cc-format.log` for debugging. Markdown is **not** formatted (prettier reflow can mangle tables and prose). |
+| `security-gate.sh` | PreToolUse(Bash)         | blocks dangerous patterns the prefix-matched deny list can't catch — piped remote exec (`curl … \| sh`), eval+substitution, `git push --force` (allows `--force-with-lease`), suspect HTTP exfil of `*TOKEN`/`*SECRET`/`*KEY`/`*PASSWORD` env vars                         |
+| `session-start.sh` | SessionStart             | injects branch, `git status -sb`, last 3 commits, detected test runner, and latest CI run into Claude's initial context. Best-effort: silent on non-git dirs or any error. 5s timeout.                                                                                     |
 
-## statusline.sh
+## statusline
 
-Custom status line shown at the bottom of Claude Code. Looks roughly like:
+Custom status line shown at the bottom of Claude Code. Wired via `settings.json → statusLine.command` to [`ccstatusline`](https://github.com/sirmalloc/ccstatusline) — the community-standard TS implementation with 30+ widgets, process-tree TTY discovery for reliable width detection across nested PTYs, flex separators for right-alignment, and ANSI-aware truncation.
 
-```
-~/Documents/Code/macrift   main   Opus 4.7 1M   ctx:36%   rate:7%
-```
+Invoked as `bun x ccstatusline@latest` (npm-cached; first run fetches, subsequent invocations are fast). To customize widgets / colors / powerline arrows, run `bun x ccstatusline@latest` in any shell — it launches a TUI configurator that writes to `~/.config/ccstatusline/settings.json`.
 
-Renders cwd / git branch / model / context% / 5h-rate% with color escalation (yellow @ 30%, red @ 60%). Thresholds are hardcoded — edit the `WARN_AT` / `CRIT_AT` constants at the top of the file to change them. Wired via `settings.json → statusLine.command`.
+Previous setup used a hand-rolled `statusline.sh` here; removed because `ccstatusline` solves the terminal-width and right-align edge cases properly (CC doesn't expose terminal width in its statusline JSON, so detection has to walk the process tree to find a controlling TTY — easier to delegate).
 
 ## MCP servers
 
 Two available, both opt-in via the macrift installer's multi-select:
 
-| server | transport | what it does |
-|---|---|---|
-| `context7` | http | live library docs lookup (kills hallucinated APIs) |
+| server       | transport                               | what it does                                                                     |
+| ------------ | --------------------------------------- | -------------------------------------------------------------------------------- |
+| `context7`   | http                                    | live library docs lookup (kills hallucinated APIs)                               |
 | `playwright` | stdio (`npx -y @playwright/mcp@latest`) | browser automation / E2E test generation. Skip if you don't need browser control |
 
 **Two ways to install context7** — pick by scope:
@@ -178,6 +169,7 @@ A **tmux-bridge** model. **Pick this if you want parallel sessions per topic and
 ### VPN-wait gate (both engines)
 
 The LaunchAgent install for either engine prompts whether to wrap the launcher in a **VPN-wait gate**. With it on:
+
 - opens whichever VPN app you used most recently (Happ or V2RayTun, picked by mtime)
 - waits until `api.anthropic.com` returns NOT 403 (max 180 seconds), then starts the bot
 

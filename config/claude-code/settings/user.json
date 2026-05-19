@@ -1,7 +1,9 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash $HOME/.claude/statusline.sh"
+    "command": "bun x ccstatusline@latest",
+    "padding": 0,
+    "refreshInterval": 10
   },
   "hooks": {
     "PostToolUse": [
@@ -16,14 +18,21 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $HOME/.claude/hooks/security-gate.sh" }
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/security-gate.sh"
+          }
         ]
       }
     ],
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $HOME/.claude/hooks/session-start.sh", "timeout": 5 }
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/session-start.sh",
+            "timeout": 5
+          }
         ]
       }
     ]

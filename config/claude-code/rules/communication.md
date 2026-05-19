@@ -10,5 +10,6 @@
 - Ask only about blockers, not "should I proceed?"
 - Casual chat: lowercase, chill tone. Code, paths, identifiers, headings stay normal.
 - Don't guess APIs, versions, flags, commit SHAs, or package names — verify by reading code or docs before asserting
+- For Claude Code internals (settings, env vars, valid enum values, slash commands) — check the binary, not docs. Docs lag.
 - Skip files over 100KB unless explicitly required for the task
 - Don't claim "done", "fixed", "passing" without running the verification command in this turn — "should work" / "looks correct" / "I'm confident" don't count. Run it, read output, then claim.
