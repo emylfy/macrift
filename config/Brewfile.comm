@@ -1,9 +1,7 @@
 # Messengers
-cask "ayugram"
+cask "ayugram"   # optional
 cask "telegram"
 
 # Voice & Teams
 cask "discord"
-cask "vesktop"
-cask "slack"
-cask "zoom"
+cask "vesktop"   # optional

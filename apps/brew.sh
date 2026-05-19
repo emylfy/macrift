@@ -38,9 +38,9 @@ fzf_search_packages() {
     if ! command -v fzf &>/dev/null; then
         log_warn "fzf not found"
         if confirm "Install fzf via Homebrew?"; then
-            brew_install "fzf" || return
+            brew_install "fzf" || return 0
         else
-            return
+            return 0
         fi
     fi
 
@@ -240,6 +240,7 @@ install_bundle() {
     # Parse Brewfile — split into new, broken, and already installed
     local new_lines=()
     local new_labels=()
+    local new_optional=()
     local broken_casks=()
     local installed_count=0
     local had_items=false
@@ -249,6 +250,7 @@ install_bundle() {
             if $had_items; then
                 new_lines+=("")
                 new_labels+=("---")
+                new_optional+=("0")
             fi
             continue
         fi
@@ -261,6 +263,8 @@ install_bundle() {
         else
             continue
         fi
+        local optional=0
+        [[ "$line" == *"# optional"* ]] && optional=1
         if echo "$installed" | grep -qxF "$name"; then
             if [[ "$line" =~ ^cask ]] && _is_cask_broken "$name"; then
                 broken_casks+=("$name")
@@ -270,6 +274,7 @@ install_bundle() {
         else
             new_lines+=("$line")
             new_labels+=("$name")
+            new_optional+=("$optional")
         fi
     done < "$path"
 
@@ -293,7 +298,7 @@ install_bundle() {
 
     # Clean up separators: remove leading, trailing, and consecutive
     if [[ ${#new_labels[@]} -gt 0 ]]; then
-        local clean_lines=() clean_labels=()
+        local clean_lines=() clean_labels=() clean_optional=()
         local prev_sep=true
         for ((i=0; i<${#new_labels[@]}; i++)); do
             if [[ "${new_labels[$i]}" == "---" ]]; then
@@ -304,14 +309,17 @@ install_bundle() {
             fi
             clean_lines+=("${new_lines[$i]}")
             clean_labels+=("${new_labels[$i]}")
+            clean_optional+=("${new_optional[$i]}")
         done
         # Remove trailing separator
         while [[ ${#clean_labels[@]} -gt 0 && "${clean_labels[${#clean_labels[@]}-1]}" == "---" ]]; do
             unset "clean_lines[${#clean_lines[@]}-1]"
             unset "clean_labels[${#clean_labels[@]}-1]"
+            unset "clean_optional[${#clean_optional[@]}-1]"
         done
         new_lines=(${clean_lines[@]+"${clean_lines[@]}"})
         new_labels=(${clean_labels[@]+"${clean_labels[@]}"})
+        new_optional=(${clean_optional[@]+"${clean_optional[@]}"})
     fi
 
     # Handle missing apps separately
@@ -329,6 +337,11 @@ install_bundle() {
     # Multiselect for new packages only
     local ms_title="$label"
     [[ $installed_count -gt 0 ]] && ms_title="$label · $installed_count installed"
+    # Build space-padded optional indices for show_multiselect
+    MULTISELECT_OPTIONAL=""
+    for ((i=0; i<${#new_optional[@]}; i++)); do
+        [[ "${new_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
+    done
     local selected
     selected=$(show_multiselect "$ms_title" "${new_labels[@]}")
 
@@ -400,7 +413,7 @@ install_all_bundles() {
     installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
     # Merge all brewfiles into one list with section separators
-    local all_lines=() all_labels=()
+    local all_lines=() all_labels=() all_optional=()
     local installed_count=0 first_section=true
 
     for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
@@ -408,7 +421,7 @@ install_all_bundles() {
         local bname had_new=false
         bname=$(basename "$brewfile")
 
-        local section_lines=() section_labels=()
+        local section_lines=() section_labels=() section_optional=()
         while IFS= read -r line; do
             [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
             local name=""
@@ -419,11 +432,14 @@ install_all_bundles() {
             else
                 continue
             fi
+            local optional=0
+            [[ "$line" == *"# optional"* ]] && optional=1
             if echo "$installed" | grep -qxF "$name"; then
                 installed_count=$((installed_count + 1))
             else
                 section_lines+=("$line")
                 section_labels+=("$name")
+                section_optional+=("$optional")
                 had_new=true
             fi
         done < "$brewfile"
@@ -432,11 +448,13 @@ install_all_bundles() {
             if ! $first_section && [[ ${#all_labels[@]} -gt 0 ]]; then
                 all_lines+=("")
                 all_labels+=("---")
+                all_optional+=("0")
             fi
             first_section=false
             for ((i=0; i<${#section_labels[@]}; i++)); do
                 all_lines+=("${section_lines[$i]}")
                 all_labels+=("${section_labels[$i]}")
+                all_optional+=("${section_optional[$i]}")
             done
         fi
     done
@@ -451,6 +469,10 @@ install_all_bundles() {
     local ms_title="All Bundles"
     [[ $installed_count -gt 0 ]] && ms_title="All Bundles · $installed_count installed"
 
+    MULTISELECT_OPTIONAL=""
+    for ((i=0; i<${#all_optional[@]}; i++)); do
+        [[ "${all_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
+    done
     local selected
     selected=$(show_multiselect "$ms_title" "${all_labels[@]}")
     [[ -z "$selected" ]] && return

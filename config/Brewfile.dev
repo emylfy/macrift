@@ -5,55 +5,51 @@ brew "gh"
 brew "lazygit"
 
 # Languages & Runtimes
-brew "node"
-brew "python"
-brew "go"
-brew "rust"
+brew "node"                 # optional
+brew "python"               # optional
+brew "go"                   # optional
+brew "rust"                 # optional
 
 # Containers
-brew "docker"
-brew "docker-compose"
+brew "docker"               # optional
+brew "docker-compose"       # optional
 
 # Terminal tools
-brew "neovim"
-brew "tmux"
+brew "tmux"                 # optional
 brew "fzf"
 brew "ripgrep"
 brew "fd"
 brew "bat"
 brew "eza"
 brew "jq"
-brew "tlrc"
+brew "tlrc"                 # optional
 
 # Network & Media
-brew "httpie"
+brew "httpie"               # optional
 brew "wget"
-brew "ffmpeg"
-brew "scrcpy"
+brew "ffmpeg"               # optional
+brew "scrcpy"               # optional
 
 # System utilities
 brew "tree"
 brew "fastfetch"
-brew "macmon"
-brew "mas"
+brew "macmon"               # optional
 brew "mole"
 
 # AI
-cask "claude"
-cask "claude-code"
+cask "claude"               # optional
 
 # Editors
 cask "visual-studio-code"
-cask "cursor"
-cask "t3-code"
-cask "zed"
-cask "github"
+cask "cursor"               # optional
+cask "zed"                  # optional
+cask "github"               # optional
 
 # Terminals
-cask "warp"
 cask "ghostty"
-cask "iterm2"
+cask "warp"                 # optional
+cask "iterm2"               # optional
 
 # Desktop apps
-cask "docker-desktop"
-cask "android-platform-tools"
+cask "docker-desktop"       # optional
+cask "android-platform-tools" # optional

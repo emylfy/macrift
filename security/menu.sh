@@ -165,24 +165,19 @@ remove_defender() {
 set_hostname() {
     clear
 
-    local current
-    current=$(scutil --get ComputerName 2>/dev/null || echo "unknown")
-    log_info "Current hostname: $current"
+    local computer_name local_host
+    computer_name=$(scutil --get ComputerName 2>/dev/null || echo "?")
+    local_host=$(scutil --get LocalHostName 2>/dev/null || echo "?")
+    log_info "ComputerName:  $computer_name"
+    log_info "LocalHostName: $local_host (used in '<name>.local' on networks)"
+    printf '\n'
 
-    printf '\n  %bEnter new hostname (empty to cancel):%b ' "$DIM" "$RESET"
-    local name
-    if ! read -r name; then return; fi
-
-    if [[ -z "$name" ]]; then
-        return
+    if open "x-apple.systempreferences:com.apple.SystemProfiler.AboutExtension" 2>/dev/null; then
+        log_ok "Opened System Settings → General → About"
+        log_info "Edit the 'Name:' field — macOS handles all three (Computer/Local/Host) for you"
+    else
+        log_err "Failed to open System Settings"
     fi
-
-    require_sudo
-    sudo scutil --set ComputerName "$name"
-    sudo scutil --set LocalHostName "$name"
-    sudo scutil --set HostName "$name"
-    log_ok "Hostname set to: $name"
-    log_info "Your Mac will no longer broadcast your real name on networks"
 
     wait_enter
 }
@@ -237,33 +232,7 @@ _apply_dns() {
     log_ok "DNS set to $label ($primary, $secondary)"
 }
 
-_ensure_dnspyre() {
-    if command -v dnspyre &>/dev/null; then
-        _DNSPYRE_INSTALLED_BY_US=false
-        return 0
-    fi
-    log_warn "dnspyre not found"
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install dnspyre"
-        return 1
-    fi
-    if confirm "Install dnspyre via Homebrew?"; then
-        if brew install tantalor93/dnspyre/dnspyre; then
-            _DNSPYRE_INSTALLED_BY_US=true
-            return 0
-        fi
-        log_err "Failed to install dnspyre"
-    fi
-    return 1
-}
-
-_cleanup_dnspyre() {
-    if [[ "${_DNSPYRE_INSTALLED_BY_US:-false}" == true ]] && command -v dnspyre &>/dev/null; then
-        brew uninstall tantalor93/dnspyre/dnspyre &>/dev/null
-        brew untap tantalor93/dnspyre &>/dev/null || true
-        log_info "Removed dnspyre"
-    fi
-}
+_has_dnspyre() { command -v dnspyre &>/dev/null; }
 
 # DNS menu
 
@@ -362,8 +331,8 @@ dns_benchmark() {
         printf '\n'
     fi
 
-    if ! _ensure_dnspyre; then
-        log_info "Falling back to dig..."
+    # Use dnspyre if it's already installed (more precise); otherwise dig silently
+    if ! _has_dnspyre; then
         _dns_benchmark_dig
         return
     fi
@@ -424,7 +393,6 @@ dns_benchmark() {
     fi
 
     _dns_offer_apply "$best_label"
-    _cleanup_dnspyre
     wait_enter
 }
 

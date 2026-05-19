@@ -37,14 +37,19 @@ apps_menu() {
     while true; do
         clear
 
+        local -a items=(
+            "Homebrew Bundles"
+            "Mac App Store"
+            "Spotify (SpotX + Spicetify)"
+        )
+        # Only offer CLT install if it isn't already present
+        if ! xcode-select -p &>/dev/null; then
+            items+=("---" "Xcode Command Line Tools")
+        fi
+        items+=("Back")
+
         local choice
-        choice=$(show_menu "Apps & Packages" \
-            "Homebrew Bundles" \
-            "Mac App Store" \
-            "Spotify (SpotX + Spicetify)" \
-            "---" \
-            "Xcode Command Line Tools" \
-            "Back")
+        choice=$(show_menu "Apps & Packages" "${items[@]}")
 
         case "$choice" in
             1) source "$MACRIFT_DIR/apps/brew.sh" && brew_menu ;;

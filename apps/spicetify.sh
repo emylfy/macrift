@@ -11,15 +11,14 @@ SPICETIFY_EXT_DIR="$HOME/.config/spicetify/Extensions"
 # Prefers canonical name; if absent, globs for marketplace-settings*.json.
 # Sets MARKETPLACE_BACKUP and returns 0, or prints error and returns 1.
 _resolve_marketplace_backup() {
-    # Canonical file exists — use it
-    if [[ -f "$MARKETPLACE_BACKUP" ]]; then
-        return 0
-    fi
-
+    # Collect all files matching the pattern, canonical first then by mtime desc
     local -a files=()
-    while IFS= read -r -d '' f; do
+    [[ -f "$MARKETPLACE_BACKUP" ]] && files+=("$MARKETPLACE_BACKUP")
+    while IFS= read -r f; do
+        [[ "$f" == "$MARKETPLACE_BACKUP" ]] && continue
         files+=("$f")
-    done < <(find "$MARKETPLACE_CONFIG_DIR" -maxdepth 1 -name "marketplace-settings*.json" -print0 2>/dev/null | sort -z)
+    done < <(find "$MARKETPLACE_CONFIG_DIR" -maxdepth 1 -name "marketplace-settings*.json" 2>/dev/null \
+        | xargs stat -f "%m %N" 2>/dev/null | sort -rn | cut -d' ' -f2-)
 
     if [[ ${#files[@]} -eq 0 ]]; then
         log_err "No marketplace settings file found in config/spicetify/"
@@ -34,23 +33,34 @@ _resolve_marketplace_backup() {
         return 0
     fi
 
-    # Multiple files — pick with fzf if available, else most recent
-    if command -v fzf &>/dev/null; then
-        local picked
-        picked=$(printf '%s\n' "${files[@]}" | xargs -I{} basename {} | \
-            fzf --prompt="Select marketplace settings: " \
-                --height=40% --border --no-multi)
-        if [[ -z "$picked" ]]; then
-            return 1
-        fi
-        MARKETPLACE_BACKUP="$MARKETPLACE_CONFIG_DIR/$picked"
-    else
-        # Most recently modified
-        MARKETPLACE_BACKUP=$(find "$MARKETPLACE_CONFIG_DIR" -maxdepth 1 -name "marketplace-settings*.json" -print0 2>/dev/null \
-            | xargs -0 stat -f "%m %N" 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-        log_info "Multiple files found — using most recent: $(basename "$MARKETPLACE_BACKUP")"
+    # Multiple files — present macrift menu with key count + mtime per entry
+    local -a labels=()
+    local f keys mtime label
+    for f in "${files[@]}"; do
+        keys=$(python3 -c "import json; print(len(json.load(open('$f'))))" 2>/dev/null || echo "?")
+        mtime=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$f" 2>/dev/null || echo "?")
+        label="$(basename "$f")  ·  $keys keys  ·  $mtime"
+        labels+=("$label")
+    done
+
+    local choice
+    choice=$(show_menu "Pick marketplace backup" "${labels[@]}" "Cancel")
+    if [[ -z "$choice" || "$choice" == "0" ]]; then
+        return 1
     fi
+
+    MARKETPLACE_BACKUP="${files[$((choice - 1))]}"
+    log_info "Using: $(basename "$MARKETPLACE_BACKUP")"
     return 0
+}
+
+# Spicetify refuses to apply patches unless it has baselined Spotify first.
+# State lives in [Backup] section of config-xpui.ini — non-empty `version` = ready.
+_spicetify_ensure_baseline() {
+    local cfg="$HOME/.config/spicetify/config-xpui.ini"
+    grep -qE '^version[[:space:]]*=[[:space:]]*[^[:space:]]' "$cfg" 2>/dev/null && return 0
+    log_info "Baselining Spotify for Spicetify (one-time, ~30s)..."
+    spicetify backup apply 2>&1 | tail -3 || true
 }
 
 restore_marketplace() {
@@ -62,17 +72,26 @@ restore_marketplace() {
         return
     fi
 
-    _resolve_marketplace_backup || return
+    _resolve_marketplace_backup || return 0
+    _spicetify_ensure_baseline
 
     if [[ ! -d "$HOME/.config/spicetify/CustomApps/marketplace" ]]; then
         log_info "Installing Marketplace..."
-        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh || true
         log_ok "Marketplace installed"
     fi
 
-    _ensure_spotify_prefs || return
+    _ensure_spotify_prefs || return 0
+
+    # Show what's in the backup so user can verify the right file before applying
+    local key_count="?" mtime="?"
+    key_count=$(python3 -c "import json; print(len(json.load(open('$MARKETPLACE_BACKUP'))))" 2>/dev/null || echo "?")
+    mtime=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$MARKETPLACE_BACKUP" 2>/dev/null || echo "?")
 
     show_info_box "Restore Marketplace Settings" \
+        "Source: $(basename "$MARKETPLACE_BACKUP")" \
+        "        $key_count keys · saved $mtime" \
+        "" \
         "This will:" \
         "  1. Generate a temporary Spicetify extension" \
         "  2. Apply it to inject saved marketplace settings" \
@@ -158,7 +177,8 @@ save_marketplace() {
         return
     fi
 
-    _ensure_spotify_prefs || return
+    _spicetify_ensure_baseline
+    _ensure_spotify_prefs || return 0
 
     show_info_box "Save Marketplace Settings" \
         "This will:" \
@@ -174,14 +194,19 @@ save_marketplace() {
     mkdir -p "$SPICETIFY_EXT_DIR"
 
     local ext_file="$SPICETIFY_EXT_DIR/$SAVE_EXT"
+    # Per-run token: keeps the extension one-shot per Spotify launch, but lets
+    # subsequent macrift runs re-trigger by embedding a fresh ID.
+    local session_id
+    session_id=$(date +%s)-$$
 
-    cat > "$ext_file" <<'JSEOF'
+    cat > "$ext_file" <<JSEOF
 (function macriftSave() {
     if (!Spicetify || !Spicetify.LocalStorage) {
         setTimeout(macriftSave, 300);
         return;
     }
-    if (Spicetify.LocalStorage.get("macrift-save-done")) return;
+    const SESSION = "$session_id";
+    if (Spicetify.LocalStorage.get("macrift-save-done") === SESSION) return;
     const allKeys = [];
     for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -191,10 +216,9 @@ save_marketplace() {
     allKeys.sort().forEach(k => { data[k] = Spicetify.LocalStorage.get(k); });
     const json = JSON.stringify(data, null, 2);
     navigator.clipboard.writeText(json).then(() => {
-        Spicetify.LocalStorage.set("macrift-save-done", "1");
+        Spicetify.LocalStorage.set("macrift-save-done", SESSION);
         Spicetify.showNotification("macrift: Settings copied to clipboard!");
     }).catch(() => {
-        // Fallback: copy via hidden textarea
         const ta = document.createElement("textarea");
         ta.value = json;
         ta.style.position = "fixed";
@@ -203,7 +227,7 @@ save_marketplace() {
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        Spicetify.LocalStorage.set("macrift-save-done", "1");
+        Spicetify.LocalStorage.set("macrift-save-done", SESSION);
         Spicetify.showNotification("macrift: Settings copied to clipboard!");
     });
 })();
@@ -226,33 +250,29 @@ JSEOF
     log_info "Opening Spotify..."
     open -a Spotify
 
-    log_info "Waiting for settings to be copied to clipboard..."
-    log_info "Look for the notification in Spotify, then press Enter"
-    wait_enter
-
-    # Read clipboard and validate JSON
-    local clip
-    clip=$(pbpaste 2>/dev/null)
-
-    if [[ -z "$clip" ]]; then
-        log_err "Clipboard is empty"
-        _cleanup_save_ext "$ext_file"
+    # Try clipboard; on miss, offer retry so user can re-trigger notification
+    local clip="" key_count=""
+    while true; do
+        log_info "Look for the notification in Spotify, then press Enter"
         wait_enter
-        return
-    fi
+        clip=$(pbpaste 2>/dev/null)
+        if [[ -n "$clip" ]] && key_count=$(printf '%s' "$clip" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); assert any(k.startswith('marketplace:') for k in d); print(len(d))" 2>/dev/null); then
+            break
+        fi
+        if [[ -z "$clip" ]]; then
+            log_err "Clipboard is empty"
+        else
+            log_err "Clipboard does not contain valid marketplace settings"
+        fi
+        if ! confirm "Retry? (open Spotify, wait for notification, then Enter)"; then
+            _cleanup_save_ext "$ext_file"
+            wait_enter
+            return
+        fi
+    done
 
-    # Validate it looks like marketplace JSON
-    if ! printf '%s' "$clip" | python3 -c "import sys,json; d=json.load(sys.stdin); assert any(k.startswith('marketplace:') for k in d)" 2>/dev/null; then
-        log_err "Clipboard does not contain valid marketplace settings"
-        _cleanup_save_ext "$ext_file"
-        wait_enter
-        return
-    fi
-
-    local key_count
-    key_count=$(printf '%s' "$clip" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
     log_info "Found $key_count marketplace keys"
-
     if confirm "Save to config/spicetify/marketplace-settings.json?"; then
         printf '%s\n' "$clip" > "$MARKETPLACE_BACKUP"
         log_ok "Saved ($key_count keys)"
@@ -266,4 +286,7 @@ _cleanup_save_ext() {
     local ext_file="$1"
     spicetify config extensions "$SAVE_EXT-" &>/dev/null || true
     rm -f "$ext_file"
+    # Re-apply so the extension is actually removed from Spotify's xpui too
+    # (next Spotify launch starts clean — no clipboard hijacking, no stale state)
+    spicetify apply &>/dev/null || true
 }

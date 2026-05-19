@@ -40,7 +40,12 @@ _tweak_wizard() {
             [[ "$label" == "---" ]] && continue
             sel_idx+=("$i")
             if [[ "$current" != "$new_val" ]]; then
-                action[i]="1"; has_diff[i]=1
+                # Opt-in entries (index registered in AUDIT_OPTIONAL) stay unchecked even when current != new
+                if [[ "$AUDIT_OPTIONAL" == *" $i "* ]]; then
+                    action[i]="0"; has_diff[i]=1
+                else
+                    action[i]="1"; has_diff[i]=1
+                fi
             else
                 action[i]="0"; has_diff[i]=0
             fi
@@ -413,14 +418,17 @@ tweaks_menu() {
             "Browse & Apply" \
             "---" \
             "## Tools" \
-            "Hot Corners" \
+            "Hot Corners…" \
             "Dithering" \
             "Space Switcher" \
             "Back")
 
         case "$choice" in
             1) select_tweaks ;;
-            2) source "$MACRIFT_DIR/tweaks/dock.sh" && hot_corners_tweaks ;;
+            2) open "x-apple.systempreferences:com.apple.Desktop-Settings.extension?HotCorners" 2>/dev/null \
+                 && log_ok "Opened System Settings → Hot Corners" \
+                 || log_err "Failed to open System Settings"
+               wait_enter ;;
             3) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
             4) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
             0) break ;;

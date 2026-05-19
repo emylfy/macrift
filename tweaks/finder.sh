@@ -38,4 +38,11 @@ finder_tweaks() {
     lib_flags=$(stat -f "%Sf" ~/Library 2>/dev/null || echo "hidden")
     [[ "$lib_flags" != *hidden* ]] && lib_visible="true"
     AUDIT_ENTRIES+=("Show Library folder|${lib_visible}|true|chflags|nohidden|-bool")
+
+    # Default sort for new folders — nested dict, applied via PlistBuddy (see _finder_sort_write)
+    local current_sort
+    current_sort=$(/usr/libexec/PlistBuddy -c "Print :FK_StandardViewSettings:ExtendedListViewSettingsV2:sortColumn" \
+        "$HOME/Library/Preferences/com.apple.finder.plist" 2>/dev/null)
+    [[ -z "$current_sort" ]] && current_sort="name"
+    AUDIT_ENTRIES+=("Default sort (new folders)|${current_sort}|kind|finder_sort|sortColumn|-string")
 }

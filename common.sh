@@ -11,9 +11,14 @@ MACRIFT_DRY_RUN="${MACRIFT_DRY_RUN:-false}"
 MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
 MACRIFT_LOG="${MACRIFT_LOG:-}"
 
-# Restore cursor on exit
+# Shared state file for menu cursor positions (per macrift PID).
+# Needed because show_menu runs in a $() subshell — in-memory var won't persist.
+MENU_STATE_FILE="${TMPDIR:-/tmp}/macrift-menu.$$"
+
+# Restore cursor on exit, clean up state file
 _macrift_cleanup() {
     printf "\033[?25h" 2>/dev/null
+    rm -f "$MENU_STATE_FILE"
 }
 trap _macrift_cleanup EXIT
 trap 'exit 130' INT TERM
@@ -94,7 +99,10 @@ fi
 _friendly_val() {
     case "$1" in
         SCcf)                echo "current folder" ;;
+        icnv)                echo "icons" ;;
         Nlsv)                echo "list" ;;
+        clmv)                echo "column" ;;
+        glyv)                echo "gallery" ;;
         PfHm)                echo "home" ;;
         none)                echo "off" ;;
         ZeroDiagnosticData)  echo "off" ;;
@@ -118,6 +126,29 @@ _update_title() {
 }
 
 MACRIFT_CRUMBS=()
+
+# Sticky menu cursor positions — read/write via shared file because show_menu
+# runs in a command-substitution subshell, so in-memory dicts don't survive.
+_menu_pos_get() {
+    local title="$1"
+    [[ -f "$MENU_STATE_FILE" ]] || { echo 0; return; }
+    local line
+    line=$(grep -F "$(printf '%s\t' "$title")" "$MENU_STATE_FILE" 2>/dev/null | tail -1)
+    [[ -z "$line" ]] && { echo 0; return; }
+    echo "${line#*$'\t'}"
+}
+_menu_pos_set() {
+    local title="$1" pos="$2"
+    mkdir -p "$(dirname "$MENU_STATE_FILE")"
+    # Remove any old entry for this title, append new one
+    local tmp="${MENU_STATE_FILE}.tmp"
+    {
+        [[ -f "$MENU_STATE_FILE" ]] && grep -vF "$(printf '%s\t' "$title")" "$MENU_STATE_FILE" 2>/dev/null
+        printf '%s\t%s\n' "$title" "$pos"
+    } > "$tmp"
+    mv -f "$tmp" "$MENU_STATE_FILE"
+}
+
 crumb_push() { MACRIFT_CRUMBS+=("$1"); _update_title; }
 crumb_pop() {
     local last=$(( ${#MACRIFT_CRUMBS[@]} - 1 ))
@@ -385,7 +416,12 @@ show_menu() {
     [[ "$no_nums" == true ]] && total_lines=$((total_lines - 1))
     $need_scroll && total_lines=$((total_lines + 2))
 
-    local sel=0 first_draw=true
+    # Restore cursor from sticky position if we've been here before
+    local sel first_draw=true
+    sel=$(_menu_pos_get "$title")
+    # Clamp in case items shrank since last visit or value is garbage
+    [[ "$sel" =~ ^[0-9]+$ ]] || sel=0
+    [[ $sel -ge $((sel_total - 1)) || $sel -lt 0 ]] && sel=0
     _ui_start
 
     while true; do
@@ -438,7 +474,7 @@ show_menu() {
                 local hvis=$((2 + hindent + ${#htext}))
                 local hpad=$((inner_w - hvis))
                 local hcontent
-                hcontent=$(printf '%*s%b%s%b' "$hindent" "" "${BOLD}${GRAY}" "$htext" "$R")
+                hcontent=$(printf '%*s%b%s%b' "$hindent" "" "$DIM" "$htext" "$R")
                 _box_row "$inner_w" "$hcontent" "$hpad"
                 rendered=$((rendered + 1))
                 continue
@@ -488,15 +524,22 @@ show_menu() {
         # Input
         local key
         key=$(_read_key)
+        # Sticky cursor: save sel when leaving, but skip if cursor was on the Back item
+        # (otherwise cursor would re-stick on Back and create an immediate-exit loop next visit)
+        local on_back=false
+        [[ $sel -ge $((sel_total - 1)) ]] && on_back=true
         case "$key" in
             up)    [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
             down)  [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
-            right) _ui_end; echo "${sel_nums[$sel]}"; return ;;
+            right) $on_back || _menu_pos_set "$title" "$sel"
+                   _ui_end; echo "${sel_nums[$sel]}"; return ;;
             left)
                 if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+                    $on_back || _menu_pos_set "$title" "$sel"
                     _ui_end; echo "0"; return
                 fi ;;
-            enter) _ui_end; echo "${sel_nums[$sel]}"; return ;;
+            enter) $on_back || _menu_pos_set "$title" "$sel"
+                   _ui_end; echo "${sel_nums[$sel]}"; return ;;
             [0-9])
                 if [[ "$no_nums" != true ]]; then
                     printf "%s\n" "$key" >&2
@@ -549,9 +592,19 @@ show_multiselect() {
     local cursor=0
     declare -a selected
     local i
+    # MULTISELECT_OPTIONAL — caller sets to space-padded indices (" 3 5 7 ")
+    # that should be unchecked by default. Reset after show_multiselect returns.
+    local opt_set=" ${MULTISELECT_OPTIONAL:-} "
     for ((i=0; i<count; i++)); do
-        if [[ "${items[$i]}" == "---" ]]; then selected[i]="-"; else selected[i]="1"; fi
+        if [[ "${items[$i]}" == "---" ]]; then
+            selected[i]="-"
+        elif [[ "$opt_set" == *" $i "* ]]; then
+            selected[i]="0"
+        else
+            selected[i]="1"
+        fi
     done
+    MULTISELECT_OPTIONAL=""
     while [[ $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
         cursor=$((cursor + 1))
     done
@@ -800,12 +853,13 @@ brew_install() {
     local type="${2:-formula}" # formula or cask
     local -a flag=(); [[ "$type" == "cask" ]] && flag=("--cask")
 
-    if brew list "${flag[@]}" "$package" &>/dev/null; then
+    # bash 3.2-safe array expansion — empty arrays under set -u explode otherwise
+    if brew list ${flag[@]+"${flag[@]}"} "$package" &>/dev/null; then
         log_skip "$package already installed"
         return 0
     fi
     log_info "Installing $package..."
-    if brew install "${flag[@]}" "$package"; then
+    if brew install ${flag[@]+"${flag[@]}"} "$package"; then
         log_ok "$package installed"
     else
         log_err "Failed to install $package"
@@ -819,6 +873,7 @@ declare -a AUDIT_ENTRIES=()
 
 audit_reset() {
     AUDIT_ENTRIES=()
+    AUDIT_OPTIONAL=" "
 }
 
 audit_sep() {
@@ -844,6 +899,16 @@ audit_default() {
     fi
 
     AUDIT_ENTRIES+=("${label}|${current}|${new_value}|${domain}|${key}|${type}")
+}
+
+# Parallel set of AUDIT_ENTRIES indices that should be unchecked by default in the wizard
+# (space-padded to allow substring lookup: " 3 7 12 ")
+AUDIT_OPTIONAL=" "
+
+# Same as audit_default but marks the entry as opt-in (default unchecked in wizard)
+audit_default_optional() {
+    audit_default "$@"
+    AUDIT_OPTIONAL+="$((${#AUDIT_ENTRIES[@]} - 1)) "
 }
 
 
@@ -982,6 +1047,19 @@ apply_audited_defaults() {
             continue
         fi
 
+        # Handle finder_sort entries — nested dict in com.apple.finder, written via PlistBuddy
+        if [[ "$domain" == "finder_sort" ]]; then
+            if _finder_sort_write "$new_val"; then
+                log_ok "$label → $friendly"
+                applied=$((applied + 1))
+                MACRIFT_CHANGED_DOMAINS+=("com.apple.finder")
+            else
+                log_err "Failed: $label → $friendly"
+                failed=$((failed + 1))
+            fi
+            continue
+        fi
+
         # Ensure screenshot directory exists before setting location
         if [[ "$domain" == "com.apple.screencapture" && "$key" == "location" ]]; then
             mkdir -p "$new_val" 2>/dev/null || true
@@ -1005,6 +1083,29 @@ apply_audited_defaults() {
     audit_reset
 }
 
+# Write the same sort criterion across all 4 Finder default-view subdicts
+# (list/column = sortColumn, icon/gallery = arrangeBy). Returns 0 on success.
+_finder_sort_write() {
+    local value="$1"
+    local plist="$HOME/Library/Preferences/com.apple.finder.plist"
+    local pb="/usr/libexec/PlistBuddy"
+    # Force plist to exist so PlistBuddy can open it
+    defaults read com.apple.finder >/dev/null 2>&1
+    "$pb" -c "Add :FK_StandardViewSettings dict" "$plist" 2>/dev/null
+    local sub view prop rc=0
+    for sub in "ExtendedListViewSettingsV2:sortColumn" \
+               "ColumnViewSettings:sortColumn" \
+               "IconViewSettings:arrangeBy" \
+               "GalleryViewSettings:arrangeBy"; do
+        view="${sub%%:*}"; prop="${sub##*:}"
+        "$pb" -c "Add :FK_StandardViewSettings:$view dict" "$plist" 2>/dev/null
+        "$pb" -c "Add :FK_StandardViewSettings:$view:$prop string $value" "$plist" 2>/dev/null \
+            || "$pb" -c "Set :FK_StandardViewSettings:$view:$prop $value" "$plist" 2>/dev/null \
+            || rc=1
+    done
+    return $rc
+}
+
 # Reset queued defaults (delete keys to restore system defaults)
 declare -a RESET_ENTRIES=()
 
@@ -1013,6 +1114,18 @@ apply_reset_defaults() {
 
     for entry in "${RESET_ENTRIES[@]}"; do
         IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
+
+        if [[ "$domain" == "finder_sort" ]]; then
+            if _finder_sort_write "name"; then
+                log_ok "$label → name (default)"
+                reset=$((reset + 1))
+                MACRIFT_CHANGED_DOMAINS+=("com.apple.finder")
+            else
+                log_err "Failed to reset: $label"
+                failed=$((failed + 1))
+            fi
+            continue
+        fi
 
         if _defaults_cmd "delete" "$domain" "$key" "" "" "$label" "${sudo_flag:-}"; then
             log_ok "$label → system default"

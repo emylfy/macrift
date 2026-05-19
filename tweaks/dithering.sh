@@ -55,7 +55,7 @@ _dithering_compile() {
 }
 
 _dithering_write_plist() {
-    mkdir -p "$DITHERING_LOG_DIR"
+    mkdir -p "$DITHERING_LOG_DIR" "$(dirname "$DITHERING_PLIST")"
     cat > "$DITHERING_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

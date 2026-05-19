@@ -3,16 +3,17 @@ cask "cork"
 
 # Launchers
 cask "raycast"
-cask "alfred"
+cask "alfred"           # optional
 
 # Menu bar & Window management
 cask "hiddenbar"
 cask "alt-tab"
-cask "keyboard-cowboy"
+cask "keyboard-cowboy"  # optional
+cask "aerospace"        # optional
 
 # Files & Downloads
 cask "keka"
-cask "motrix"
+cask "motrix"           # optional
 
 # Audio & Display
 cask "soundsource"
@@ -24,8 +25,8 @@ cask "1password"
 
 # Remote & Peripherals
 cask "rustdesk"
-cask "logi-options+"
-cask "macs-fan-control"
+cask "logi-options+"    # optional
+cask "macs-fan-control" # optional
 
 # Productivity
 cask "todoist"

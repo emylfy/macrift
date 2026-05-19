@@ -316,9 +316,9 @@ starship_preset() {
     if ! command -v starship &>/dev/null; then
         log_warn "Starship not installed"
         if confirm "Install Starship?"; then
-            brew_install "starship" || return
+            brew_install "starship" || return 0
         else
-            return
+            return 0
         fi
     fi
 

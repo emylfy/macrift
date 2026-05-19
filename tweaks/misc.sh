@@ -3,7 +3,6 @@
 
 misc_tweaks() {
     audit_default "com.apple.LaunchServices" "LSQuarantine" "-bool" "false" "App open warning"
-    audit_default "com.apple.Safari" "SearchProviderShortName" "-string" "DuckDuckGo" "Safari search engine"
 
     audit_sep
 

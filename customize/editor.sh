@@ -64,7 +64,7 @@ apply_editor_config() {
         if [[ -n "$cask" ]] && confirm "Install $editor_name via Homebrew?"; then
             brew_install "$cask" "cask"
         else
-            return
+            return 0
         fi
     fi
 

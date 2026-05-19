@@ -4,6 +4,42 @@
 #
 # Usage: macrift [--dry-run] [--no-confirm] [--log]
 
+# Apple ships bash 3.2.57 — empty array expansions under `set -u` are unbound
+# variable errors there. macrift uses arrays widely, so we require bash 4+.
+# Re-exec under Homebrew bash if available, otherwise offer to install it.
+if [[ "${BASH_VERSION%%.*}" -lt 4 ]]; then
+    for _newer in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        [[ -x "$_newer" ]] && exec "$_newer" "$0" "$@"
+    done
+
+    printf '\n  \033[1;33mmacrift requires bash 4+\033[0m (you have %s)\n\n' "$BASH_VERSION" >&2
+
+    if ! command -v brew >/dev/null 2>&1; then
+        printf '  Install Homebrew first, then re-run macrift:\n' >&2
+        printf '    \033[1m/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"\033[0m\n\n' >&2
+        exit 1
+    fi
+
+    printf '  \033[0;33mInstall bash via Homebrew now?\033[0m \033[2m[y/n]\033[0m ' >&2
+    read -r _answer </dev/tty
+    if [[ "$_answer" =~ ^[Yy]$ ]]; then
+        if brew install bash; then
+            _newer="$(brew --prefix bash 2>/dev/null)/bin/bash"
+            if [[ -x "$_newer" ]]; then
+                printf '\n  \033[0;32m✓\033[0m Installed — restarting macrift under bash %s\n\n' \
+                    "$("$_newer" -c 'echo "$BASH_VERSION"')" >&2
+                exec "$_newer" "$0" "$@"
+            fi
+            printf '  \033[0;31m✗\033[0m brew installed bash but binary not found\n' >&2
+        else
+            printf '  \033[0;31m✗\033[0m brew install failed — see output above\n' >&2
+        fi
+        exit 1
+    fi
+    printf '  Cancelled. Run \033[1mbrew install bash\033[0m manually when ready.\n\n' >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 # Parse flags before sourcing (exports to common.sh)

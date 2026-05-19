@@ -43,7 +43,7 @@ _space_compile() {
 }
 
 _space_write_plist() {
-    mkdir -p "$SPACE_LOG_DIR"
+    mkdir -p "$SPACE_LOG_DIR" "$(dirname "$SPACE_PLIST")"
     cat > "$SPACE_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -117,7 +117,12 @@ space_install() {
     _space_show_usage
 
     log_info "First call triggers an Accessibility prompt"
-    log_info "  System Settings → Privacy & Security → Accessibility"
+    if open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility" 2>/dev/null; then
+        log_ok "Opened System Settings → Privacy & Security → Accessibility"
+        log_info "Add ${SPACE_BIN/#$HOME/~} to the list and toggle it on"
+    else
+        log_info "  System Settings → Privacy & Security → Accessibility"
+    fi
 
     wait_enter
     crumb_pop

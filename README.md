@@ -26,12 +26,11 @@
 
 ## Why macrift?
 
-Fresh Mac → full setup in minutes.
+See every macOS tweak before it touches your system. One keypress to apply or skip.
 
-- **See before you touch** — tweak wizard with per-item skip, apply, or reset. 80+ tweaks across 9 categories, all audited
-- **82 curated packages** — 7 Homebrew bundles + Mac App Store, installed via multi-select
-- **12 bundled configs** — terminal profiles, shell aliases, Catppuccin theme, editor settings, dock layout — ready to apply
-- **Profile save/restore** — save your entire setup (Brewfile, macOS defaults, dotfiles, editor settings, iTerm2, dock layout, Raycast) to Desktop, Documents, or iCloud Drive and restore it anywhere
+- **Preview, then apply** — every `defaults write` shown with current value, new value, and a reset option. No surprise reboots, no "what did I just change"
+- **Pick what you want** — 80+ tweaks, Homebrew bundles, Mac App Store apps, bundled configs — all multi-select, none forced
+- **Move your setup** — save the full environment (Brewfile, defaults, dotfiles, editor, iTerm2, dock, Raycast) and restore on a fresh Mac
 
 ---
 
@@ -97,22 +96,22 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                                                                         |
 | Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                                                                         |
 | Screenshots      | Format, save location, shadow, date in filename                                                                                                             |
-| Hot Corners      | Single grid screen, space to cycle actions per corner                                                                                                       |
-| Misc             | Boot sound, app open dialog, Safari search engine, save/print panels, window animations, tiled margins                                                      |
-| Privacy          | Ad tracking, firewall, stealth mode, guest access, screen lock, analytics, Siri, AirDrop, Gatekeeper                                                        |
+| Hot Corners      | Shortcut to System Settings → Desktop & Dock → Hot Corners                                                                                                  |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled margins                                                                            |
+| Privacy          | Ad tracking, guest access, screen lock, analytics, Siri, Gatekeeper                                                                                         |
 | Dithering        | Apple Silicon — disable GPU/DCP temporal dithering ([Stillcolor](https://github.com/aiaf/Stillcolor) port) via headless LaunchAgent daemon, no menu bar app |
-| Space Switcher   | Instant macOS workspace switching — Instant macOS workspace switching via Ctrl+←/→ daemon                                                                   |
+| Space Switcher   | Instant macOS workspace switching via Ctrl+←/→ daemon                                                                                                       |
 
 ### 📦 Apps & Packages
 
 **Homebrew Bundles** — multi-select installer with 7 curated Brewfiles + fzf search across all packages:
 
-- **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, neovim, tmux, fzf, ripgrep, bat, eza, fd, tlrc, fastfetch, claude, claude-code, zed, t3-code...
-- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keka, BetterDisplay, Cork, Keyboard Cowboy, Logi Options+...
-- **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium
-- **Communication** — Ayugram, Telegram, Discord, Vesktop, Slack, Zoom
+- **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, tmux, fzf, ripgrep, fd, bat, eza, jq, tlrc, httpie, wget, ffmpeg, tree, fastfetch, macmon, mole, claude, vscode, cursor, zed, warp, ghostty, iterm2, github
+- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keyboard Cowboy, Cork, Keka, Motrix, BetterDisplay, SoundSource, Proton Pass, 1Password, RustDesk, Logi Options+, Macs Fan Control, Todoist
+- **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium, Helium
+- **Communication** — Ayugram, Telegram, Discord, Vesktop
 - **Media** — IINA, OBS, Spotify, Figma, Affinity
-- **Games** — Steam, Heroic Games Launcher, Modrinth
+- **Games** — Steam, Heroic Games Launcher
 - **Fonts** — Fira Code, Maple Mono (Nerd Fonts)
 
 **Mac App Store** — `mas` entries in Brewfiles installed individually with App Store redirect for unpurchased apps.
@@ -181,6 +180,19 @@ Shared `settings.json` applied to any of these editors:
 Fira Code, format on save, ligatures, sidebar left, telemetry off.
 
 **Extensions** — multi-select installer from `config/vscode/extensions.txt`; auto-detects `code`/`cursor`/`codium` CLI.
+
+### 🤖 Claude Code
+
+Per-component installer for `~/.claude/` — pick what you want, skip the rest:
+
+- **Settings** — permissions, plugins, effort level, model (merge or overwrite)
+- **Statusline** — project / branch / model / context % / rate %
+- **Agents** — `debugger`, `reviewer`, `simplifier`, `explorer` (read-only codebase search)
+- **Slash commands** — `/debug`, `/review`, `/simplify`, `/explore`, `/refine`, `/canpush`, `/reflect`, `/mcp-context7`
+- **Rules** — `code-style`, `git`, `security`, `workflow`, `communication`, `tgbot` — auto-imported into every session via `CLAUDE.md`
+- **Hooks** — format-on-edit, security gate, stop/wait notifications
+- **Environment** — `CLAUDE_CODE_*` vars in `.zshrc`
+- **Telegram bot** — choose engine: [supercharged](https://github.com/k1p1l0/claude-telegram-supercharged) drop-in plugin (server.ts patch + supervisor + Telegraph instant view) or [ccgram](https://github.com/alexei-led/ccgram) (tmux-bridge, parallel sessions per topic, forum group)
 
 <details>
 <summary>🗂️ Dock Layout</summary>

@@ -28,15 +28,9 @@ _ensure_spotify_prefs() {
             return 1
         fi
     elif pgrep -x Spotify &>/dev/null; then
-        log_warn "Spotify must be closed before applying"
-        if confirm "Quit Spotify now?"; then
-            killall Spotify 2>/dev/null || true
-            sleep 1
-        else
-            log_info "Close Spotify manually and retry"
-            wait_enter
-            return 1
-        fi
+        log_info "Closing Spotify..."
+        killall Spotify 2>/dev/null || true
+        sleep 1
     fi
     return 0
 }
@@ -51,6 +45,7 @@ spotify_menu() {
         choice=$(show_menu "Spotify" \
             "SpotX — ad blocker (macOS)" \
             "Spicetify — customization framework" \
+            "---" \
             "Restore marketplace settings" \
             "Save marketplace settings" \
             "Back")
@@ -103,7 +98,7 @@ install_spicetify() {
     fi
 
     # Spotify must have been launched at least once to create prefs
-    _ensure_spotify_prefs || return
+    _ensure_spotify_prefs || return 0
 
     log_info "Applying Spicetify..."
     spicetify restore 2>/dev/null || true
@@ -112,11 +107,13 @@ install_spicetify() {
         spicetify apply 2>/dev/null || true
     fi
 
-    # Install Marketplace if not present
+    # Install Marketplace if not present.
+    # Installer calls `spicetify apply` internally — guard with `|| true` so
+    # a benign installer failure doesn't kill macrift via set -e + pipefail.
     local mp_dir="$HOME/.config/spicetify/CustomApps/marketplace"
     if [[ ! -d "$mp_dir" ]]; then
         log_info "Installing Marketplace..."
-        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh || true
     fi
     spicetify config custom_apps marketplace 2>/dev/null || true
     spicetify apply 2>/dev/null || true

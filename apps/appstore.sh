@@ -42,7 +42,7 @@ _ensure_mas() {
 install_appstore() {
     clear
 
-    _ensure_mas || return
+    _ensure_mas || return 0
 
     local path="$MACRIFT_DIR/config/Brewfile.appstore"
     if [[ ! -f "$path" ]]; then
@@ -57,6 +57,7 @@ install_appstore() {
     # Parse mas entries
     local new_labels=()
     local new_ids=()
+    local new_optional=()
     local installed_count=0
 
     while IFS= read -r line; do
@@ -64,11 +65,14 @@ install_appstore() {
         if [[ "$line" =~ ^mas[[:space:]]+\"([^\"]+)\".*id:[[:space:]]*([0-9]+) ]]; then
             local name="${BASH_REMATCH[1]}"
             local id="${BASH_REMATCH[2]}"
+            local optional=0
+            [[ "$line" == *"# optional"* ]] && optional=1
             if echo "$installed_ids" | grep -qxF "$id"; then
                 installed_count=$((installed_count + 1))
             else
                 new_labels+=("$name")
                 new_ids+=("$id")
+                new_optional+=("$optional")
             fi
         fi
     done < "$path"
@@ -83,6 +87,10 @@ install_appstore() {
         return 0
     fi
 
+    MULTISELECT_OPTIONAL=""
+    for ((i=0; i<${#new_optional[@]}; i++)); do
+        [[ "${new_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
+    done
     local selected
     selected=$(show_multiselect "App Store" "${new_labels[@]}")
 
@@ -125,7 +133,7 @@ install_appstore() {
 show_installed_apps() {
     clear
 
-    _ensure_mas || return
+    _ensure_mas || return 0
 
     mas list 2>/dev/null | while IFS= read -r line; do
         printf '  %b%s%b\n' "$DIM" "$line" "$RESET"

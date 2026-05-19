@@ -1,5 +1,6 @@
-# Browsers
-cask "google-chrome"
-cask "arc"
-cask "zen"
-cask "ungoogled-chromium"
+# Browsers — all default-off, pick what you want
+cask "google-chrome"      # optional
+cask "arc"                # optional
+cask "zen"                # optional
+cask "ungoogled-chromium" # optional
+cask "helium-browser"     # optional
