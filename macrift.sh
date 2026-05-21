@@ -100,8 +100,13 @@ main_menu() {
         clear
 
         # Build title with version, update hint, and flags
-        local title="macrift $MACRIFT_VERSION"
-        [[ -n "$MACRIFT_UPDATE" ]] && title+=" → $MACRIFT_UPDATE"
+        # Short version (YY.MM) in title — full version (YY.MM.N) lives in footer
+        local title="macrift $MACRIFT_VERSION_SHORT"
+        if [[ -n "$MACRIFT_UPDATE" ]]; then
+            local update_short="$MACRIFT_UPDATE"
+            [[ "$MACRIFT_UPDATE" =~ ^([0-9]+\.[0-9]+) ]] && update_short="${BASH_REMATCH[1]}"
+            title+=" → $update_short"
+        fi
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
         [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"

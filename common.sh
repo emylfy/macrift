@@ -510,6 +510,7 @@ show_menu() {
         # Footer
         local hint="↑↓ navigate  enter/→ select"
         [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+="  ← back"
+        hint+="  ·  v$MACRIFT_VERSION"
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
         [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"
@@ -1193,9 +1194,16 @@ get_script_dir() {
 MACRIFT_DIR="$(get_script_dir)"
 
 # Version & Updates
-MACRIFT_REPO_TAR="https://github.com/emylfy/macrift/archive/main.tar.gz"
-MACRIFT_VERSION_URL="https://raw.githubusercontent.com/emylfy/macrift/main/VERSION"
+MACRIFT_REPO="emylfy/macrift"
+MACRIFT_REPO_TAR="https://github.com/${MACRIFT_REPO}/archive/main.tar.gz"
+MACRIFT_VERSION_URL="https://raw.githubusercontent.com/${MACRIFT_REPO}/main/VERSION"
 MACRIFT_VERSION=$(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo "0")
+# Short form (YY.MM) for menu title; full (YY.MM.N) for footer + update compare
+if [[ "$MACRIFT_VERSION" =~ ^([0-9]+\.[0-9]+) ]]; then
+    MACRIFT_VERSION_SHORT="${BASH_REMATCH[1]}"
+else
+    MACRIFT_VERSION_SHORT="$MACRIFT_VERSION"
+fi
 MACRIFT_UPDATE=""
 
 # Check for updates (2s timeout, silent on failure)
@@ -1208,8 +1216,73 @@ check_update() {
     fi
 }
 
+# Fetch changelog for the pending update.
+# Prefers GitHub compare API (precise, tag-based); falls back to recent commits.
+_fetch_update_changelog() {
+    local current_tag="v$MACRIFT_VERSION"
+    local commits
+
+    # Precise path: requires `v<VERSION>` tag pushed for the current release
+    commits=$(curl -fsSL --max-time 5 \
+        "https://api.github.com/repos/${MACRIFT_REPO}/compare/${current_tag}...main" 2>/dev/null \
+        | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    if 'commits' not in d: sys.exit(1)
+    for c in d['commits']:
+        print('- ' + c['commit']['message'].splitlines()[0])
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+
+    if [[ -n "$commits" ]]; then
+        printf '%s\n' "$commits"
+        return 0
+    fi
+
+    # Fallback: last 10 commits (may include ones the user already has)
+    commits=$(curl -fsSL --max-time 5 \
+        "https://api.github.com/repos/${MACRIFT_REPO}/commits?per_page=10" 2>/dev/null \
+        | python3 -c "
+import sys, json
+try:
+    for c in json.load(sys.stdin):
+        print('- ' + c['commit']['message'].splitlines()[0])
+except Exception:
+    pass
+" 2>/dev/null)
+    [[ -n "$commits" ]] && printf '%s\n' "$commits"
+    return 1   # signals 'imprecise' (caller may note this)
+}
+
 # Download and apply update
 macrift_update() {
+    # Show changelog first, then ask
+    if [[ -n "$MACRIFT_UPDATE" ]]; then
+        printf '\n'
+        log_info "Update available: $MACRIFT_VERSION → $MACRIFT_UPDATE"
+        printf '\n'
+        local changelog precise=0
+        if changelog=$(_fetch_update_changelog); then
+            precise=1
+        fi
+        if [[ -n "$changelog" ]]; then
+            if [[ $precise -eq 1 ]]; then
+                log_info "Changes since v$MACRIFT_VERSION:"
+            else
+                log_info "Recent commits (no tag for current version — may include ones you have):"
+            fi
+            printf '%s\n' "$changelog" | while IFS= read -r line; do
+                printf '  %b%s%b\n' "$DIM" "$line" "$RESET"
+            done
+            printf '\n'
+        fi
+        if ! confirm "Continue with update?" "y"; then
+            return 1
+        fi
+    fi
+
     log_info "Downloading latest version..."
     local tmp
     tmp="$(mktemp -d)"
