@@ -34,6 +34,189 @@ _is_cask_broken() {
     return 0
 }
 
+# Cache of .app basenames found under standard install dirs (session-scope)
+_APP_BUNDLES=""
+
+# Cache of cask→app mapping: lines "cask|App.app"; "cask|" = queried but no apps
+_CASK_APP_CACHE=""
+
+_load_app_bundles() {
+    [[ -n "$_APP_BUNDLES" ]] && return
+    local d app
+    for d in /Applications /System/Applications "$HOME/Applications"; do
+        [[ -d "$d" ]] || continue
+        while IFS= read -r app; do
+            _APP_BUNDLES+="${app##*/}"$'\n'
+        done < <(find "$d" -maxdepth 2 -name "*.app" 2>/dev/null)
+    done
+}
+
+# Echo .app names a cask declares (via `brew info --json`, memoized)
+_cask_app_names() {
+    local cask="$1"
+    # Anchored cache lookup — substring match would conflate e.g. `code` with `vscode`
+    local hit
+    if hit=$(awk -F'|' -v c="$cask" '
+        BEGIN { f=0 }
+        $1==c { f=1; if ($2!="") print $2 }
+        END   { exit !f }
+    ' <<< "$_CASK_APP_CACHE"); then
+        [[ -n "$hit" ]] && printf '%s\n' "$hit"
+        return
+    fi
+    local apps
+    apps=$(brew info --json=v2 --cask "$cask" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for c in d.get("casks", []):
+        for art in c.get("artifacts", []):
+            if isinstance(art, dict) and "app" in art:
+                for a in art["app"]:
+                    if isinstance(a, str):
+                        print(a)
+                    elif isinstance(a, dict):
+                        for k in ("target", "source"):
+                            if k in a and isinstance(a[k], str):
+                                print(a[k]); break
+except Exception:
+    pass
+' 2>/dev/null) || apps=""
+    if [[ -n "$apps" ]]; then
+        local a
+        while IFS= read -r a; do
+            [[ -z "$a" ]] && continue
+            _CASK_APP_CACHE+="${cask}|${a}"$'\n'
+        done <<< "$apps"
+        printf '%s\n' "$apps"
+    else
+        _CASK_APP_CACHE+="${cask}|"$'\n'
+    fi
+}
+
+# True iff package is installed outside Homebrew.
+# Formulae: binary in $PATH (catches git from Xcode CLT, node from nvm, etc.)
+# Casks: any of the cask's .app names exists under standard install dirs
+_is_installed_external() {
+    local name="$1" kind="$2"
+    if [[ "$kind" == "formula" ]]; then
+        command -v "$name" &>/dev/null
+        return $?
+    fi
+    _load_app_bundles
+    local app
+    while IFS= read -r app; do
+        [[ -z "$app" ]] && continue
+        grep -qxF "$app" <<< "$_APP_BUNDLES" && return 0
+    done < <(_cask_app_names "$name")
+    return 1
+}
+
+# True iff installed via brew OR externally
+# Usage: _is_installed name formula|cask brew_installed_list
+_is_installed() {
+    local name="$1" kind="$2" brew_list="$3"
+    grep -qxF "$name" <<< "$brew_list" && return 0
+    _is_installed_external "$name" "$kind"
+}
+
+# Worker: write cache entries for given casks to $out_file (runs under spinner subshell)
+# `brew info --json=v2` aborts the whole batch on any unknown cask, so we extract
+# the bad cask from stderr, drop it (sentinel-only), and retry until everything resolves.
+_warm_cask_cache_to_file() {
+    local out_file="$1"
+    shift
+    local -a casks=("$@")
+    : > "$out_file"
+    local err_tmp
+    err_tmp=$(mktemp /tmp/macrift_brewerr_XXXXXX)
+    local guard=0
+    while [[ ${#casks[@]} -gt 0 && $guard -lt 30 ]]; do
+        guard=$((guard + 1))
+        local raw rc
+        raw=$(brew info --json=v2 --cask "${casks[@]}" 2>"$err_tmp")
+        rc=$?
+        if [[ $rc -eq 0 && -n "$raw" ]]; then
+            printf '%s' "$raw" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for c in d.get("casks", []):
+        token = c.get("token") or ""
+        if not token:
+            continue
+        emitted = False
+        for art in c.get("artifacts", []):
+            if isinstance(art, dict) and "app" in art:
+                for a in art["app"]:
+                    if isinstance(a, str):
+                        print(f"{token}|{a}"); emitted = True
+                    elif isinstance(a, dict):
+                        for k in ("target", "source"):
+                            if k in a and isinstance(a[k], str):
+                                print(f"{token}|{a[k]}"); emitted = True; break
+        if not emitted:
+            print(f"{token}|")
+except Exception:
+    pass
+' 2>/dev/null >> "$out_file" || true
+            break
+        fi
+        # Failure — try to identify the bad cask from stderr and exclude it
+        local err bad=""
+        err=$(<"$err_tmp")
+        if [[ "$err" =~ Cask\ \'([^\']+)\' ]]; then
+            bad="${BASH_REMATCH[1]}"
+        fi
+        if [[ -z "$bad" ]]; then
+            break  # unknown failure mode — give up gracefully
+        fi
+        printf '%s|\n' "$bad" >> "$out_file"
+        local -a remaining=()
+        local c
+        for c in "${casks[@]}"; do
+            [[ "$c" == "$bad" ]] || remaining+=("$c")
+        done
+        casks=(${remaining[@]+"${remaining[@]}"})
+    done
+    rm -f "$err_tmp"
+}
+
+# Filter casks needing brew info (not in brew list, not yet cached), batch-warm with spinner
+_prewarm_casks() {
+    local installed="$1"
+    shift
+    local -a candidates=("$@")
+    [[ ${#candidates[@]} -eq 0 ]] && return
+    local -a to_warm=()
+    local c
+    for c in "${candidates[@]}"; do
+        grep -qxF "$c" <<< "$installed" && continue
+        awk -F'|' -v c="$c" 'BEGIN{f=0} $1==c{f=1} END{exit !f}' <<< "$_CASK_APP_CACHE" >/dev/null && continue
+        to_warm+=("$c")
+    done
+    [[ ${#to_warm[@]} -eq 0 ]] && return
+    local cache_tmp
+    cache_tmp=$(mktemp /tmp/macrift_warm_XXXXXX)
+    run_with_spinner "Checking ${#to_warm[@]} installed apps... please wait" \
+        _warm_cask_cache_to_file "$cache_tmp" "${to_warm[@]}" || true
+    if [[ -s "$cache_tmp" ]]; then
+        _CASK_APP_CACHE+="$(<"$cache_tmp")"$'\n'
+    fi
+    rm -f "$cache_tmp"
+}
+
+# Collect cask tokens from one or more Brewfile-format files
+_collect_casks() {
+    local f line
+    for f in "$@"; do
+        [[ -f "$f" ]] || continue
+        while IFS= read -r line; do
+            [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]] && echo "${BASH_REMATCH[1]}"
+        done < "$f"
+    done
+}
+
 fzf_search_packages() {
     if ! command -v fzf &>/dev/null; then
         log_warn "fzf not found"
@@ -49,6 +232,13 @@ fzf_search_packages() {
     installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
     installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
+    # Warm cask cache across all bundles
+    local -a _prewarm_list=()
+    while IFS= read -r _c; do
+        [[ -n "$_c" ]] && _prewarm_list+=("$_c")
+    done < <(_collect_casks "$MACRIFT_DIR"/config/Brewfile.*)
+    _prewarm_casks "$installed" ${_prewarm_list[@]+"${_prewarm_list[@]}"}
+
     # Parse all Brewfiles: "name [category]" + keep original lines for install
     local -a fzf_lines=() brew_lines=()
     for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
@@ -59,16 +249,18 @@ fzf_search_packages() {
 
         while IFS= read -r line; do
             [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-            local name=""
+            local name="" kind=""
             if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
                 name="${BASH_REMATCH[1]}"
+                kind="formula"
             elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
                 name="${BASH_REMATCH[1]}"
+                kind="cask"
             else
                 continue
             fi
-            # Skip already installed
-            echo "$installed" | grep -qxF "$name" && continue
+            # Skip already installed (via brew or externally)
+            _is_installed "$name" "$kind" "$installed" && continue
             fzf_lines+=("$name  [$category]")
             brew_lines+=("$line")
         done < "$brewfile"
@@ -237,11 +429,19 @@ install_bundle() {
     installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
     installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
+    # Warm cask→app cache up front so the parse loop is fast and user sees progress
+    local -a _prewarm_list=()
+    while IFS= read -r _c; do
+        [[ -n "$_c" ]] && _prewarm_list+=("$_c")
+    done < <(_collect_casks "$path")
+    _prewarm_casks "$installed" ${_prewarm_list[@]+"${_prewarm_list[@]}"}
+
     # Parse Brewfile — split into new, broken, and already installed
     local new_lines=()
     local new_labels=()
     local new_optional=()
     local broken_casks=()
+    local installed_view=()
     local installed_count=0
     local had_items=false
     while IFS= read -r line; do
@@ -255,22 +455,28 @@ install_bundle() {
             continue
         fi
         had_items=true
-        local name=""
+        local name="" kind=""
         if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
+            kind="formula"
         elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
+            kind="cask"
         else
             continue
         fi
         local optional=0
         [[ "$line" == *"# optional"* ]] && optional=1
-        if echo "$installed" | grep -qxF "$name"; then
-            if [[ "$line" =~ ^cask ]] && _is_cask_broken "$name"; then
+        if grep -qxF "$name" <<< "$installed"; then
+            if [[ "$kind" == "cask" ]] && _is_cask_broken "$name"; then
                 broken_casks+=("$name")
                 continue
             fi
             installed_count=$((installed_count + 1))
+            installed_view+=("$name [brew]")
+        elif _is_installed_external "$name" "$kind"; then
+            installed_count=$((installed_count + 1))
+            installed_view+=("$name [external]")
         else
             new_lines+=("$line")
             new_labels+=("$name")
@@ -342,8 +548,14 @@ install_bundle() {
     for ((i=0; i<${#new_optional[@]}; i++)); do
         [[ "${new_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
     done
+    # Feed already-installed packages to show_multiselect's view mode (→ to toggle).
+    # Inline env-prefix keeps it scoped to the subshell — no leak into other menus.
+    local installed_str=""
+    for ((i=0; i<${#installed_view[@]}; i++)); do
+        installed_str+="${installed_view[$i]}"$'\n'
+    done
     local selected
-    selected=$(show_multiselect "$ms_title" "${new_labels[@]}")
+    selected=$(MULTISELECT_INSTALLED="$installed_str" show_multiselect "$ms_title" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
         return 0
@@ -412,30 +624,45 @@ install_all_bundles() {
     installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
     installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
+    # Warm cache for all casks across all bundles in one batch
+    local -a _prewarm_list=()
+    while IFS= read -r _c; do
+        [[ -n "$_c" ]] && _prewarm_list+=("$_c")
+    done < <(_collect_casks "$MACRIFT_DIR"/config/Brewfile.*)
+    _prewarm_casks "$installed" ${_prewarm_list[@]+"${_prewarm_list[@]}"}
+
     # Merge all brewfiles into one list with section separators
     local all_lines=() all_labels=() all_optional=()
+    local installed_view=()
     local installed_count=0 first_section=true
 
     for brewfile in "$MACRIFT_DIR"/config/Brewfile.*; do
         [[ -f "$brewfile" ]] || continue
-        local bname had_new=false
+        local bname had_new=false section_label
         bname=$(basename "$brewfile")
+        section_label=$(_bundle_label "$bname")
 
         local section_lines=() section_labels=() section_optional=()
         while IFS= read -r line; do
             [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-            local name=""
+            local name="" kind=""
             if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
                 name="${BASH_REMATCH[1]}"
+                kind="formula"
             elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
                 name="${BASH_REMATCH[1]}"
+                kind="cask"
             else
                 continue
             fi
             local optional=0
             [[ "$line" == *"# optional"* ]] && optional=1
-            if echo "$installed" | grep -qxF "$name"; then
+            if grep -qxF "$name" <<< "$installed"; then
                 installed_count=$((installed_count + 1))
+                installed_view+=("$name [brew · $section_label]")
+            elif _is_installed_external "$name" "$kind"; then
+                installed_count=$((installed_count + 1))
+                installed_view+=("$name [external · $section_label]")
             else
                 section_lines+=("$line")
                 section_labels+=("$name")
@@ -473,8 +700,12 @@ install_all_bundles() {
     for ((i=0; i<${#all_optional[@]}; i++)); do
         [[ "${all_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
     done
+    local installed_str=""
+    for ((i=0; i<${#installed_view[@]}; i++)); do
+        installed_str+="${installed_view[$i]}"$'\n'
+    done
     local selected
-    selected=$(show_multiselect "$ms_title" "${all_labels[@]}")
+    selected=$(MULTISELECT_INSTALLED="$installed_str" show_multiselect "$ms_title" "${all_labels[@]}")
     [[ -z "$selected" ]] && return
 
     local tmp
@@ -533,19 +764,29 @@ import_brewbak() {
     local installed
     installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
 
+    # Warm cask cache from backup file
+    local -a _prewarm_list=()
+    while IFS= read -r _c; do
+        [[ -n "$_c" ]] && _prewarm_list+=("$_c")
+    done < <(_collect_casks "$filepath")
+    _prewarm_casks "$installed" ${_prewarm_list[@]+"${_prewarm_list[@]}"}
+
     # Parse brewbak — same format as Brewfile
     local new_lines=()
     local new_labels=()
+    local installed_view=()
     local installed_count=0
     while IFS= read -r line; do
         [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-        local name="" label=""
+        local name="" label="" kind=""
         if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
             label="$name"
+            kind="formula"
         elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
             label="$name"
+            kind="cask"
         elif [[ "$line" =~ ^tap[[:space:]]+\"([^\"]+)\" ]]; then
             name="${BASH_REMATCH[1]}"
             label="$name (tap)"
@@ -555,13 +796,17 @@ import_brewbak() {
         else
             continue
         fi
-        if echo "$installed" | grep -qxF "$name"; then
-            if [[ "$line" =~ ^cask ]] && _is_cask_broken "$name"; then
+        if grep -qxF "$name" <<< "$installed"; then
+            if [[ "$kind" == "cask" ]] && _is_cask_broken "$name"; then
                 new_lines+=("$line")
                 new_labels+=("$label [broken]")
                 continue
             fi
             installed_count=$((installed_count + 1))
+            installed_view+=("$name [brew]")
+        elif _is_installed_external "$name" "$kind"; then
+            installed_count=$((installed_count + 1))
+            installed_view+=("$name [external]")
         else
             new_lines+=("$line")
             new_labels+=("$label")
@@ -578,8 +823,12 @@ import_brewbak() {
         return
     fi
 
+    local installed_str=""
+    for ((i=0; i<${#installed_view[@]}; i++)); do
+        installed_str+="${installed_view[$i]}"$'\n'
+    done
     local selected
-    selected=$(show_multiselect "Import" "${new_labels[@]}")
+    selected=$(MULTISELECT_INSTALLED="$installed_str" show_multiselect "Import" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
         log_info "Nothing selected"

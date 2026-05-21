@@ -610,11 +610,32 @@ show_multiselect() {
         cursor=$((cursor + 1))
     done
 
-    # Box width
+    # View mode: when MULTISELECT_INSTALLED is set, right arrow toggles a
+    # read-only list of already-installed packages in the same window
+    local view_raw="${MULTISELECT_INSTALLED:-}"
+    MULTISELECT_INSTALLED=""
+    local view_items=()
+    if [[ -n "$view_raw" ]]; then
+        while IFS= read -r vl; do
+            [[ -z "$vl" ]] && continue
+            view_items+=("$vl")
+        done <<< "$view_raw"
+    fi
+    local view_count=${#view_items[@]}
+    local view_available=false
+    [[ $view_count -gt 0 ]] && view_available=true
+    local view_mode=false
+    local view_cursor=0
+    local view_vp_top=0
+
+    # Box width — include view items so toggling doesn't resize the box
     local max_len=0
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
         [[ ${#items[$i]} -gt $max_len ]] && max_len=${#items[$i]}
+    done
+    for ((i=0; i<view_count; i++)); do
+        [[ ${#view_items[$i]} -gt $max_len ]] && max_len=${#view_items[$i]}
     done
     local inner_w=$((8 + max_len + 2))
     [[ 12 -gt $inner_w ]] && inner_w=12
@@ -623,20 +644,113 @@ show_multiselect() {
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
 
-    # Scrolling
+    # Scrolling — chrome=9 accounts for box (top/bottom + 3 empties + back row) + 2-line hint
     local scroll_info
-    scroll_info=$(_calc_scroll "$count" 8)
+    scroll_info=$(_calc_scroll "$count" 9)
     local need_scroll=${scroll_info%% *}
     local visible_count=${scroll_info##* }
     local vp_top=0
 
-    local redraw_lines=$((visible_count + 8))
-    $need_scroll && redraw_lines=$((redraw_lines + 2))
+    # Reserve indicator slot if EITHER picker or view needs to scroll, so the
+    # box keeps the same height when toggling modes
+    local any_scroll=$need_scroll
+    if $view_available && [[ $view_count -gt $visible_count ]]; then
+        any_scroll=true
+    fi
+
+    # +9 (not +8) because the hint is now two lines instead of one
+    local redraw_lines=$((visible_count + 9))
+    $any_scroll && redraw_lines=$((redraw_lines + 2))
 
     local first_draw=true
     _ui_start
 
     while true; do
+        if $view_mode; then
+            # ── View mode: read-only list of already-installed packages ──
+            # Reuse picker's visible_count budget so total height stays constant
+            local v_show=$view_count
+            local v_scroll=false
+            if [[ $view_count -gt $visible_count ]]; then
+                v_show=$visible_count
+                v_scroll=true
+            fi
+            if $v_scroll; then
+                if [[ $view_cursor -lt $view_vp_top ]]; then view_vp_top=$view_cursor; fi
+                local vbot=$((view_vp_top + v_show))
+                if [[ $view_cursor -ge $vbot ]]; then
+                    view_vp_top=$((view_cursor - v_show + 1))
+                    [[ $view_vp_top -lt 0 ]] && view_vp_top=0
+                fi
+            fi
+
+            _frame_start "$first_draw" "$redraw_lines"
+            first_draw=false
+
+            _box_top "$title" "$inner_w"
+            _box_empty "$inner_w"
+
+            # Reserve indicator slot if either mode needs scrolling
+            if $any_scroll; then
+                if $v_scroll && [[ $view_vp_top -gt 0 ]]; then
+                    _box_scroll_indicator "$inner_w" "up"
+                else
+                    _box_empty "$inner_w"
+                fi
+            fi
+
+            local rendered=0
+            for ((i=0; i<view_count; i++)); do
+                if $v_scroll && [[ $i -lt $view_vp_top || $rendered -ge $v_show ]]; then
+                    continue
+                fi
+                # Visible prefix is 3 chars ("›  " or "   "), so pad = inner_w - 2 - 3 - len
+                local pad=$((inner_w - 5 - ${#view_items[$i]}))
+                local content
+                if [[ $i -eq $view_cursor ]]; then
+                    content=$(printf '%b›%b  %b%s%b' "$CYAN" "$R" "$DIM" "${view_items[$i]}" "$R")
+                else
+                    content=$(printf '   %b%s%b' "$DIM" "${view_items[$i]}" "$R")
+                fi
+                _box_row "$inner_w" "$content" "$pad"
+                rendered=$((rendered + 1))
+            done
+            # Pad to picker's visible_count
+            while [[ $rendered -lt $visible_count ]]; do
+                _box_empty "$inner_w"
+                rendered=$((rendered + 1))
+            done
+
+            if $any_scroll; then
+                if $v_scroll && [[ $((view_vp_top + v_show)) -lt $view_count ]]; then
+                    _box_scroll_indicator "$inner_w" "down"
+                else
+                    _box_empty "$inner_w"
+                fi
+            fi
+
+            # Mirror picker's bottom chrome height (3 rows) — keep them empty since
+            # navigation is conveyed by the hint line below
+            _box_empty "$inner_w"
+            _box_empty "$inner_w"
+            _box_empty "$inner_w"
+            _box_bottom "$inner_w"
+
+            printf '  %b%s%b\033[K\n' "$DIM" "↑↓ scroll  ← exit  → picker" "$R" >&2
+            printf '\033[K\n' >&2
+            _frame_end
+
+            local key
+            key=$(_read_key)
+            case "$key" in
+                up)   [[ $view_cursor -gt 0 ]] && view_cursor=$((view_cursor - 1)) ;;
+                down) [[ $view_cursor -lt $((view_count - 1)) ]] && view_cursor=$((view_cursor + 1)) ;;
+                right|enter) view_mode=false ;;
+                left) _ui_end; return 0 ;;
+            esac
+            continue
+        fi
+
         _adjust_viewport "$cursor" "$count"
 
         _frame_start "$first_draw" "$redraw_lines"
@@ -646,8 +760,8 @@ show_multiselect() {
         _box_empty "$inner_w"
 
         # Scroll-up
-        if $need_scroll; then
-            if [[ $vp_top -gt 0 ]]; then
+        if $any_scroll; then
+            if $need_scroll && [[ $vp_top -gt 0 ]]; then
                 _box_scroll_indicator "$inner_w" "up"
             else
                 _box_empty "$inner_w"
@@ -686,8 +800,8 @@ show_multiselect() {
         done
 
         # Scroll-down
-        if $need_scroll; then
-            if [[ $((vp_top + visible_count)) -lt $count ]]; then
+        if $any_scroll; then
+            if $need_scroll && [[ $((vp_top + visible_count)) -lt $count ]]; then
                 _box_scroll_indicator "$inner_w" "down"
             else
                 _box_empty "$inner_w"
@@ -705,8 +819,16 @@ show_multiselect() {
         _box_empty "$inner_w"
         _box_bottom "$inner_w"
 
-        local hint="${MULTISELECT_HINT:-↑↓ move  space toggle  a all  enter confirm}"
-        printf '  %b%s%b\033[K\n' "$DIM" "$hint" "$R" >&2
+        if [[ -n "${MULTISELECT_HINT:-}" ]]; then
+            # Backwards-compat: caller-supplied hint stays single-line, blank pad
+            printf '  %b%s%b\033[K\n' "$DIM" "$MULTISELECT_HINT" "$R" >&2
+            printf '\033[K\n' >&2
+        else
+            printf '  %b↑↓ move  space toggle  a all%b\033[K\n' "$DIM" "$R" >&2
+            local hint2="← back  enter confirm"
+            $view_available && hint2+="  → installed"
+            printf '  %b%s%b\033[K\n' "$DIM" "$hint2" "$R" >&2
+        fi
         _frame_end
 
         # Input
@@ -728,8 +850,11 @@ show_multiselect() {
                     done
                 fi ;;
             right)
+                # Right activates Back, switches to installed-view if available,
+                # otherwise no-op (so an accidental press doesn't kick off install)
                 if [[ $cursor -eq $count ]]; then _ui_end; return 0; fi
-                break ;;
+                if $view_available; then view_mode=true; view_cursor=0; fi
+                ;;
             left) _ui_end; return 0 ;;
             space)
                 if [[ $cursor -lt $count ]]; then
