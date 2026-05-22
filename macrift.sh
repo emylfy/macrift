@@ -161,7 +161,9 @@ main_menu() {
         if [[ -n "$MACRIFT_UPDATE" ]]; then
             local update_short="$MACRIFT_UPDATE"
             [[ "$MACRIFT_UPDATE" =~ ^([0-9]+\.[0-9]+) ]] && update_short="${BASH_REMATCH[1]}"
-            title+=" → $update_short"
+            # Only show arrow for major bumps — patch-only updates would
+            # render as "26.05 → 26.05" since both short to YY.MM
+            [[ "$update_short" != "$MACRIFT_VERSION_SHORT" ]] && title+=" → $update_short"
         fi
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"

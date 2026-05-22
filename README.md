@@ -67,6 +67,21 @@ Downloads to `/tmp`, runs the command, cleans up. Leaves nothing behind.
 </details>
 
 <details>
+<summary>Subcommands</summary>
+
+Skip the menu and run a single action directly:
+
+| Subcommand                    | Description                                                  |
+| :---------------------------- | :----------------------------------------------------------- |
+| `fix [<path>...]`             | Remove `com.apple.quarantine` xattr (fixes "damaged" errors) |
+| `gatekeeper [on\|off\|status]`| Toggle Gatekeeper (alias: `gk`)                              |
+| `check`                       | Mac diagnostics — DEP/MDM, activation lock, SMART, battery   |
+
+Pair with the one-shot install above to inspect someone else's Mac without leaving anything behind.
+
+</details>
+
+<details>
 <summary>CLI flags</summary>
 
 | Flag           | Description                                   |
