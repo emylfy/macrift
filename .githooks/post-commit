@@ -16,5 +16,6 @@ if git rev-parse --verify "v$v" >/dev/null 2>&1; then
     exit 0
 fi
 
-git tag "v$v" HEAD
+# Annotated (not lightweight) so `push.followTags` picks it up automatically
+git tag -a "v$v" -m "Release v$v" HEAD
 printf '[post-commit] tagged v%s\n' "$v" >&2
