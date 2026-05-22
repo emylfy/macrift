@@ -510,7 +510,9 @@ show_menu() {
         # Footer
         local hint="↑↓ navigate  enter/→ select"
         [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+="  ← back"
-        hint+="  ·  v$MACRIFT_VERSION"
+        # Title already shows short version (e.g. 26.05); only echo full
+        # version in footer when there's a patch suffix to disambiguate
+        [[ "$MACRIFT_VERSION" != "$MACRIFT_VERSION_SHORT" ]] && hint+="  ·  v$MACRIFT_VERSION"
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
         [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"
