@@ -42,7 +42,28 @@ fi
 
 set -euo pipefail
 
-# Parse flags before sourcing (exports to common.sh)
+_print_help() {
+    echo "Usage: macrift [command] [flags]"
+    echo ""
+    echo "Commands:"
+    echo "  fix [<path>...]              Remove quarantine xattr (fix 'damaged' errors)"
+    echo "  gatekeeper [on|off|status]   Toggle Gatekeeper (alias: gk)"
+    echo "  check                        Pre-purchase Mac check (used Mac diagnostics)"
+    echo "  help                         Show this help"
+    echo ""
+    echo "Flags:"
+    echo "  --dry-run      Show what would change without applying"
+    echo "  --no-confirm   Skip all confirmation prompts"
+    echo "  --log          Write log to ~/.macrift/macrift.log"
+    echo "  --uninstall    Remove macrift from this system"
+    echo ""
+    echo "Run without a command to open the interactive menu."
+}
+
+# Parse flags before sourcing (exports to common.sh). First non-flag arg
+# becomes the subcommand; subsequent non-flag args become its arguments.
+MACRIFT_SUBCMD=""
+declare -a MACRIFT_SUBCMD_ARGS=()
 for arg in "$@"; do
     case "$arg" in
         --dry-run)     export MACRIFT_DRY_RUN=true ;;
@@ -69,12 +90,16 @@ for arg in "$@"; do
             exit 0
             ;;
         --help|-h)
-            echo "Usage: macrift [--dry-run] [--no-confirm] [--log] [--uninstall]"
-            echo "  --dry-run      Show what would change without applying"
-            echo "  --no-confirm   Skip all confirmation prompts"
-            echo "  --log          Write log to ~/.macrift/macrift.log"
-            echo "  --uninstall    Remove macrift from this system"
+            _print_help
             exit 0
+            ;;
+        --*) ;;
+        *)
+            if [[ -z "$MACRIFT_SUBCMD" ]]; then
+                MACRIFT_SUBCMD="$arg"
+            else
+                MACRIFT_SUBCMD_ARGS+=("$arg")
+            fi
             ;;
     esac
 done
@@ -92,6 +117,37 @@ if [[ -n "$MACRIFT_LOG" ]]; then
     printf "\n── macrift session %s ──\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$MACRIFT_LOG"
 fi
 
+# Subcommand dispatch — runs before main_menu; exits when handled
+case "${MACRIFT_SUBCMD:-}" in
+    "") ;;
+    help)
+        _print_help
+        exit 0
+        ;;
+    fix)
+        check_macos
+        source "$MACRIFT_DIR/security/menu.sh"
+        quarantine_fix_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
+        exit $?
+        ;;
+    gatekeeper|gk)
+        check_macos
+        source "$MACRIFT_DIR/security/menu.sh"
+        gatekeeper_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
+        exit $?
+        ;;
+    check)
+        check_macos
+        source "$MACRIFT_DIR/security/menu.sh"
+        precheck_cli
+        exit $?
+        ;;
+    *)
+        log_err "Unknown command: $MACRIFT_SUBCMD"
+        printf '  Run %bmacrift --help%b for usage\n' "$BOLD" "$RESET" >&2
+        exit 1
+        ;;
+esac
 
 
 main_menu() {

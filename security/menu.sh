@@ -9,7 +9,7 @@ privacy_menu() {
     while true; do
         clear
 
-        local items=("Security Status" "Privacy Shortcuts" "Hostname" "DNS" "Update Control")
+        local items=("Security Status" "Privacy Shortcuts" "Hostname" "DNS" "Update Control" "Unquarantine App")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
         items+=("Back")
 
@@ -22,7 +22,8 @@ privacy_menu() {
             3) set_hostname ;;
             4) dns_menu ;;
             5) update_control_menu ;;
-            6) remove_defender ;;
+            6) unquarantine_menu ;;
+            7) remove_defender ;;
             0) break ;;
             *) ;;
         esac
@@ -684,4 +685,359 @@ update_control_remove() {
     fi
 
     wait_enter
+}
+
+# Unquarantine — fix "X is damaged and can't be opened" by removing
+# com.apple.quarantine xattr. Shared by `macrift fix` CLI and menu entry.
+
+# Normalize a path string from drag-n-drop or paste:
+# strip surrounding quotes (Finder), unescape \-spaces, expand leading ~
+_quarantine_normalize_path() {
+    local p="$1"
+    p="${p#\"}"; p="${p%\"}"
+    p="${p#\'}"; p="${p%\'}"
+    p="${p//\\ / }"
+    p="${p/#\~/$HOME}"
+    printf '%s' "$p"
+}
+
+# If a path was supposed to be fixed but quarantine wasn't the cause,
+# tell the user what else might be blocking (only for .app bundles).
+_quarantine_diagnose() {
+    local path="$1"
+    [[ -d "$path/Contents/MacOS" ]] || return 0   # not an .app bundle
+    if spctl --assess --type execute "$path" 2>/dev/null; then
+        return 0
+    fi
+    log_warn "Gatekeeper still rejects this app"
+    log_info "Try one of:"
+    log_info "  1) System Settings → Privacy & Security → 'Open Anyway'"
+    log_info "  2) Ad-hoc resign:  codesign --force --deep --sign - \"$path\""
+    log_info "  3) Disable Gatekeeper globally (macrift → Security → Status)"
+}
+
+# Core: remove com.apple.quarantine from one or more paths.
+# Returns 0 if every path is clean (or made clean), 1 if anything failed.
+quarantine_remove() {
+    local cleaned=0 already=0 failed=0 path
+
+    for path in "$@"; do
+        path=$(_quarantine_normalize_path "$path")
+
+        if [[ ! -e "$path" ]]; then
+            log_err "Not found: $path"
+            failed=$((failed + 1))
+            continue
+        fi
+
+        local name="${path##*/}"
+
+        # Pre-check: is the attribute actually present anywhere in this tree?
+        if ! xattr -lr "$path" 2>/dev/null | grep -q "com.apple.quarantine"; then
+            log_skip "No quarantine: $name"
+            already=$((already + 1))
+            _quarantine_diagnose "$path"
+            continue
+        fi
+
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Would run: xattr -dr com.apple.quarantine \"$path\""
+            continue
+        fi
+
+        # Try unprivileged first; fall back to sudo on permission error.
+        if xattr -dr com.apple.quarantine "$path" 2>/dev/null; then
+            log_ok "Unquarantined: $name"
+            cleaned=$((cleaned + 1))
+        else
+            require_sudo
+            if sudo xattr -dr com.apple.quarantine "$path"; then
+                log_ok "Unquarantined: $name (sudo)"
+                cleaned=$((cleaned + 1))
+            else
+                log_err "Failed: $path"
+                failed=$((failed + 1))
+            fi
+        fi
+    done
+
+    # Summary only when multiple paths processed — single-path output stays terse
+    if [[ $# -gt 1 ]]; then
+        local summary="$cleaned cleaned"
+        [[ $already -gt 0 ]] && summary+=", $already already clean"
+        [[ $failed -gt 0 ]] && summary+=", $failed failed"
+        printf '\n'
+        log_info "$summary"
+    fi
+
+    [[ $failed -eq 0 ]]
+}
+
+# CLI entry point for `macrift fix`. With no args, prompts interactively
+# (drag-and-drop friendly). With args, processes each path.
+quarantine_fix_cli() {
+    if [[ $# -eq 0 ]]; then
+        printf '\n  %bDrag app/file from Finder into this window, or paste path:%b\n  ' "$DIM" "$RESET"
+        prompt_path
+        local raw
+        if ! IFS= read -r raw || [[ -z "$raw" ]]; then
+            log_info "Cancelled"
+            return 0
+        fi
+        set -- "$raw"
+    fi
+
+    if [[ "$MACRIFT_NO_CONFIRM" != true && "$MACRIFT_DRY_RUN" != true ]]; then
+        printf '\n  %bWill unquarantine:%b\n' "$DIM" "$RESET"
+        local p
+        for p in "$@"; do printf '    %s\n' "$p"; done
+        printf '\n'
+        if ! confirm "Proceed?" "y"; then
+            log_info "Cancelled"
+            return 0
+        fi
+    fi
+
+    quarantine_remove "$@"
+}
+
+# Menu wrapper — adds the screen-clear and wait-for-enter that other
+# Security & Privacy actions use.
+unquarantine_menu() {
+    clear
+    log_info "Removes com.apple.quarantine — fixes 'app is damaged' errors"
+    quarantine_fix_cli
+    wait_enter
+}
+
+# Gatekeeper toggle — backs `macrift gatekeeper` / `macrift gk` CLI.
+
+# Current Gatekeeper state. Echoes "enabled" | "disabled" | "unknown".
+_gk_status() {
+    local raw
+    raw=$(spctl --status 2>/dev/null)
+    if echo "$raw" | grep -qi "assessments enabled"; then echo "enabled"
+    elif echo "$raw" | grep -qi "assessments disabled"; then echo "disabled"
+    else echo "unknown"
+    fi
+}
+
+gatekeeper_cli() {
+    local action="${1:-status}"
+
+    case "$action" in
+        status|"")
+            local s; s=$(_gk_status)
+            printf '  Gatekeeper: %s\n' "${s^}"
+            return 0
+            ;;
+        on|enable)
+            local s; s=$(_gk_status)
+            if [[ "$s" == "enabled" ]]; then
+                log_skip "Gatekeeper already enabled"
+                return 0
+            fi
+            if [[ "$MACRIFT_NO_CONFIRM" != true && "$MACRIFT_DRY_RUN" != true ]]; then
+                confirm "Enable Gatekeeper?" "y" || { log_info "Cancelled"; return 0; }
+            fi
+            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                log_info "Would run: sudo spctl --master-enable"
+                return 0
+            fi
+            require_sudo
+            if sudo spctl --master-enable 2>/dev/null; then
+                log_ok "Gatekeeper enabled"
+            else
+                log_err "Failed to enable Gatekeeper"
+                return 1
+            fi
+            ;;
+        off|disable)
+            local s; s=$(_gk_status)
+            if [[ "$s" == "disabled" ]]; then
+                log_skip "Gatekeeper already disabled"
+                return 0
+            fi
+            if [[ "$MACRIFT_NO_CONFIRM" != true && "$MACRIFT_DRY_RUN" != true ]]; then
+                log_warn "Disabling Gatekeeper allows unsigned apps to run system-wide"
+                confirm "Disable Gatekeeper?" "n" || { log_info "Cancelled"; return 0; }
+            fi
+            if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                log_info "Would run: sudo spctl --master-disable"
+                return 0
+            fi
+            require_sudo
+            sudo spctl --master-disable 2>&1 || true
+            # macOS 15+ (Sequoia) needs manual GUI confirmation to actually disable
+            if [[ "$(_gk_status)" == "enabled" ]]; then
+                log_warn "macOS 15+ requires manual confirmation"
+                log_info "System Settings → Privacy & Security → 'Allow apps from: Anywhere'"
+                open "x-apple.systempreferences:com.apple.preference.security?General" 2>/dev/null || true
+            else
+                log_ok "Gatekeeper disabled"
+            fi
+            ;;
+        *)
+            log_err "Unknown action: $action"
+            printf '  Usage: macrift gatekeeper [on|off|status]\n' >&2
+            return 1
+            ;;
+    esac
+}
+
+# Pre-purchase Mac check — read-only diagnostics for inspecting a used Mac.
+# No sudo required. Designed to run on the seller's machine.
+
+_precheck_section() {
+    printf '\n  %b%s%b\n' "${BOLD}${ICE}" "$1" "$RESET"
+}
+
+# Extract value from a "Key: value" line in system_profiler output.
+# Trims leading whitespace; returns first match only.
+_precheck_field() {
+    local key="$1" input="$2"
+    awk -F: -v k="$key" '$0 ~ k {sub(/^ +/, "", $2); print $2; exit}' <<< "$input"
+}
+
+precheck_cli() {
+    local critical=0 warnings=0
+
+    printf '\n  %bPre-purchase Mac check%b\n' "$BOLD" "$RESET"
+    printf '  %bRead-only, no sudo. Run on the seller'\''s Mac before buying.%b\n' "$DIM" "$RESET"
+
+    # Critical (deal-breakers)
+    _precheck_section "Critical"
+
+    local enroll
+    enroll=$(profiles status -type enrollment 2>&1)
+    if echo "$enroll" | grep -qi "Enrolled via DEP: Yes"; then
+        log_err "DEP assignment:   YES (mac belongs to an organization)"
+        critical=$((critical + 1))
+    else
+        log_ok "DEP assignment:   not assigned"
+    fi
+    if echo "$enroll" | grep -qi "MDM enrollment: Yes"; then
+        log_err "MDM enrollment:   YES (currently managed)"
+        critical=$((critical + 1))
+    else
+        log_ok "MDM enrollment:   not enrolled"
+    fi
+
+    # Activation Lock lives in SPHardwareDataType on Apple Silicon,
+    # SPiBridgeDataType on T2 Intel; pre-T2 Intel exposes neither.
+    local act_lock
+    act_lock=$(_precheck_field "Activation Lock Status" "$(system_profiler SPHardwareDataType 2>/dev/null)")
+    [[ -z "$act_lock" ]] && act_lock=$(_precheck_field "Activation Lock Status" "$(system_profiler SPiBridgeDataType 2>/dev/null)")
+    case "$act_lock" in
+        Enabled)  log_err "Activation Lock:  ENABLED (locked to seller's iCloud)"; critical=$((critical + 1)) ;;
+        Disabled) log_ok "Activation Lock:  disabled" ;;
+        "")       log_skip "Activation Lock:  unknown (pre-T2 Intel)" ;;
+        *)        log_skip "Activation Lock:  $act_lock" ;;
+    esac
+
+    local smart
+    smart=$(_precheck_field "SMART Status" "$(system_profiler SPNVMeDataType 2>/dev/null)")
+    case "$smart" in
+        Verified) log_ok "SMART (disk):     Verified" ;;
+        "")       log_skip "SMART (disk):     unknown (not NVMe?)" ;;
+        *)        log_err "SMART (disk):     $smart (disk failing)"; critical=$((critical + 1)) ;;
+    esac
+
+    local panics
+    panics=$(find /Library/Logs/DiagnosticReports -name "*.panic" -mtime -90 2>/dev/null | wc -l | tr -d ' ')
+    if [[ $panics -eq 0 ]]; then
+        log_ok "Kernel panics:    0 in last 90 days"
+    elif [[ $panics -le 3 ]]; then
+        log_warn "Kernel panics:    $panics in last 90 days"
+        warnings=$((warnings + 1))
+    else
+        log_err "Kernel panics:    $panics in last 90 days (concerning)"
+        critical=$((critical + 1))
+    fi
+
+    # Warnings
+    _precheck_section "Warnings"
+
+    local power
+    power=$(system_profiler SPPowerDataType 2>/dev/null)
+    if echo "$power" | grep -q "Battery Information"; then
+        local cycles condition
+        cycles=$(_precheck_field "Cycle Count" "$power")
+        condition=$(_precheck_field "Condition" "$power")
+        cycles=${cycles:-?}
+        condition=${condition:-?}
+        if [[ "$condition" == "Normal" && "$cycles" =~ ^[0-9]+$ && $cycles -lt 800 ]]; then
+            log_ok "Battery:          $cycles cycles, $condition"
+        elif [[ "$condition" == "Normal" ]]; then
+            log_warn "Battery:          $cycles cycles, $condition (high)"
+            warnings=$((warnings + 1))
+        else
+            log_warn "Battery:          $cycles cycles, $condition"
+            warnings=$((warnings + 1))
+        fi
+    else
+        log_skip "Battery:          n/a (desktop)"
+    fi
+
+    local fv
+    fv=$(fdesetup status 2>/dev/null)
+    if echo "$fv" | grep -qi "is On"; then
+        log_warn "FileVault:        ON (seller must decrypt or share recovery key)"
+        warnings=$((warnings + 1))
+    elif echo "$fv" | grep -qi "is Off"; then
+        log_ok "FileVault:        off"
+    else
+        log_skip "FileVault:        unknown"
+    fi
+
+    # Hardware
+    _precheck_section "Hardware"
+
+    local hw
+    hw=$(system_profiler SPHardwareDataType 2>/dev/null)
+    local model model_id chip serial ram storage_total storage_free osver osbuild
+    model=$(_precheck_field "Model Name" "$hw")
+    model_id=$(_precheck_field "Model Identifier" "$hw")
+    chip=$(_precheck_field "Chip" "$hw")
+    [[ -z "$chip" ]] && chip=$(_precheck_field "Processor Name" "$hw")
+    serial=$(_precheck_field "Serial Number" "$hw")
+    ram=$(_precheck_field "Memory" "$hw")
+    storage_total=$(df -h / | awk 'NR==2 {print $2}')
+    storage_free=$(df -h / | awk 'NR==2 {print $4}')
+    osver=$(sw_vers -productVersion 2>/dev/null)
+    osbuild=$(sw_vers -buildVersion 2>/dev/null)
+
+    printf '  %bModel:%b    %s (%s)\n' "$DIM" "$RESET" "${model:-?}" "${model_id:-?}"
+    printf '  %bChip:%b     %s\n' "$DIM" "$RESET" "${chip:-?}"
+    printf '  %bSerial:%b   %s\n' "$DIM" "$RESET" "${serial:-?}"
+    printf '  %bRAM:%b      %s\n' "$DIM" "$RESET" "${ram:-?}"
+    printf '  %bStorage:%b  %s total, %s free\n' "$DIM" "$RESET" "${storage_total:-?}" "${storage_free:-?}"
+    printf '  %bmacOS:%b    %s (%s)\n' "$DIM" "$RESET" "${osver:-?}" "${osbuild:-?}"
+
+    # Manual checks
+    _precheck_section "Check these manually"
+
+    local diag_key="hold Power button (Apple Silicon) or D key (Intel)"
+    local applecare_url="https://checkcoverage.apple.com"
+    [[ -n "$serial" ]] && applecare_url+="/?sn=$serial"
+
+    printf '  %b›%b  AppleCare:    %s\n' "$CYAN" "$RESET" "$applecare_url"
+    printf '  %b›%b  iCloud:       Seller must sign out (System Settings → Apple ID)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Diagnostics:  Reboot + %s\n' "$CYAN" "$RESET" "$diag_key"
+    printf '  %b›%b  Inputs:       Every key, trackpad gestures, force-click\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Audio:        Speakers + mic (test via Voice Memos)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Ports:        USB-C, MagSafe, headphone jack with real devices\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Display:      Dead pixels, backlight bleed, flicker\n' "$CYAN" "$RESET"
+
+    # Summary
+    printf '\n'
+    if [[ $critical -eq 0 && $warnings -eq 0 ]]; then
+        log_ok "Summary: 0 critical, 0 warnings — auto-checks clean"
+    elif [[ $critical -eq 0 ]]; then
+        log_warn "Summary: 0 critical, $warnings warnings"
+    else
+        log_err "Summary: $critical critical, $warnings warnings"
+    fi
+
+    [[ $critical -eq 0 ]]
 }

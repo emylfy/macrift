@@ -32,6 +32,25 @@ if [[ "$(uname)" != "Darwin" ]]; then
     exit 1
 fi
 
+# One-shot mode: any args after `--` → download to /tmp, run macrift with those
+# args, clean up, exit. Lets you do `... | bash -s -- check` to inspect a Mac
+# without installing anything (perfect for the seller's machine before buying).
+if [[ $# -gt 0 ]]; then
+    printf '\n  %bmacrift%b %bone-shot:%b %s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET" "$*"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    info "Fetching macrift..."
+    if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
+        chmod +x "$tmp/macrift-main/macrift.sh"
+        find "$tmp/macrift-main" -name "*.sh" -exec chmod +x {} +
+        "$tmp/macrift-main/macrift.sh" "$@"
+        exit $?
+    else
+        err "Download failed — check your internet connection"
+        exit 1
+    fi
+fi
+
 printf '\n  %bmacrift installer%b\n\n' "$BOLD" "$RESET"
 
 # Download

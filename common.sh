@@ -20,7 +20,7 @@ _macrift_cleanup() {
     printf "\033[?25h" 2>/dev/null
     rm -f "$MENU_STATE_FILE"
 }
-trap _macrift_cleanup EXIT
+trap '_macrift_cleanup; sudo -k 2>/dev/null' EXIT
 trap 'exit 130' INT TERM
 
 # Strip ANSI escape codes and append to log file
@@ -1232,7 +1232,10 @@ _finder_sort_write() {
     return $rc
 }
 
-# Reset queued defaults (delete keys to restore system defaults)
+# Restore queued defaults to their pre-macrift values (captured at audit time).
+# If the key was unset before (current=="default"), delete the key so system
+# default applies; otherwise write the captured value back so user customizations
+# made before running macrift are preserved.
 declare -a RESET_ENTRIES=()
 
 apply_reset_defaults() {
@@ -1242,8 +1245,9 @@ apply_reset_defaults() {
         IFS='|' read -r label current new_val domain key type sudo_flag <<< "$entry"
 
         if [[ "$domain" == "finder_sort" ]]; then
-            if _finder_sort_write "name"; then
-                log_ok "$label → name (default)"
+            # current was captured from PlistBuddy or defaulted to "name" if unset
+            if _finder_sort_write "$current"; then
+                log_ok "$label → $current"
                 reset=$((reset + 1))
                 MACRIFT_CHANGED_DOMAINS+=("com.apple.finder")
             else
@@ -1253,8 +1257,21 @@ apply_reset_defaults() {
             continue
         fi
 
-        if _defaults_cmd "delete" "$domain" "$key" "" "" "$label" "${sudo_flag:-}"; then
-            log_ok "$label → system default"
+        local rc
+        if [[ "$current" == "default" ]]; then
+            _defaults_cmd "delete" "$domain" "$key" "" "" "$label" "${sudo_flag:-}"
+            rc=$?
+        else
+            _defaults_cmd "write" "$domain" "$key" "$type" "$current" "$label" "${sudo_flag:-}"
+            rc=$?
+        fi
+
+        if [[ $rc -eq 0 ]]; then
+            if [[ "$current" == "default" ]]; then
+                log_ok "$label → system default"
+            else
+                log_ok "$label → $(_friendly_val "$current")"
+            fi
             reset=$((reset + 1))
         else
             log_err "Failed to reset: $label"

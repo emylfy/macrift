@@ -56,6 +56,14 @@ git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift
 
 **Manual download:** grab the [latest archive](https://github.com/emylfy/macrift/archive/main.tar.gz), extract to `~/.macrift`, and run `~/.macrift/macrift.sh`
 
+**Run once without installing** — useful for `check` on someone else's Mac:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh | bash -s -- check
+```
+
+Downloads to `/tmp`, runs the command, cleans up. Leaves nothing behind.
+
 </details>
 
 <details>

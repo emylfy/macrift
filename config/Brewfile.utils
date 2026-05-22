@@ -1,3 +1,6 @@
+# Third-party taps
+tap "nikitabobko/tap"   # aerospace tiling WM
+
 # Homebrew GUI
 cask "cork"
 
@@ -9,7 +12,7 @@ cask "alfred"           # optional
 cask "hiddenbar"
 cask "alt-tab"
 cask "keyboard-cowboy"  # optional
-cask "aerospace"        # optional
+cask "aerospace"        # optional — from nikitabobko/tap (taps above)
 
 # Files & Downloads
 cask "keka"
