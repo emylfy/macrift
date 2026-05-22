@@ -1366,19 +1366,36 @@ _fetch_update_changelog() {
     local current_tag="v$MACRIFT_VERSION"
     local commits
 
+    # Emits two prefixes for the caller to split on:
+    #   - <subject>       regular changelog line
+    #   M: <action>       Manual-Action trailer (rendered yellow above changelog)
+    local parse_script='
+import sys, json
+def emit(commits):
+    for c in commits:
+        msg = c["commit"]["message"]
+        lines = msg.splitlines()
+        print("- " + lines[0])
+        for line in lines[1:]:
+            if line.startswith("Manual-Action:"):
+                action = line.split(":", 1)[1].strip()
+                if action:
+                    print("M: " + action)
+try:
+    d = json.load(sys.stdin)
+    if isinstance(d, dict):
+        if "commits" not in d: sys.exit(1)
+        emit(d["commits"])
+    else:
+        emit(d)
+except Exception:
+    sys.exit(1)
+'
+
     # Precise path: requires `v<VERSION>` tag pushed for the current release
     commits=$(curl -fsSL --max-time 5 \
         "https://api.github.com/repos/${MACRIFT_REPO}/compare/${current_tag}...main" 2>/dev/null \
-        | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    if 'commits' not in d: sys.exit(1)
-    for c in d['commits']:
-        print('- ' + c['commit']['message'].splitlines()[0])
-except Exception:
-    sys.exit(1)
-" 2>/dev/null)
+        | python3 -c "$parse_script" 2>/dev/null)
 
     if [[ -n "$commits" ]]; then
         printf '%s\n' "$commits"
@@ -1388,14 +1405,7 @@ except Exception:
     # Fallback: last 10 commits (may include ones the user already has)
     commits=$(curl -fsSL --max-time 5 \
         "https://api.github.com/repos/${MACRIFT_REPO}/commits?per_page=10" 2>/dev/null \
-        | python3 -c "
-import sys, json
-try:
-    for c in json.load(sys.stdin):
-        print('- ' + c['commit']['message'].splitlines()[0])
-except Exception:
-    pass
-" 2>/dev/null)
+        | python3 -c "$parse_script" 2>/dev/null)
     [[ -n "$commits" ]] && printf '%s\n' "$commits"
     return 1   # signals 'imprecise' (caller may note this)
 }
@@ -1412,12 +1422,24 @@ macrift_update() {
             precise=1
         fi
         if [[ -n "$changelog" ]]; then
+            local manual_actions log_lines
+            manual_actions=$(printf '%s\n' "$changelog" | sed -n 's/^M: //p')
+            log_lines=$(printf '%s\n' "$changelog" | grep '^- ' || true)
+
+            if [[ -n "$manual_actions" ]]; then
+                log_warn "Manual action required:"
+                printf '%s\n' "$manual_actions" | while IFS= read -r line; do
+                    printf '  %b%s%b\n' "$YELLOW" "$line" "$RESET"
+                done
+                printf '\n'
+            fi
+
             if [[ $precise -eq 1 ]]; then
                 log_info "Changes since v$MACRIFT_VERSION:"
             else
                 log_info "Recent commits (no tag for current version — may include ones you have):"
             fi
-            printf '%s\n' "$changelog" | while IFS= read -r line; do
+            printf '%s\n' "$log_lines" | while IFS= read -r line; do
                 printf '  %b%s%b\n' "$DIM" "$line" "$RESET"
             done
             printf '\n'
