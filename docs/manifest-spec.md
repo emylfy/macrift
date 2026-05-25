@@ -76,7 +76,7 @@ Raw NVRAM byte (e.g. `StartupMute`).
 | Field | Required | Notes |
 | :---- | :------- | :---- |
 | `key` | yes | e.g. `StartupMute` |
-| `value` | yes | bool. **Engine mapping (common.sh:1148):** `value=true → %00` (sound on), `value=false → %01` (muted). Note the polarity — see Open Questions. |
+| `value` | yes | bool. **Engine mapping (common.sh:1148):** `value=true → %00` (sound on), `value=false → %01` (muted). Friendly surface key is `boot.startup_sound` (decided — see Decisions made). |
 
 #### `kind: chflags`
 Currently only `~/Library` visibility.
@@ -298,9 +298,10 @@ One union, three features, mostly reusing code that already ships.
 
 ## Open questions
 
-1. **`id` namespace.** Adopt a dotted convention (`dock.autohide`,
-   `finder.hidden_files`) and backfill ids onto the existing hardcoded tweaks, so
-   journal/drift can name them. Currently `id` is empty; `label` is the ref.
+1. **`id` namespace — deferred (YAGNI).** A dotted convention (`dock.autohide`)
+   was considered, but journal/manifest/drift already key on `domain`/`key`/`dest`
+   and nothing consumes a slug yet. `id` stays empty (`label` is the human ref)
+   until a concrete need appears (e.g. a key renamed across macOS versions).
 2. **Journal rotation.** Append-only grows forever. Cap by size or session count?
 3. **Custom tweaks loading.** Does `kind: command` fully cover
    `~/.config/macrift/custom.sh`, or should custom units be sourced separately
