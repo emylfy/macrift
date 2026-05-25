@@ -457,9 +457,7 @@ _dns_offer_apply() {
     done
 
     local pick
-    MENU_NO_NUMBERS=true
     pick=$(show_menu "Apply DNS" "${labels[@]}" "Back")
-    MENU_NO_NUMBERS=false
 
     [[ "$pick" == "0" || -z "$pick" ]] && return
     local picked_label="${labels[$((pick - 1))]}"
@@ -540,7 +538,7 @@ update_control_menu() {
         local choice
         choice=$(show_menu "Update Control" \
             "Status" \
-            "Defer Updates — install profile" \
+            "Defer Updates" \
             "Remove Deferral" \
             "Back")
 

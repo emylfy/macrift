@@ -262,8 +262,9 @@ _box_scroll_indicator() {
 }
 
 _box_row() {
-    local inner_w="$1" content="$2" pad="$3"
-    printf '  %b│%b  %s%*s%b│%b\033[K\n' "$BP" "$R" "$content" "$pad" "" "$BP" "$R" >&2
+    local inner_w="$1" content="$2" pad="$3" lead="${4:-  }"
+    # lead is the 2-col left gutter; pass " ${BAR}" to draw the cursor bar there.
+    printf '  %b│%b%b%s%*s%b│%b\033[K\n' "$BP" "$R" "$lead" "$content" "$pad" "" "$BP" "$R" >&2
 }
 
 # Viewport: adjust vp_top to keep cursor visible
@@ -297,6 +298,7 @@ _read_key() {
             '[B') echo "down" ;;
             '[C') echo "right" ;;
             '[D') echo "left" ;;
+            '')   echo "esc" ;;   # bare ESC — nothing followed within the timeout
             *)    echo "" ;;
         esac
     elif [[ "$key" == '' ]]; then
@@ -382,30 +384,38 @@ show_menu() {
         [[ "$_wtext" == "## "* ]] && _wtext="${_wtext#\#\# }"
         [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
-    local no_nums="${MENU_NO_NUMBERS:-false}"
-    local num_w=${#num}; local num_pad=3
-    if [[ "$no_nums" == true ]]; then num_w=0; num_pad=2; fi
-    local inner_w=$((2 + num_w + num_pad + max_len + 2))
+    local BP="${BOLD}${GRAY}" R="${RESET}"
+    local BAR="${BOLD}${CYAN}▌${R}"
+
+    # Geometry: 2-col left gutter (holds the cursor bar) + 2-col right margin.
+    local inner_w=$((2 + max_len + 2))
     local title_min=$((${#title} + 5))
     [[ $title_min -gt $inner_w ]] && inner_w=$title_min
+    # Clamp to terminal width so the border never wraps on narrow windows
+    local term_w; term_w=$(tput cols 2>/dev/null || echo 80)
+    local max_inner=$((term_w - 4)); [[ $max_inner -lt 16 ]] && max_inner=16
+    [[ $inner_w -gt $max_inner ]] && inner_w=$max_inner
+    local max_text=$((inner_w - 4))
 
-    local BP="${BOLD}${GRAY}" R="${RESET}"
+    # Truncate a label to the available width, adding an ellipsis
+    _fit() { local t="$1"; [[ ${#t} -gt $max_text ]] && t="${t:0:max_text-1}…"; printf '%s' "$t"; }
 
-    # Build content for a menu row: text, number, is_selected(bool)
-    _menu_content() {
-        local text="$1" num="$2" is_sel="$3"
-        if [[ "$no_nums" == true ]]; then
-            if $is_sel; then printf '%b› %s%b' "${BOLD}${ICE}" "$text" "$R"
-            else printf '%b›%b %s' "$DIM" "$R" "$text"; fi
-        else
-            if $is_sel; then printf '%b%*d › %s%b' "${BOLD}${ICE}" "$num_w" "$num" "$text" "$R"
-            elif [[ "$num" -eq 0 ]]; then printf '%b%*d › %s%b' "$DIM" "$num_w" "$num" "$text" "$R"
-            else printf '%b%*d%b %b›%b %s' "$CYAN" "$num_w" "$num" "$R" "$DIM" "$R" "$text"; fi
-        fi
+    # Render one selectable row: text, is_selected, is_back. The cursor is a
+    # left accent bar (▌) in the gutter, so selection reads without relying on color.
+    _menu_row() {
+        local is_sel="$2" is_back="${3:-false}" text
+        text=$(_fit "$1")
+        local lead="  "; $is_sel && lead=" $BAR"
+        local body
+        if $is_sel;   then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
+        elif $is_back; then body=$(printf '%b%s%b' "$DIM" "$text" "$R")
+        else body="$text"; fi
+        local pad=$((inner_w - 2 - ${#text})); [[ $pad -lt 0 ]] && pad=0
+        _box_row "$inner_w" "$body" "$pad" "$lead"
     }
 
     # Scrolling
-    local chrome=8; [[ "$no_nums" == true ]] && chrome=7
+    local chrome=8
     local scroll_info
     scroll_info=$(_calc_scroll "$last_idx" "$chrome")
     local need_scroll=${scroll_info%% *}
@@ -413,7 +423,6 @@ show_menu() {
     local vp_top=0
 
     local total_lines=$((visible_count + 8))
-    [[ "$no_nums" == true ]] && total_lines=$((total_lines - 1))
     $need_scroll && total_lines=$((total_lines + 2))
 
     # Restore cursor from sticky position if we've been here before
@@ -447,12 +456,8 @@ show_menu() {
         fi
 
         # Items
-        local cur_num=0 sel_idx=0 rendered=0
+        local sel_idx=0 rendered=0
         for ((i=0; i<last_idx; i++)); do
-            if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
-                cur_num=$((cur_num + 1))
-            fi
-
             if $need_scroll; then
                 if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
                     if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
@@ -469,21 +474,16 @@ show_menu() {
             fi
 
             if [[ "${items[$i]}" == "## "* ]]; then
-                local htext="${items[$i]#\#\# }"
-                local hindent=$((num_w + num_pad))
-                local hvis=$((2 + hindent + ${#htext}))
-                local hpad=$((inner_w - hvis))
-                local hcontent
-                hcontent=$(printf '%*s%b%s%b' "$hindent" "" "$DIM" "$htext" "$R")
-                _box_row "$inner_w" "$hcontent" "$hpad"
+                # Uppercase section headings so they read as labels, not disabled rows
+                local htext="${items[$i]#\#\# }"; htext=$(_fit "${htext^^}")
+                local hpad=$((inner_w - 2 - ${#htext})); [[ $hpad -lt 0 ]] && hpad=0
+                _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$htext" "$R")" "$hpad"
                 rendered=$((rendered + 1))
                 continue
             fi
 
-            local vis=$((2 + num_w + num_pad + ${#items[$i]}))
-            local pad=$((inner_w - vis))
             local is_sel=false; [[ $sel_idx -eq $sel ]] && is_sel=true
-            _box_row "$inner_w" "$(_menu_content "${items[$i]}" "$cur_num" "$is_sel")" "$pad"
+            _menu_row "${items[$i]}" "$is_sel"
             sel_idx=$((sel_idx + 1))
             rendered=$((rendered + 1))
         done
@@ -497,19 +497,17 @@ show_menu() {
             fi
         fi
 
-        # Back item
-        [[ "$no_nums" != true ]] && _box_empty "$inner_w"
-        local vis=$((2 + num_w + num_pad + ${#items[$last_idx]}))
-        local pad=$((inner_w - vis))
+        # Back / Exit item
+        _box_empty "$inner_w"
         local is_sel=false; [[ $sel -eq $((sel_total - 1)) ]] && is_sel=true
-        _box_row "$inner_w" "$(_menu_content "${items[$last_idx]}" 0 "$is_sel")" "$pad"
+        _menu_row "${items[$last_idx]}" "$is_sel" true
 
         _box_empty "$inner_w"
         _box_bottom "$inner_w"
 
-        # Footer
-        local hint="↑↓ navigate  enter/→ select"
-        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+="  ← back"
+        # Footer — full key contract + active flags
+        local hint="↑↓ move  →/enter open"
+        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+="  ←/esc back"
         # Title already shows short version (e.g. 26.05); only echo full
         # version in footer when there's a patch suffix to disambiguate
         [[ "$MACRIFT_VERSION" != "$MACRIFT_VERSION_SHORT" ]] && hint+="  ·  v$MACRIFT_VERSION"
@@ -534,20 +532,14 @@ show_menu() {
         case "$key" in
             up)    [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
             down)  [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
-            right) $on_back || _menu_pos_set "$title" "$sel"
+            right|enter)
+                   $on_back || _menu_pos_set "$title" "$sel"
                    _ui_end; echo "${sel_nums[$sel]}"; return ;;
-            left)
-                if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-                    $on_back || _menu_pos_set "$title" "$sel"
-                    _ui_end; echo "0"; return
-                fi ;;
-            enter) $on_back || _menu_pos_set "$title" "$sel"
-                   _ui_end; echo "${sel_nums[$sel]}"; return ;;
-            [0-9])
-                if [[ "$no_nums" != true ]]; then
-                    printf "%s\n" "$key" >&2
-                    _ui_end; echo "$key"; return
-                fi ;;
+            left|esc)
+                   if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+                       $on_back || _menu_pos_set "$title" "$sel"
+                       _ui_end; echo "0"; return
+                   fi ;;
         esac
     done
 }
@@ -639,12 +631,18 @@ show_multiselect() {
     for ((i=0; i<view_count; i++)); do
         [[ ${#view_items[$i]} -gt $max_len ]] && max_len=${#view_items[$i]}
     done
-    local inner_w=$((8 + max_len + 2))
+    # Geometry: 2-col gutter (cursor bar) + "[*] " checkbox (4) + label + 2 margin
+    local inner_w=$((max_len + 8))
     [[ 12 -gt $inner_w ]] && inner_w=12
     local title_min=$((${#title} + 5))
     [[ $title_min -gt $inner_w ]] && inner_w=$title_min
+    # Clamp to terminal width so the border never wraps
+    local term_w; term_w=$(tput cols 2>/dev/null || echo 80)
+    local max_inner=$((term_w - 4)); [[ $max_inner -lt 16 ]] && max_inner=16
+    [[ $inner_w -gt $max_inner ]] && inner_w=$max_inner
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
+    local BAR="${BOLD}${CYAN}▌${R}"
 
     # Scrolling — chrome=9 accounts for box (top/bottom + 3 empties + back row) + 2-line hint
     local scroll_info
@@ -706,15 +704,10 @@ show_multiselect() {
                 if $v_scroll && [[ $i -lt $view_vp_top || $rendered -ge $v_show ]]; then
                     continue
                 fi
-                # Visible prefix is 3 chars ("›  " or "   "), so pad = inner_w - 2 - 3 - len
-                local pad=$((inner_w - 5 - ${#view_items[$i]}))
-                local content
-                if [[ $i -eq $view_cursor ]]; then
-                    content=$(printf '%b›%b  %b%s%b' "$CYAN" "$R" "$DIM" "${view_items[$i]}" "$R")
-                else
-                    content=$(printf '   %b%s%b' "$DIM" "${view_items[$i]}" "$R")
-                fi
-                _box_row "$inner_w" "$content" "$pad"
+                local pad=$((inner_w - 2 - ${#view_items[$i]})); [[ $pad -lt 0 ]] && pad=0
+                local vlead="  "; [[ $i -eq $view_cursor ]] && vlead=" $BAR"
+                local content; content=$(printf '%b%s%b' "$DIM" "${view_items[$i]}" "$R")
+                _box_row "$inner_w" "$content" "$pad" "$vlead"
                 rendered=$((rendered + 1))
             done
             # Pad to picker's visible_count
@@ -738,7 +731,7 @@ show_multiselect() {
             _box_empty "$inner_w"
             _box_bottom "$inner_w"
 
-            printf '  %b%s%b\033[K\n' "$DIM" "↑↓ scroll  ← exit  → picker" "$R" >&2
+            printf '  %b%s%b\033[K\n' "$DIM" "↑↓ scroll  ←/esc back" "$R" >&2
             printf '\033[K\n' >&2
             _frame_end
 
@@ -747,8 +740,7 @@ show_multiselect() {
             case "$key" in
                 up)   [[ $view_cursor -gt 0 ]] && view_cursor=$((view_cursor - 1)) ;;
                 down) [[ $view_cursor -lt $((view_count - 1)) ]] && view_cursor=$((view_cursor + 1)) ;;
-                right|enter) view_mode=false ;;
-                left) _ui_end; return 0 ;;
+                left|esc|right|enter) view_mode=false ;;   # installed-view is a drill-in; any of these returns to the picker
             esac
             continue
         fi
@@ -782,22 +774,12 @@ show_multiselect() {
                 continue
             fi
 
-            local pad=$((inner_w - 8 - ${#items[$i]}))
-            local content
-            if [[ $i -eq $cursor ]]; then
-                if [[ "${selected[i]}" == "1" ]]; then
-                    content=$(printf '%b›%b %b[*]%b %s' "$CYAN" "$R" "$GREEN" "$R" "${items[$i]}")
-                else
-                    content=$(printf '%b›%b %b[ ]%b %s' "$CYAN" "$R" "$DIM" "$R" "${items[$i]}")
-                fi
-            else
-                if [[ "${selected[i]}" == "1" ]]; then
-                    content=$(printf '  %b[*]%b %s' "$GREEN" "$R" "${items[$i]}")
-                else
-                    content=$(printf '  %b[ ]%b %s' "$DIM" "$R" "${items[$i]}")
-                fi
-            fi
-            _box_row "$inner_w" "$content" "$pad"
+            local pad=$((inner_w - 6 - ${#items[$i]})); [[ $pad -lt 0 ]] && pad=0
+            local lead="  "; [[ $i -eq $cursor ]] && lead=" $BAR"
+            local box
+            if [[ "${selected[i]}" == "1" ]]; then box=$(printf '%b[*]%b' "$GREEN" "$R")
+            else box=$(printf '%b[ ]%b' "$DIM" "$R"); fi
+            _box_row "$inner_w" "$(printf '%s %s' "$box" "${items[$i]}")" "$pad" "$lead"
             rendered=$((rendered + 1))
         done
 
@@ -812,12 +794,13 @@ show_multiselect() {
 
         # Back
         _box_empty "$inner_w"
-        local back_pad=$((inner_w - 10))
+        local blead="  " bbody
         if [[ $cursor -eq $count ]]; then
-            _box_row "$inner_w" "$(printf '%b›%b %b‹ Back%b' "$CYAN" "$R" "$DIM" "$R")" "$back_pad"
+            blead=" $BAR"; bbody=$(printf '%b%bBack%b' "$BOLD" "$ICE" "$R")
         else
-            _box_row "$inner_w" "$(printf '  %b‹ Back%b' "$DIM" "$R")" "$back_pad"
+            bbody=$(printf '%bBack%b' "$DIM" "$R")
         fi
+        _box_row "$inner_w" "$bbody" "$((inner_w - 6))" "$blead"
         _box_empty "$inner_w"
         _box_bottom "$inner_w"
 
@@ -827,7 +810,7 @@ show_multiselect() {
             printf '\033[K\n' >&2
         else
             printf '  %b↑↓ move  space toggle  a all%b\033[K\n' "$DIM" "$R" >&2
-            local hint2="← back  enter confirm"
+            local hint2="←/esc back  enter confirm"
             $view_available && hint2+="  → installed"
             printf '  %b%s%b\033[K\n' "$DIM" "$hint2" "$R" >&2
         fi
@@ -857,7 +840,7 @@ show_multiselect() {
                 if [[ $cursor -eq $count ]]; then _ui_end; return 0; fi
                 if $view_available; then view_mode=true; view_cursor=0; fi
                 ;;
-            left) _ui_end; return 0 ;;
+            left|esc) _ui_end; return 0 ;;
             space)
                 if [[ $cursor -lt $count ]]; then
                     if [[ "${selected[cursor]}" == "1" ]]; then selected[cursor]="0"; else selected[cursor]="1"; fi

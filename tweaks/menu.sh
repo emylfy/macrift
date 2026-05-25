@@ -151,7 +151,7 @@ _tweak_wizard() {
                 fi
 
                 if [[ $si -eq $cursor ]]; then
-                    printf '  %b›%b %b%s%b %s\033[K\n' "$CYAN" "$R" "$icon_color" "$cursor_char" "$R" "$display" >&2
+                    printf ' %b▌%b  %b%s%b %s\033[K\n' "${BOLD}${CYAN}" "$R" "$icon_color" "$cursor_char" "$R" "$display" >&2
                 else
                     printf '    %b%s%b %s\033[K\n' "$icon_color" "$cursor_char" "$R" "$display" >&2
                 fi
@@ -167,10 +167,11 @@ _tweak_wizard() {
 
             # Hint line
             printf '\033[K\n' >&2
-            local hint="↑↓ move  ␣ apply  d reset  a all"
+            # ␣ cycles the active item: skip [ ·] → apply [*] → reset [✗]
+            local hint="↑↓ move  ␣ [ ·]→[*]→[✗]  a all"
             if [[ $cat_count -eq 1 ]]; then hint+="  ↵ review"
             elif [[ $cat_idx -eq 0 ]]; then hint+="  →/↵ next"
-            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ← prev  ↵ review"
+            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ←/esc prev  ↵ review"
             else hint+="  ←/→ prev/next"
             fi
 
@@ -204,7 +205,7 @@ _tweak_wizard() {
                         cat_idx=$(( cat_idx + 1 ))
                     else wizard_done=true; fi
                     break ;;
-                left)
+                left|esc)
                     cursors[cat_idx]=$cursor
                     if [[ $cat_idx -gt 0 ]]; then
                         cat_idx=$(( cat_idx - 1 )); break
@@ -214,21 +215,14 @@ _tweak_wizard() {
                         return 1
                     fi ;;
                 space)
+                    # Single mutation key: skip(0) → apply(1) → reset(2) → skip.
+                    # Items with no diff skip the apply step (nothing to apply).
                     local idx="${sel_idx[$((sel_off + cursor))]}"
-                    if [[ "${has_diff[$idx]}" == 1 ]]; then
-                        if [[ "${action[idx]}" == "1" ]]; then
-                            action[idx]="0"
-                        else
-                            action[idx]="1"
-                        fi
-                    fi ;;
-                d|D)
-                    local idx="${sel_idx[$((sel_off + cursor))]}"
-                    if [[ "${action[idx]}" == "2" ]]; then
-                        action[idx]="0"
-                    else
-                        action[idx]="2"
-                    fi ;;
+                    case "${action[idx]}" in
+                        0) if [[ "${has_diff[$idx]}" == 1 ]]; then action[idx]="1"; else action[idx]="2"; fi ;;
+                        1) action[idx]="2" ;;
+                        *) action[idx]="0" ;;
+                    esac ;;
                 a|A)
                     local all_apply=true k
                     for ((k=0; k<sel_cnt; k++)); do
@@ -425,9 +419,11 @@ tweaks_menu() {
 
         case "$choice" in
             1) select_tweaks ;;
-            2) open "x-apple.systempreferences:com.apple.Desktop-Settings.extension?HotCorners" 2>/dev/null \
-                 && log_ok "Opened System Settings → Hot Corners" \
-                 || log_err "Failed to open System Settings"
+            2) if open "x-apple.systempreferences:com.apple.Desktop-Settings.extension?HotCorners" 2>/dev/null; then
+                 log_ok "Opened System Settings → Hot Corners"
+               else
+                 log_err "Failed to open System Settings"
+               fi
                wait_enter ;;
             3) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
             4) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;

@@ -165,11 +165,7 @@ main_menu() {
             # render as "26.05 → 26.05" since both short to YY.MM
             [[ "$update_short" != "$MACRIFT_VERSION_SHORT" ]] && title+=" → $update_short"
         fi
-        local flags=""
-        [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
-        [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"
-        [[ -n "$MACRIFT_LOG" ]] && flags+=" [log]"
-        [[ -n "$flags" ]] && title+="$flags"
+        # Flags ([dry-run]/[auto]/[log]) render in the menu footer, not the title.
 
         # Update menu label
         local update_label="Update"
