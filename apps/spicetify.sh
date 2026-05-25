@@ -17,8 +17,8 @@ _resolve_marketplace_backup() {
     while IFS= read -r f; do
         [[ "$f" == "$MARKETPLACE_BACKUP" ]] && continue
         files+=("$f")
-    done < <(find "$MARKETPLACE_CONFIG_DIR" -maxdepth 1 -name "marketplace-settings*.json" 2>/dev/null \
-        | xargs stat -f "%m %N" 2>/dev/null | sort -rn | cut -d' ' -f2-)
+    done < <(find "$MARKETPLACE_CONFIG_DIR" -maxdepth 1 -name "marketplace-settings*.json" -print0 2>/dev/null \
+        | xargs -0 stat -f "%m %N" 2>/dev/null | sort -rn | cut -d' ' -f2-)
 
     if [[ ${#files[@]} -eq 0 ]]; then
         log_err "No marketplace settings file found in config/spicetify/"

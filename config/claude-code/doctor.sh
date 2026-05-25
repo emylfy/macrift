@@ -83,10 +83,25 @@ done
 
 # Agents / commands files exist
 section "Agents and commands"
+count_md() {
+  local dir=$1
+  shopt -s nullglob
+  local files=("$dir"/*.md)
+  shopt -u nullglob
+  printf '%d' "${#files[@]}"
+}
 agents_dir="$CLAUDE_DIR/agents"
 commands_dir="$CLAUDE_DIR/commands"
-[[ -d "$agents_dir" ]] && ok "agents dir ($(ls "$agents_dir" 2>/dev/null | grep -c '\.md$') .md files)" || fail "$agents_dir missing"
-[[ -d "$commands_dir" ]] && ok "commands dir ($(ls "$commands_dir" 2>/dev/null | grep -c '\.md$') .md files)" || fail "$commands_dir missing"
+if [[ -d "$agents_dir" ]]; then
+  ok "agents dir ($(count_md "$agents_dir") .md files)"
+else
+  fail "$agents_dir missing"
+fi
+if [[ -d "$commands_dir" ]]; then
+  ok "commands dir ($(count_md "$commands_dir") .md files)"
+else
+  fail "$commands_dir missing"
+fi
 
 # CLAUDE.md @-imports
 section "CLAUDE.md rule imports"

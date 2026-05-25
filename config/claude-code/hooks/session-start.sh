@@ -23,8 +23,8 @@ branch=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD
 status_short=$(git status -sb 2>/dev/null | head -12)
 recent=$(git log --oneline -3 2>/dev/null)
 
-ahead=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "")
-behind=$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "")
+ahead=$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo "")
+behind=$(git rev-list --count 'HEAD..@{u}' 2>/dev/null || echo "")
 
 test_runner=""
 if [[ -f package.json ]]; then
