@@ -1151,6 +1151,23 @@ _journal_append() {
         >> "$MACRIFT_JOURNAL" 2>/dev/null || true
 }
 
+# Append a dotfile copy to the journal so undo/drift can see it. dest is the
+# change identity; old holds the .bak path (pre-macrift original), or null when
+# the dest didn't exist before — undo then removes dest instead of restoring.
+# Usage: _journal_append_dotfile <src> <dest> <bak-path-or-empty>
+_journal_append_dotfile() {
+    [[ "${MACRIFT_DRY_RUN:-false}" == true ]] && return 0
+    local src="$1" dest="$2" bak="$3"
+    mkdir -p "$MACRIFT_STATE_DIR" 2>/dev/null || return 0
+    local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local old_json="null"
+    [[ -n "$bak" ]] && old_json="\"$(_json_escape "$bak")\""
+    printf '{"session":"%s","ts":"%s","macos":"%s","status":"applied","kind":"dotfile","id":"","src":"%s","dest":"%s","old":%s}\n' \
+        "$MACRIFT_SESSION" "$ts" "$MACRIFT_OS_VER" \
+        "$(_json_escape "$src")" "$(_json_escape "$dest")" "$old_json" \
+        >> "$MACRIFT_JOURNAL" 2>/dev/null || true
+}
+
 # Read the current live value of a journaled change, normalized to compare
 # against the stored value/old. Echoes "default" if unset, "__UNKNOWN__" if
 # the kind can't be read. Mirrors the read logic in the tweak files.
@@ -1191,7 +1208,17 @@ journal_drift_cli() {
     # Dedup to the latest journaled entry per (kind, domain, key)
     local rows
     rows=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
-import json, sys, collections
+import json, sys, collections, os
+def ident(d):
+    # dotfile identity is its dest (domain/key are empty); everything else
+    # keys on (domain, key).
+    if d.get("kind") == "dotfile":
+        return ("dotfile", d.get("dest"))
+    return (d.get("kind"), d.get("domain"), d.get("key"))
+def label_of(d):
+    if d.get("kind") == "dotfile":
+        return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
+    return d.get("label", "") or d.get("key", "")
 latest = collections.OrderedDict()
 for line in open(sys.argv[1]):
     line = line.strip()
@@ -1201,7 +1228,7 @@ for line in open(sys.argv[1]):
         d = json.loads(line)
     except Exception:
         continue
-    latest[(d.get("kind"), d.get("domain"), d.get("key"))] = d
+    latest[ident(d)] = d
 for d in latest.values():
     old = d.get("old")
     # Join on US (\x1f), not tab: tab is IFS whitespace in bash and would
@@ -1211,7 +1238,8 @@ for d in latest.values():
         d.get("type", ""), str(d.get("value", "")),
         "" if old is None else str(old),
         "1" if old is None else "0",
-        d.get("label", "") or d.get("key", ""),
+        label_of(d),
+        d.get("dest", ""), d.get("src", ""),
     ]))
 PY
 )
@@ -1225,10 +1253,26 @@ PY
     printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..62})" "$RESET"
 
     local held=0 drifted=0 reverted=0 unknown=0
-    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label; do
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src; do
         [[ -z "$kind" ]] && continue
-        local live; live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
-        local state color
+        local state color live
+
+        # dotfile: we only know presence, not content — held if the copy is
+        # still there, reverted if gone and nothing existed before, else drifted.
+        if [[ "$kind" == "dotfile" ]]; then
+            if [[ -e "$dest" ]]; then
+                state="held"; color="$GREEN"; held=$((held + 1)); live="present"
+            elif [[ "$old_null" == "1" ]]; then
+                state="reverted"; color="$YELLOW"; reverted=$((reverted + 1)); live="absent"
+            else
+                state="drifted"; color="$RED"; drifted=$((drifted + 1)); live="absent"
+            fi
+            printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
+                "$label" "$DIM" "present" "$RESET" "$live" "$color" "$state" "$RESET"
+            continue
+        fi
+
+        live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         if [[ "$live" == "__UNKNOWN__" ]]; then
             state="unknown"; color="$DIM"; unknown=$((unknown + 1)); live="?"
         elif [[ "$live" == "$value" ]]; then
@@ -1319,8 +1363,16 @@ PY
     # First entry per (kind, domain, key) in the session = pre-session state
     local rows
     rows=$(python3 - "$MACRIFT_JOURNAL" "$target" <<'PY'
-import json, sys, collections
+import json, sys, collections, os
 target = sys.argv[2]
+def ident(d):
+    if d.get("kind") == "dotfile":
+        return ("dotfile", d.get("dest"))
+    return (d.get("kind"), d.get("domain"), d.get("key"))
+def label_of(d):
+    if d.get("kind") == "dotfile":
+        return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
+    return d.get("label", "") or d.get("key", "")
 first = collections.OrderedDict()
 for line in open(sys.argv[1]):
     line = line.strip()
@@ -1332,7 +1384,7 @@ for line in open(sys.argv[1]):
         continue
     if d.get("session") != target:
         continue
-    k = (d.get("kind"), d.get("domain"), d.get("key"))
+    k = ident(d)
     if k in first:
         continue
     first[k] = d
@@ -1343,7 +1395,8 @@ for d in first.values():
         d.get("type", ""), str(d.get("value", "")),
         "" if old is None else str(old),
         "1" if old is None else "0",
-        d.get("label", "") or d.get("key", ""),
+        label_of(d),
+        d.get("dest", ""), d.get("src", ""),
     ]))
 PY
 )
@@ -1359,9 +1412,29 @@ PY
     printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
 
     RESET_ENTRIES=()
+    DOTFILE_RESETS=()
     local changes=0
-    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label; do
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src; do
         [[ -z "$kind" ]] && continue
+
+        # dotfile: restore the .bak, or remove dest if nothing existed before.
+        if [[ "$kind" == "dotfile" ]]; then
+            local d_disp
+            if [[ "$old_null" == "1" ]]; then
+                [[ ! -e "$dest" ]] && continue          # already gone
+                d_disp="remove"
+            else
+                [[ ! -f "$old" ]] && { log_warn "$label — backup gone, skipping"; continue; }
+                d_disp="restore ${old##*/}"
+            fi
+            local cur="absent"; [[ -e "$dest" ]] && cur="present"
+            printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+                "$label" "$DIM" "$cur" "$RESET" "$GREEN" "$d_disp" "$RESET"
+            DOTFILE_RESETS+=("${dest}|${old}|${old_null}")
+            changes=$((changes + 1))
+            continue
+        fi
+
         local live target_val target_disp
         live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         if [[ "$old_null" == "1" ]]; then
@@ -1383,26 +1456,27 @@ PY
     if [[ $changes -eq 0 ]]; then
         printf '\n'
         log_ok "Nothing to undo — already at pre-macrift state"
-        RESET_ENTRIES=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=()
         return 0
     fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         printf '\n'
         log_info "Dry run — no changes applied"
-        RESET_ENTRIES=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=()
         return 0
     fi
 
     printf '\n'
     if ! confirm "Revert these $changes change(s)?"; then
         log_info "Undo cancelled"
-        RESET_ENTRIES=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=()
         return 0
     fi
 
     MACRIFT_CHANGED_DOMAINS=()
-    apply_reset_defaults
+    [[ ${#RESET_ENTRIES[@]} -gt 0 ]] && apply_reset_defaults
+    [[ ${#DOTFILE_RESETS[@]} -gt 0 ]] && _undo_restore_dotfiles
 
     # Restart services whose domain we touched
     local need_dock=false need_finder=false d
@@ -1754,6 +1828,28 @@ _finder_sort_write() {
 # default applies; otherwise write the captured value back so user customizations
 # made before running macrift are preserved.
 declare -a RESET_ENTRIES=()
+# Queued dotfile reversions, populated by journal_undo_cli: "dest|bak|old_null".
+declare -a DOTFILE_RESETS=()
+
+# Revert journaled dotfile copies: restore the .bak, or remove dest when nothing
+# existed before macrift wrote it (old_null==1).
+_undo_restore_dotfiles() {
+    local entry dest bak null
+    for entry in "${DOTFILE_RESETS[@]:+${DOTFILE_RESETS[@]}}"; do
+        IFS='|' read -r dest bak null <<< "$entry"
+        if [[ "$null" == "1" ]]; then
+            if rm -f "$dest" 2>/dev/null; then
+                log_ok "${dest##*/} → removed"
+            else
+                log_err "Failed to remove: $dest"
+            fi
+        elif cp "$bak" "$dest" 2>/dev/null; then
+            log_ok "${dest##*/} → restored from ${bak##*/}"
+        else
+            log_err "Failed to restore: $dest"
+        fi
+    done
+}
 
 apply_reset_defaults() {
     local reset=0 failed=0
@@ -1863,9 +1959,17 @@ copy_config() {
     target_dir=$(dirname "$target")
     mkdir -p "$target_dir"
 
+    local existed=false
+    [[ -f "$target" ]] && existed=true
     backup_file "$target"
     cp "$source" "$target"
     log_ok "Copied → $target"
+
+    # Journal for undo/drift. bak holds the pre-macrift original (backup_file
+    # keeps the FIRST .bak via cp -n, so this stays valid across re-runs).
+    local bak=""
+    [[ "$existed" == true && -f "${target}.bak" ]] && bak="${target}.bak"
+    _journal_append_dotfile "$source" "$target" "$bak"
 }
 
 # 
