@@ -4,7 +4,6 @@
 input_tweaks() {
     audit_default "com.apple.AppleMultitouchTrackpad" "Clicking" "-bool" "true" "Tap to click"
     audit_default "NSGlobalDomain" "com.apple.mouse.tapBehavior" "-int" "1" "Tap to click (global)"
-    audit_default_optional "NSGlobalDomain" "com.apple.trackpad.scaling" "-float" "2.5" "Tracking speed"  # 0–3 scale, 2.5 ≈ "Fast" in System Settings
 
     audit_sep
 

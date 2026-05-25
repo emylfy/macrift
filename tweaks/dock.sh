@@ -7,7 +7,6 @@ dock_tweaks() {
 
     audit_sep
 
-    audit_default_optional "com.apple.dock" "tilesize" "-int" "36" "Icon size"
     audit_default "com.apple.dock" "minimize-to-application" "-bool" "true" "Minimize to app"
     audit_default "com.apple.dock" "mineffect" "-string" "scale" "Minimize effect"
 

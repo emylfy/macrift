@@ -129,7 +129,7 @@ _tweak_wizard() {
                 local display="" cursor_char="" icon_color=""
                 if [[ "$act" == "2" ]]; then
                     display=$(printf '%s: %b%s%b → %b%s%b' "$label" "$DIM" "$fc" "$R" "$YELLOW" "reset" "$R")
-                    cursor_char="[✗]"; icon_color="$RED"
+                    cursor_char="[↺]"; icon_color="$YELLOW"
                 elif [[ "$act" == "1" ]]; then
                     if [[ "$current" == "$new_val" ]]; then
                         display=$(printf '%s: %b%s%b' "$label" "$DIM" "$fc" "$R")
@@ -138,7 +138,7 @@ _tweak_wizard() {
                     else
                         display=$(printf '%s: %b%s%b → %b%s%b' "$label" "$DIM" "$fc" "$R" "$GREEN" "$fn" "$R")
                     fi
-                    cursor_char="[*]"; icon_color="$GREEN"
+                    cursor_char="[✓]"; icon_color="$GREEN"
                 else
                     if [[ "$current" == "$new_val" ]]; then
                         display=$(printf '%s: %b%s%b' "$label" "$DIM" "$fc" "$R")
@@ -147,7 +147,7 @@ _tweak_wizard() {
                     else
                         display=$(printf '%s: %b%s%b → %b%s%b' "$label" "$DIM" "$fc" "$R" "$GREEN" "$fn" "$R")
                     fi
-                    cursor_char=" ·"; icon_color="$DIM"
+                    cursor_char="[ ]"; icon_color="$DIM"
                 fi
 
                 if [[ $si -eq $cursor ]]; then
@@ -167,8 +167,8 @@ _tweak_wizard() {
 
             # Hint line
             printf '\033[K\n' >&2
-            # ␣ cycles the active item: skip [ ·] → apply [*] → reset [✗]
-            local hint="↑↓ move  ␣ [ ·]→[*]→[✗]  a all"
+            # ␣ cycles the active item: skip [ ] → apply [✓] → reset [↺]
+            local hint="↑↓ move  ␣ skip→apply→reset  a all"
             if [[ $cat_count -eq 1 ]]; then hint+="  ↵ review"
             elif [[ $cat_idx -eq 0 ]]; then hint+="  →/↵ next"
             elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ←/esc prev  ↵ review"
