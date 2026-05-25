@@ -15,6 +15,15 @@ MACRIFT_LOG="${MACRIFT_LOG:-}"
 # Needed because show_menu runs in a $() subshell — in-memory var won't persist.
 MENU_STATE_FILE="${TMPDIR:-/tmp}/macrift-menu.$$"
 
+# Persistent applied-change journal (JSONL) — feeds undo/drift. Unlike the menu
+# state file above, this is NOT removed on exit; it accumulates across runs.
+MACRIFT_STATE_DIR="${MACRIFT_STATE_DIR:-$HOME/.macrift/state}"
+MACRIFT_JOURNAL="$MACRIFT_STATE_DIR/journal.jsonl"
+# One session id per run; groups entries so undo can target the last session.
+MACRIFT_SESSION="${MACRIFT_SESSION:-$(date +%y%m)-$(printf '%04x' "$RANDOM")}"
+# macOS version recorded with each entry (defaults keys change across releases).
+MACRIFT_OS_VER="$(sw_vers -productVersion 2>/dev/null || echo '?')"
+
 # Restore cursor on exit, clean up state file
 _macrift_cleanup() {
     printf "\033[?25h" 2>/dev/null
@@ -1113,6 +1122,525 @@ _defaults_cmd() {
     return 1
 }
 
+# JSON-escape a single scalar for embedding in a journal line.
+_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
+}
+
+# Append one applied change to the journal (JSONL) for later undo/drift.
+# Best-effort: a journaling failure never aborts an apply. No-op in dry-run.
+# old=="default" (key was unset before) is recorded as JSON null.
+# Usage: _journal_append <kind> <label> <domain> <key> <type> <value> <old>
+_journal_append() {
+    [[ "${MACRIFT_DRY_RUN:-false}" == true ]] && return 0
+    local kind="$1" label="$2" domain="$3" key="$4" vtype="$5" value="$6" old="$7"
+    mkdir -p "$MACRIFT_STATE_DIR" 2>/dev/null || return 0
+    local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local old_json="null"
+    [[ "$old" != "default" ]] && old_json="\"$(_json_escape "$old")\""
+    printf '{"session":"%s","ts":"%s","macos":"%s","status":"applied","kind":"%s","id":"","label":"%s","domain":"%s","key":"%s","type":"%s","value":"%s","old":%s}\n' \
+        "$MACRIFT_SESSION" "$ts" "$MACRIFT_OS_VER" \
+        "$(_json_escape "$kind")" "$(_json_escape "$label")" "$(_json_escape "$domain")" \
+        "$(_json_escape "$key")" "$(_json_escape "$vtype")" "$(_json_escape "$value")" "$old_json" \
+        >> "$MACRIFT_JOURNAL" 2>/dev/null || true
+}
+
+# Read the current live value of a journaled change, normalized to compare
+# against the stored value/old. Echoes "default" if unset, "__UNKNOWN__" if
+# the kind can't be read. Mirrors the read logic in the tweak files.
+_journal_live_value() {
+    local kind="$1" domain="$2" key="$3" vtype="$4"
+    case "$kind" in
+        default)
+            local v
+            v=$(defaults read "$domain" "$key" 2>/dev/null) || { echo "default"; return; }
+            if [[ "$vtype" == "-bool" ]]; then
+                [[ "$v" == "1" ]] && v="true"
+                [[ "$v" == "0" ]] && v="false"
+            fi
+            echo "$v" ;;
+        nvram)
+            # value semantics: true = sound on (%00), false = muted (%01)
+            if nvram "$key" 2>/dev/null | grep -q '%01'; then echo "false"; else echo "true"; fi ;;
+        chflags)
+            # value semantics: true = visible (nohidden), false = hidden
+            if [[ "$(stat -f '%Sf' "$HOME/Library" 2>/dev/null)" == *hidden* ]]; then echo "false"; else echo "true"; fi ;;
+        finder_sort)
+            /usr/libexec/PlistBuddy -c \
+                "Print :FK_StandardViewSettings:ExtendedListViewSettingsV2:sortColumn" \
+                "$HOME/Library/Preferences/com.apple.finder.plist" 2>/dev/null || echo "name" ;;
+        *) echo "__UNKNOWN__" ;;
+    esac
+}
+
+# `macrift drift` — read-only. Compares each journaled change to the live system.
+# Classifies each: held (still matches), reverted (back to pre-macrift state),
+# drifted (changed to something else), unknown (couldn't read).
+journal_drift_cli() {
+    if [[ ! -s "$MACRIFT_JOURNAL" ]]; then
+        log_info "No journal yet — apply some tweaks first"
+        return 0
+    fi
+
+    # Dedup to the latest journaled entry per (kind, domain, key)
+    local rows
+    rows=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
+import json, sys, collections
+latest = collections.OrderedDict()
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    latest[(d.get("kind"), d.get("domain"), d.get("key"))] = d
+for d in latest.values():
+    old = d.get("old")
+    # Join on US (\x1f), not tab: tab is IFS whitespace in bash and would
+    # collapse the empty old field, shifting later columns.
+    print("\x1f".join([
+        d.get("kind", ""), d.get("domain", ""), d.get("key", ""),
+        d.get("type", ""), str(d.get("value", "")),
+        "" if old is None else str(old),
+        "1" if old is None else "0",
+        d.get("label", "") or d.get("key", ""),
+    ]))
+PY
+)
+    if [[ -z "$rows" ]]; then
+        log_info "Journal is empty"
+        return 0
+    fi
+
+    printf "\n"
+    printf '  %b%-26s %-14s %-14s %s%b\n' "$DIM" "Setting" "Wanted" "Current" "State" "$RESET"
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..62})" "$RESET"
+
+    local held=0 drifted=0 reverted=0 unknown=0
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label; do
+        [[ -z "$kind" ]] && continue
+        local live; live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
+        local state color
+        if [[ "$live" == "__UNKNOWN__" ]]; then
+            state="unknown"; color="$DIM"; unknown=$((unknown + 1)); live="?"
+        elif [[ "$live" == "$value" ]]; then
+            state="held"; color="$GREEN"; held=$((held + 1))
+        elif [[ "$old_null" == "1" && "$live" == "default" ]] || \
+             [[ "$old_null" == "0" && "$live" == "$old" ]]; then
+            state="reverted"; color="$YELLOW"; reverted=$((reverted + 1))
+        else
+            state="drifted"; color="$RED"; drifted=$((drifted + 1))
+        fi
+        printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
+            "$label" "$DIM" "$(_friendly_val "$value")" "$RESET" \
+            "$(_friendly_val "$live")" "$color" "$state" "$RESET"
+    done <<< "$rows"
+
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..62})" "$RESET"
+    local summary="${held} held"
+    [[ $drifted  -gt 0 ]] && summary+=", ${drifted} drifted"
+    [[ $reverted -gt 0 ]] && summary+=", ${reverted} reverted"
+    [[ $unknown  -gt 0 ]] && summary+=", ${unknown} unknown"
+    printf '\n'
+    log_info "$summary"
+}
+
+# List recorded sessions (oldest first) with change counts.
+_journal_list_sessions() {
+    printf "\n"
+    log_info "Recorded sessions (newest last):"
+    printf '\n'
+    python3 - "$MACRIFT_JOURNAL" <<'PY'
+import json, sys, collections
+agg = collections.OrderedDict()
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    s = d.get("session", "?")
+    if s not in agg:
+        agg[s] = {"n": 0, "ts": d.get("ts", ""), "macos": d.get("macos", "")}
+    agg[s]["n"] += 1
+for s, v in agg.items():
+    print(f"    {s}   {v['n']:>3} changes   {v['ts']}   macOS {v['macos']}")
+PY
+}
+
+# `macrift undo [<session>|list]` — revert a journaled session to its
+# pre-macrift state. Default target is the last session. Reuses the audit-time
+# `old` values and apply_reset_defaults. Honors --dry-run / --no-confirm.
+journal_undo_cli() {
+    local arg="${1:-}"
+    if [[ ! -s "$MACRIFT_JOURNAL" ]]; then
+        log_info "No journal yet — nothing to undo"
+        return 0
+    fi
+
+    if [[ "$arg" == "list" ]]; then
+        _journal_list_sessions
+        return 0
+    fi
+
+    # Resolve target session (last recorded if none given)
+    local target="$arg"
+    if [[ -z "$target" ]]; then
+        target=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
+import json, sys
+last = ""
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        last = json.loads(line).get("session", last)
+    except Exception:
+        pass
+print(last)
+PY
+)
+    fi
+    if [[ -z "$target" ]]; then
+        log_warn "Could not determine a session to undo"
+        return 1
+    fi
+
+    # First entry per (kind, domain, key) in the session = pre-session state
+    local rows
+    rows=$(python3 - "$MACRIFT_JOURNAL" "$target" <<'PY'
+import json, sys, collections
+target = sys.argv[2]
+first = collections.OrderedDict()
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+    except Exception:
+        continue
+    if d.get("session") != target:
+        continue
+    k = (d.get("kind"), d.get("domain"), d.get("key"))
+    if k in first:
+        continue
+    first[k] = d
+for d in first.values():
+    old = d.get("old")
+    print("\x1f".join([
+        d.get("kind", ""), d.get("domain", ""), d.get("key", ""),
+        d.get("type", ""), str(d.get("value", "")),
+        "" if old is None else str(old),
+        "1" if old is None else "0",
+        d.get("label", "") or d.get("key", ""),
+    ]))
+PY
+)
+    if [[ -z "$rows" ]]; then
+        log_warn "No changes recorded for session $target"
+        return 1
+    fi
+
+    printf "\n"
+    log_info "Undo session $target — restoring pre-macrift values:"
+    printf '\n'
+    printf '  %b%-26s %-14s %-14s%b\n' "$DIM" "Setting" "Current" "Restore to" "$RESET"
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+
+    RESET_ENTRIES=()
+    local changes=0
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label; do
+        [[ -z "$kind" ]] && continue
+        local live target_val target_disp
+        live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
+        if [[ "$old_null" == "1" ]]; then
+            target_val="default"; target_disp="system default"
+        else
+            target_val="$old"; target_disp="$(_friendly_val "$old")"
+        fi
+        # Skip if already at the restore target
+        if [[ "$live" == "$target_val" ]] || [[ "$old_null" == "1" && "$live" == "default" ]]; then
+            continue
+        fi
+        printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+            "$label" "$DIM" "$(_friendly_val "$live")" "$RESET" "$GREEN" "$target_disp" "$RESET"
+        RESET_ENTRIES+=("${label}|${target_val}|${value}|${domain}|${key}|${vtype}")
+        changes=$((changes + 1))
+    done <<< "$rows"
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+
+    if [[ $changes -eq 0 ]]; then
+        printf '\n'
+        log_ok "Nothing to undo — already at pre-macrift state"
+        RESET_ENTRIES=()
+        return 0
+    fi
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf '\n'
+        log_info "Dry run — no changes applied"
+        RESET_ENTRIES=()
+        return 0
+    fi
+
+    printf '\n'
+    if ! confirm "Revert these $changes change(s)?"; then
+        log_info "Undo cancelled"
+        RESET_ENTRIES=()
+        return 0
+    fi
+
+    MACRIFT_CHANGED_DOMAINS=()
+    apply_reset_defaults
+
+    # Restart services whose domain we touched
+    local need_dock=false need_finder=false d
+    for d in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
+        [[ "$d" == *dock* ]] && need_dock=true
+        [[ "$d" == *finder* || "$d" == *desktopservices* ]] && need_finder=true
+    done
+    MACRIFT_CHANGED_DOMAINS=()
+    if $need_dock || $need_finder; then
+        printf '\n'
+        if confirm "Restart affected services?"; then
+            $need_dock   && { killall Dock 2>/dev/null   || true; log_ok "Dock restarted"; }
+            $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
+        fi
+    fi
+}
+
+# `macrift apply [<file.json>]` — apply a declarative manifest. Desugars the
+# JSON surface into the engine's audit entries, previews via show_audit_table,
+# and applies through apply_audited_defaults (which journals each change).
+# v1 covers the defaults family (default/finder_sort/nvram/chflags); brew,
+# dotfile, plist, command are reported as not-yet-applied.
+manifest_apply_cli() {
+    local manifest="${1:-$HOME/.config/macrift/macrift.json}"
+    if [[ ! -f "$manifest" ]]; then
+        log_err "Manifest not found: $manifest"
+        log_info "Pass a path: macrift apply <file.json>"
+        return 1
+    fi
+
+    local out
+    out=$(python3 - "$manifest" "$MACRIFT_OS_VER" <<'PY'
+import json, sys
+SEP = "\x1f"
+TYPE_MAP = {"bool": "-bool", "int": "-int", "float": "-float", "string": "-string"}
+
+def os_major(v):
+    try:
+        return int(str(v).split(".")[0])
+    except Exception:
+        return None
+
+run_major = os_major(sys.argv[2]) if len(sys.argv) > 2 else None
+
+def nval(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+def version_ok(u):
+    if run_major is None:
+        return True
+    mn, mx = u.get("min_macos"), u.get("max_macos")
+    if mn is not None and (m := os_major(mn)) is not None and run_major < m:
+        return False
+    if mx is not None and (m := os_major(mx)) is not None and run_major > m:
+        return False
+    return True
+
+try:
+    with open(sys.argv[1]) as f:
+        m = json.load(f)
+except Exception as e:
+    sys.stderr.write("parse error: %s\n" % e)
+    sys.exit(2)
+
+units = []
+skipped_version = 0
+
+def add(kind, domain, key, vtype, value, label, unit=None):
+    global skipped_version
+    if unit is not None and not version_ok(unit):
+        skipped_version += 1
+        return
+    units.append((kind, domain, key, vtype, value, label))
+
+for d in m.get("defaults", []):
+    add("default", d["domain"], d["key"],
+        TYPE_MAP.get(d.get("type", "string"), "-string"),
+        nval(d["value"]), d.get("label") or d.get("id") or d["key"], d)
+
+fin = m.get("finder", {})
+if "sort" in fin:
+    add("finder_sort", "finder_sort", "sort", "", str(fin["sort"]), "Finder sort")
+if "hidden_files" in fin:
+    add("default", "com.apple.finder", "AppleShowAllFiles", "-bool",
+        nval(fin["hidden_files"]), "Show hidden files")
+
+boot = m.get("boot", {})
+if "startup_sound" in boot:
+    add("nvram", "nvram", "StartupMute", "-bool", nval(boot["startup_sound"]), "Startup sound")
+
+lib = m.get("library", {})
+if "visible" in lib:
+    add("chflags", "chflags", "nohidden", "-bool", nval(lib["visible"]), "Show Library folder")
+
+unsupported = [f"{k}:{len(m.get(k, []))}"
+               for k in ("brew", "dotfile", "plist", "command") if m.get(k)]
+
+for u in units:
+    print(SEP.join(u))
+print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
+PY
+) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
+
+    audit_reset
+    local skipped_version=0 unsupported=""
+    while IFS=$'\x1f' read -r kind domain key vtype value label; do
+        [[ -z "$kind" ]] && continue
+        if [[ "$kind" == "__META__" ]]; then
+            skipped_version="$domain"; unsupported="$key"; continue
+        fi
+        local current
+        current=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
+        AUDIT_ENTRIES+=("${label}|${current}|${value}|${domain}|${key}|${vtype}")
+    done <<< "$out"
+
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 ]]; then
+        log_warn "No applicable settings in manifest"
+        [[ -n "$unsupported" ]] && log_info "Not yet supported by apply: $unsupported"
+        return 0
+    fi
+
+    if show_audit_table "Manifest"; then
+        MACRIFT_CHANGED_DOMAINS=()
+        apply_audited_defaults
+        local need_dock=false need_finder=false d
+        for d in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
+            [[ "$d" == *dock* ]] && need_dock=true
+            [[ "$d" == *finder* || "$d" == *desktopservices* ]] && need_finder=true
+        done
+        MACRIFT_CHANGED_DOMAINS=()
+        if $need_dock || $need_finder; then
+            printf '\n'
+            if confirm "Restart affected services?"; then
+                $need_dock   && { killall Dock 2>/dev/null   || true; log_ok "Dock restarted"; }
+                $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
+            fi
+        fi
+    fi
+
+    [[ "${skipped_version:-0}" -gt 0 ]] && log_info "$skipped_version skipped (macOS version guard)"
+    [[ -n "$unsupported" ]] && log_info "Not yet applied by macrift apply: $unsupported"
+    return 0
+}
+
+# `macrift save [<file.json>]` — snapshot the current value of every tweak
+# macrift knows about into a JSON manifest. Reuses the tweak spec-builders to
+# populate AUDIT_ENTRIES with live values, then records only non-default ones
+# (per-key, not a wholesale domain dump). Restore with `macrift apply <file>`.
+manifest_save_cli() {
+    local out_file="${1:-$HOME/.config/macrift/macrift.json}"
+
+    # Build AUDIT_ENTRIES with current live values for all standard tweaks
+    audit_reset
+    local f
+    # shellcheck disable=SC1090
+    for f in dock finder keyboard input screenshots misc; do
+        source "$MACRIFT_DIR/tweaks/$f.sh"
+    done
+    dock_tweaks; finder_tweaks; keyboard_tweaks; input_tweaks; screenshots_tweaks; misc_tweaks
+    # shellcheck disable=SC1090
+    source "$MACRIFT_DIR/tweaks/privacy.sh"; privacy_recommended; privacy_strict
+
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 ]]; then
+        log_warn "No tweaks detected to save"
+        return 1
+    fi
+
+    # Pass entries via a temp file, not stdin: python's program already comes
+    # from the heredoc on stdin, so a pipe would be shadowed by it.
+    local entries_tmp
+    entries_tmp=$(mktemp)
+    printf '%s\n' "${AUDIT_ENTRIES[@]}" > "$entries_tmp"
+    audit_reset
+
+    local manifest_json
+    manifest_json=$(python3 - "$entries_tmp" "$MACRIFT_VERSION" "$MACRIFT_OS_VER" \
+        "$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo mac)" <<'PY'
+import sys, json
+entries_path, ver, osv, host = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+TYPE = {"-bool": "bool", "-int": "int", "-float": "float", "-string": "string"}
+
+def conv(t, v):
+    # Only bool becomes a JSON boolean. int/float/string keep their raw
+    # `defaults read` string so a save→apply round-trip compares byte-identical
+    # (e.g. avoids "0" vs "0.0" float-formatting drift).
+    if t == "-bool":
+        return v == "true"
+    return v
+
+defaults, finder, boot, library = [], {}, {}, {}
+for line in open(entries_path):
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    p = line.split("|")
+    if len(p) < 6:
+        continue
+    label, current, new_val, domain, key, vtype = p[:6]
+    label = label.split("~", 1)[0]
+    if label == "---" or current == "default":
+        continue                       # separators / already-default keys: nothing to reproduce
+    if domain == "finder_sort":
+        finder["sort"] = current
+    elif domain == "nvram" and key == "StartupMute":
+        boot["startup_sound"] = (current == "true")
+    elif domain == "chflags":
+        library["visible"] = (current == "true")
+    else:
+        defaults.append({
+            "label": label, "domain": domain, "key": key,
+            "type": TYPE.get(vtype, "string"), "value": conv(vtype, current),
+        })
+
+m = {"meta": {"name": host, "macrift": ver, "source_macos": osv}, "defaults": defaults}
+if finder:  m["finder"] = finder
+if boot:    m["boot"] = boot
+if library: m["library"] = library
+print(json.dumps(m, indent=2))
+PY
+)
+    rm -f "$entries_tmp"
+
+    if [[ -z "$manifest_json" ]]; then
+        log_err "Failed to build manifest"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$out_file")"
+    printf '%s\n' "$manifest_json" > "$out_file"
+    local n
+    n=$(grep -c '"domain"' "$out_file" 2>/dev/null) || true
+    printf '\n'
+    log_ok "Saved manifest → $out_file"
+    log_info "Captured ${n:-0} non-default setting(s). Restore: macrift apply \"$out_file\""
+}
+
 # Apply all queued defaults writes
 apply_audited_defaults() {
     local applied=0 skipped=0 failed=0
@@ -1135,6 +1663,7 @@ apply_audited_defaults() {
             [[ "$new_val" == "false" ]] && chflag="hidden"
             if chflags "$chflag" ~/Library 2>/dev/null; then
                 log_ok "$label → $friendly"
+                _journal_append "chflags" "$label" "$domain" "$key" "$type" "$new_val" "$current"
                 applied=$((applied + 1))
             else
                 log_err "Failed: $label → $friendly"
@@ -1150,6 +1679,7 @@ apply_audited_defaults() {
             require_sudo
             if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
                 log_ok "$label → $friendly"
+                _journal_append "nvram" "$label" "$domain" "$key" "$type" "$new_val" "$current"
                 applied=$((applied + 1))
             else
                 log_err "Failed: $label → $friendly"
@@ -1162,6 +1692,7 @@ apply_audited_defaults() {
         if [[ "$domain" == "finder_sort" ]]; then
             if _finder_sort_write "$new_val"; then
                 log_ok "$label → $friendly"
+                _journal_append "finder_sort" "$label" "$domain" "$key" "$type" "$new_val" "$current"
                 applied=$((applied + 1))
                 MACRIFT_CHANGED_DOMAINS+=("com.apple.finder")
             else
@@ -1178,6 +1709,7 @@ apply_audited_defaults() {
 
         if _defaults_cmd "write" "$domain" "$key" "$type" "$new_val" "$label" "${sudo_flag:-}"; then
             log_ok "$label → $friendly"
+            _journal_append "default" "$label" "$domain" "$key" "$type" "$new_val" "$current"
             applied=$((applied + 1))
         else
             log_err "Failed: $label → $friendly"
@@ -1238,6 +1770,37 @@ apply_reset_defaults() {
             else
                 log_err "Failed to reset: $label"
                 failed=$((failed + 1))
+            fi
+            continue
+        fi
+
+        # nvram / chflags carry a real prior bool in $current (the tweak files
+        # capture it by hand). Mirror the forward mapping to invert them.
+        if [[ "$domain" == "nvram" ]]; then
+            if [[ "$current" == "default" ]]; then
+                log_warn "$label — no prior state recorded, skipping"
+            else
+                local nvram_val="%01"; [[ "$current" == "true" ]] && nvram_val="%00"
+                require_sudo
+                if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
+                    log_ok "$label → $(_friendly_val "$current")"; reset=$((reset + 1))
+                else
+                    log_err "Failed to reset: $label"; failed=$((failed + 1))
+                fi
+            fi
+            continue
+        fi
+
+        if [[ "$domain" == "chflags" ]]; then
+            if [[ "$current" == "default" ]]; then
+                log_warn "$label — no prior state recorded, skipping"
+            else
+                local cf="nohidden"; [[ "$current" == "false" ]] && cf="hidden"
+                if chflags "$cf" ~/Library 2>/dev/null; then
+                    log_ok "$label → $(_friendly_val "$current")"; reset=$((reset + 1))
+                else
+                    log_err "Failed to reset: $label"; failed=$((failed + 1))
+                fi
             fi
             continue
         fi

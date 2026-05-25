@@ -49,6 +49,10 @@ _print_help() {
     echo "  fix [<path>...]              Remove quarantine xattr (fix 'damaged' errors)"
     echo "  gatekeeper [on|off|status]   Toggle Gatekeeper (alias: gk)"
     echo "  check                        Pre-purchase Mac check (used Mac diagnostics)"
+    echo "  drift                        Show which applied tweaks still hold vs changed"
+    echo "  undo [<session>|list]        Revert a journaled session (default: last)"
+    echo "  apply [<file.json>]          Apply a declarative manifest (defaults family)"
+    echo "  save [<file.json>]           Snapshot current tweaks to a manifest"
     echo "  help                         Show this help"
     echo ""
     echo "Flags:"
@@ -140,6 +144,26 @@ case "${MACRIFT_SUBCMD:-}" in
         check_macos
         source "$MACRIFT_DIR/security/menu.sh"
         precheck_cli
+        exit $?
+        ;;
+    drift)
+        check_macos
+        journal_drift_cli
+        exit $?
+        ;;
+    undo)
+        check_macos
+        journal_undo_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
+        exit $?
+        ;;
+    apply)
+        check_macos
+        manifest_apply_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
+        exit $?
+        ;;
+    save)
+        check_macos
+        manifest_save_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
         exit $?
         ;;
     *)
