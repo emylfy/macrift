@@ -15,7 +15,7 @@ Things you don't get in most other Claude Code configs:
 
 `macrift → Claude Code → Setup` opens one menu with two ways to install:
 
-1. **Setup wizard** (first item) — first asks for **effort level** (`xhigh` / `max` / `high` / `medium` / `low` / `auto`, default `xhigh`), then walks you through each component one at a time. Each panel shows the name, description, use case, and a `y/n` prompt. Keys: `y` (or enter) install, `n` skip, `a` accept-all-remaining, `q` quit.
+1. **Setup wizard** (first item) — walks you through each component one at a time. Each panel shows the name, description, use case, and a `y/n` prompt. Keys: `y` (or enter) install, `n` skip, `a` accept-all-remaining, `q` quit.
 2. **Individual components** (items below the wizard) — re-run any single installer on demand. Useful for "update only rules" or "I forgot to add the alias".
 
 After the wizard finishes the components, it asks per-formatter if you want `prettier` / `ruff` / `shfmt` brew-installed.
@@ -45,7 +45,6 @@ Merged into `~/.claude/settings.json` via `jq '.[0] * .[1]'` (existing user keys
 
 | key                  | purpose                                                                                                                                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `effortLevel`        | reasoning depth — wizard prompts at install. Valid values per binary: `max` / `xhigh` / `high` / `medium` / `low` / `auto`. Default `xhigh`. `max` is ceiling, `auto` lets the model pick |
 | `enabledPlugins`     | see below                                                                                                                                                                                                            |
 | `permissions.allow`  | broad allowlist: git/gh, npm/bun/uv/pip, brew, docker, jq/sed/awk, basic file ops                                                                                                                                    |
 | `permissions.deny`   | blocks destructive ops: `rm`, `mv`, `sudo`, force git ops (reset --hard, push --force, branch -D, stash drop), brew uninstall, docker rm/prune, kubectl delete/drain, npm/pip/cargo publish/yank, kill/killall/pkill |
@@ -66,7 +65,7 @@ Two env vars exported into `~/.zshrc` via marker block.
 | var                          | value               | why                                                                                                          |
 | ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `CLAUDE_CODE_SUBAGENT_MODEL` | `claude-sonnet-4-6` | force all subagents onto Sonnet — overrides each agent's frontmatter `model:` (e.g. debugger.md says `opus`) |
-| `AUTOCOMPACT_PCT_OVERRIDE`   | `99`                | effectively disables auto-compact — you decide when to `/compact` (typically 70-80%)                         |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` | `99`           | effectively disables auto-compact — you decide when to `/compact` (typically 70-80%)                         |
 
 ## agents/
 

@@ -33,11 +33,11 @@ claude_code_menu() {
 
     local choice
     choice=$(show_menu "Claude Code" \
-      "Setup — wizard or pick individual components" \
+      "Setup" \
       "---" \
-      "Telegram bot — choose engine (supercharged / ccgram)" \
+      "Telegram bot" \
       "---" \
-      "Reset — wipe macrift-managed Claude state" \
+      "Reset" \
       "Back")
 
     case "$choice" in
@@ -199,33 +199,6 @@ _cc_full_setup() {
 
   _cc_wizard_accept_all=false
 
-  # Step 1 — pick effort level (persisted in settings.json).
-  # Binary 2.1.138 valid values: low, medium, high, xhigh, max, auto.
-  # Default xhigh (cursor lands on it). max is the absolute ceiling.
-  # auto = let the model decide based on context.
-  _cc_effort_level=xhigh
-  clear
-  printf '\n'
-  local choice
-  choice=$(show_menu "Effort level" \
-    "xhigh" \
-    "---" \
-    "max" \
-    "high" \
-    "medium" \
-    "low" \
-    "auto" \
-    "Back")
-  case "$choice" in
-    1) _cc_effort_level=xhigh ;;
-    2) _cc_effort_level=max ;;
-    3) _cc_effort_level=high ;;
-    4) _cc_effort_level=medium ;;
-    5) _cc_effort_level=low ;;
-    6) _cc_effort_level=auto ;;
-    0) return ;;
-  esac
-
   # Parallel arrays — bash 3.2 compatible.
   local sections=(
     "CORE" "CORE" "CORE"
@@ -238,7 +211,7 @@ _cc_full_setup() {
     "Statusline"
     "Doctor + /doctor command"
     "Agents (4 subagents)"
-    "Slash commands (8)"
+    "Slash commands (9)"
     "Rules (5 behavior files)"
     "Hooks (format + security-gate + session-start)"
     "Env vars (.zshrc)"
@@ -252,10 +225,10 @@ _cc_full_setup() {
     "cwd · branch · model · ctx% · rate% with color escalation"
     "/doctor command + ~/.claude/doctor.sh — verifies hooks, deps, MCP, CLAUDE.md imports"
     "debugger, explorer, reviewer, simplifier — each in fresh context"
-    "/canpush /debug /doctor /explore /refine /reflect /review /simplify"
+    "/canpush /debug /doctor /explore /mcp-context7 /refine /reflect /review /simplify"
     "code-style, communication, git, security, workflow — @-imported via CLAUDE.md"
     "format-on-edit, security gate (blocks force-push), SessionStart git context inject"
-    "SUBAGENT_MODEL=sonnet-4-6 + AUTOCOMPACT_PCT_OVERRIDE=99"
+    "SUBAGENT_MODEL=sonnet-4-6 + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99"
     "auto-add @~/.claude/rules/<name>.md imports; remove stale ones"
     "alias r='bash /tmp/cmd.sh' in ~/.zshrc"
     "live library docs lookup (kills hallucinated APIs)"
@@ -412,7 +385,7 @@ _cc_install_settings_user() {
     printf '\n'
     log_info "Source: $source"
     log_info "Target: $target"
-    log_info "Contains: permissions allow/deny, plugins, effort level, model"
+    log_info "Contains: permissions allow/deny, plugins, model"
     printf '\n'
   fi
 
@@ -513,18 +486,6 @@ _cc_install_settings_user() {
       ;;
   esac
 
-  # Inject user-chosen effortLevel (set by setup wizard's effort prompt).
-  # If unset, the source value (xhigh) stays.
-  if [[ -f "$target" ]] && [[ -n "${_cc_effort_level:-}" ]] && command -v jq >/dev/null 2>&1; then
-    local etmp
-    etmp=$(mktemp)
-    if jq --arg e "$_cc_effort_level" '.effortLevel = $e' "$target" >"$etmp" 2>/dev/null; then
-      mv "$etmp" "$target"
-    else
-      rm -f "$etmp"
-    fi
-  fi
-
   # If any merged value contains the literal string "$HOME", bake the absolute
   # path in — JSON has no env-var interpolation and Claude Code's command
   # runners (statusLine, hooks) don't always expand env vars depending on shell
@@ -576,13 +537,17 @@ _cc_install_statusline_copy() {
     return
   fi
   if command -v bun >/dev/null 2>&1; then
-    bun x ccstatusline@latest --version >/dev/null 2>&1 &&
-      log_ok "ccstatusline primed via bun" ||
+    if bun x ccstatusline@latest --version >/dev/null 2>&1; then
+      log_ok "ccstatusline primed via bun"
+    else
       log_warn "ccstatusline prime via bun failed — first render may be slow"
+    fi
   elif command -v npx >/dev/null 2>&1; then
-    npx -y ccstatusline@latest --version >/dev/null 2>&1 &&
-      log_ok "ccstatusline primed via npx" ||
+    if npx -y ccstatusline@latest --version >/dev/null 2>&1; then
+      log_ok "ccstatusline primed via npx"
+    else
       log_warn "ccstatusline prime via npx failed — first render may be slow"
+    fi
   else
     log_err "neither bun nor npx in PATH — install one to use ccstatusline"
   fi
@@ -1101,8 +1066,8 @@ _cc_telegram_menu() {
 
     local choice
     choice=$(show_menu "Telegram bot" \
-      "supercharged — drop-in for anthropic plugin (DM, single session)" \
-      "ccgram — tmux-bridge (forum group, parallel sessions per topic)" \
+      "supercharged (DM, single session)" \
+      "ccgram (forum, parallel sessions)" \
       "Back")
 
     case "$choice" in
@@ -1124,7 +1089,7 @@ _cc_ccgram_menu() {
 
     local choice
     choice=$(show_menu "Telegram bot (ccgram — alexei-led/ccgram)" \
-      "Full setup — install + env + hook + autostart" \
+      "Full setup" \
       "---" \
       "Check deps (uv, tmux)" \
       "Install ccgram via uv (or upgrade if already installed)" \
@@ -1675,7 +1640,7 @@ _cc_supercharged_menu() {
 
     local choice
     choice=$(show_menu "Telegram bot (supercharged)" \
-      "Full setup — plugin + apply + dirs + token + autostart" \
+      "Full setup" \
       "---" \
       "1. Install/restore official plugin (with upstream fallback)" \
       "2. Apply supercharged (drop server.ts + supervisor + skills)" \

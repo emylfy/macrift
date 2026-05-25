@@ -208,10 +208,10 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 
 Per-component installer for `~/.claude/` — pick what you want, skip the rest:
 
-- **Settings** — permissions, plugins, effort level, model (merge or overwrite)
+- **Settings** — permissions, plugins, model (merge or overwrite)
 - **Statusline** — project / branch / model / context % / rate %
 - **Agents** — `debugger`, `reviewer`, `simplifier`, `explorer` (read-only codebase search)
-- **Slash commands** — `/debug`, `/review`, `/simplify`, `/explore`, `/refine`, `/canpush`, `/reflect`, `/mcp-context7`
+- **Slash commands** — `/debug`, `/review`, `/simplify`, `/explore`, `/refine`, `/canpush`, `/reflect`, `/mcp-context7`, `/doctor`
 - **Rules** — `code-style`, `git`, `security`, `workflow`, `communication`, `tgbot` — auto-imported into every session via `CLAUDE.md`
 - **Hooks** — format-on-edit, security gate, stop/wait notifications
 - **Environment** — `CLAUDE_CODE_*` vars in `.zshrc`

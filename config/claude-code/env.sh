@@ -8,4 +8,4 @@ export CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-4-6
 
 # Disable auto-compact effectively — you decide when to /compact (~70-80%).
 # Watch the ctx widget in ccstatusline for the trigger. Works on any tier.
-export AUTOCOMPACT_PCT_OVERRIDE=99
+export CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99
