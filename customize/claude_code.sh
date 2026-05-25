@@ -1642,12 +1642,12 @@ _cc_supercharged_menu() {
     choice=$(show_menu "Telegram bot (supercharged)" \
       "Full setup" \
       "---" \
-      "1. Install/restore official plugin (with upstream fallback)" \
-      "2. Apply supercharged (drop server.ts + supervisor + skills)" \
-      "3. Create runtime dirs (data/inbox)" \
-      "4. Set bot token (writes ~/.claude/channels/telegram/.env)" \
-      "5. Pairing help (manual step in fresh claude --channels session)" \
-      "6. Install LaunchAgent (autostart + VPN-wait wrapper)" \
+      "Install/restore official plugin (with upstream fallback)" \
+      "Apply supercharged (drop server.ts + supervisor + skills)" \
+      "Create runtime dirs (data/inbox)" \
+      "Set bot token (writes ~/.claude/channels/telegram/.env)" \
+      "Pairing help (manual step in fresh claude --channels session)" \
+      "Install LaunchAgent (autostart + VPN-wait wrapper)" \
       "---" \
       "Re-apply after plugin auto-update overwrote server.ts" \
       "Migrate from old plugin / linuz90 (cleanup remnants)" \
