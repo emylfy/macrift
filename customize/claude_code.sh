@@ -33,9 +33,9 @@ claude_code_menu() {
 
     local choice
     choice=$(show_menu "Claude Code" \
-      "Setup" \
+      "Setup ›" \
       "---" \
-      "Telegram bot" \
+      "Telegram bot ›" \
       "---" \
       "Reset" \
       "Back")
@@ -1066,8 +1066,8 @@ _cc_telegram_menu() {
 
     local choice
     choice=$(show_menu "Telegram bot" \
-      "supercharged (DM, single session)" \
-      "ccgram (forum, parallel sessions)" \
+      "supercharged (DM, single session) ›" \
+      "ccgram (forum, parallel sessions) ›" \
       "Back")
 
     case "$choice" in

@@ -9,7 +9,7 @@ privacy_menu() {
     while true; do
         clear
 
-        local items=("Security Status" "Privacy Shortcuts" "Hostname" "DNS" "Update Control" "Unquarantine App")
+        local items=("Security Status" "Privacy Shortcuts ›" "Hostname" "DNS ›" "Update Control ›" "Unquarantine App")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
         items+=("Back")
 
@@ -48,12 +48,12 @@ privacy_shortcuts_menu() {
 
         local labels=() entry
         for entry in "${PRIVACY_SHORTCUTS[@]}"; do
-            labels+=("${entry%%|*}")
+            labels+=("${entry%%|*} ↗")
         done
         labels+=("Back")
 
         local choice
-        choice=$(show_menu "Privacy Shortcuts · opens System Settings" "${labels[@]}")
+        choice=$(show_menu "Privacy Shortcuts" "${labels[@]}")
 
         if [[ "$choice" == "0" || -z "$choice" ]]; then
             break
@@ -247,9 +247,9 @@ dns_menu() {
         current=$(_current_dns)
 
         local choice
-        choice=$(show_menu "DNS · current: $current" \
+        choice=$(show_menu "DNS"$'\x1f'"current · $current" \
             "DNS Benchmark" \
-            "Pick DNS provider" \
+            "Pick DNS provider ›" \
             "Custom DNS" \
             "Back")
 

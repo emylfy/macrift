@@ -197,11 +197,11 @@ main_menu() {
 
         local choice
         choice=$(show_menu "$title" \
-            "System Tweaks" \
-            "Apps & Packages" \
-            "Customize" \
-            "Security & Privacy" \
-            "Cleanup" \
+            "System Tweaks ›" \
+            "Apps & Packages ›" \
+            "Customize ›" \
+            "Security & Privacy ›" \
+            "Cleanup ›" \
             "---" \
             "$update_label" \
             "Exit")

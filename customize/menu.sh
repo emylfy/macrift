@@ -13,23 +13,23 @@ customize_menu() {
 
         local -a items=(
             "## Backup"
-            "Profile"
+            "Profile ›"
             "---"
             "## Terminal"
-            "Terminal Emulator"
-            "Shell"
+            "Terminal Emulator ›"
+            "Shell ›"
             "FastFetch"
             "---"
             "## Editors"
-            "Code Editor"
-            "Claude Code"
+            "Code Editor ›"
+            "Claude Code ›"
             "---"
             "## Desktop"
-            "Dock Layout"
+            "Dock Layout ›"
         )
-        $is_tahoe || items+=("Launchpad")
+        $is_tahoe || items+=("Launchpad ›")
         items+=(
-            "Wallpaper"
+            "Wallpaper ›"
             "Back"
         )
 

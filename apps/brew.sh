@@ -346,7 +346,7 @@ brew_menu() {
             "Fonts (Nerd Fonts)" \
             "---" \
             "Install ALL bundles" \
-            "Backup (.brewbak)" \
+            "Backup (.brewbak) ›" \
             "Back")
 
         case "$choice" in

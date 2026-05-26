@@ -409,12 +409,12 @@ tweaks_menu() {
         local choice
         choice=$(show_menu "System Tweaks" \
             "## Defaults" \
-            "Browse & Apply" \
+            "Browse & Apply ›" \
             "---" \
             "## Tools" \
-            "Hot Corners…" \
-            "Dithering" \
-            "Space Switcher" \
+            "Hot Corners… ↗" \
+            "Dithering ›" \
+            "Space Switcher ›" \
             "Back")
 
         case "$choice" in

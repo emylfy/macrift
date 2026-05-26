@@ -38,9 +38,9 @@ apps_menu() {
         clear
 
         local -a items=(
-            "Homebrew Bundles"
-            "Mac App Store"
-            "Spotify (SpotX + Spicetify)"
+            "Homebrew Bundles ›"
+            "Mac App Store ›"
+            "Spotify (SpotX + Spicetify) ›"
         )
         # Only offer CLT install if it isn't already present
         if ! xcode-select -p &>/dev/null; then

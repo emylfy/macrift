@@ -368,6 +368,13 @@ show_menu() {
     local title="$1"
     shift
     local items=("$@")
+    # Optional dim subtitle for live state: caller passes "Title"$'\x1f'"Subtitle"
+    # (keeps the title bar short instead of cramming state into it).
+    local subtitle=""
+    if [[ "$title" == *$'\x1f'* ]]; then
+        subtitle="${title#*$'\x1f'}"
+        title="${title%%$'\x1f'*}"
+    fi
     local count=${#items[@]}
     local last_idx=$((count - 1))
 
@@ -405,6 +412,7 @@ show_menu() {
         fi
         [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
+    [[ -n "$subtitle" && ${#subtitle} -gt $max_len ]] && max_len=${#subtitle}
     local BP="${BOLD}${GRAY}" R="${RESET}"
     local BAR="${BOLD}${CYAN}▌${R}"
 
@@ -424,15 +432,28 @@ show_menu() {
     # Render one selectable row: text, is_selected, is_back. The cursor is a
     # left accent bar (▌) in the gutter, so selection reads without relying on color.
     _menu_row() {
-        local is_sel="$2" is_back="${3:-false}" indent="${4:-}" text
-        text=$(_fit "${indent}$1")
+        local is_sel="$2" is_back="${3:-false}" indent="${4:-}" raw="$1" glyph=""
+        # A trailing " ›" (opens a submenu) or " ↗" (opens System Settings) is
+        # split off and right-aligned to the border as a dim affordance.
+        case "$raw" in
+            *' ›') glyph="›"; raw="${raw% ›}" ;;
+            *' ↗') glyph="↗"; raw="${raw% ↗}" ;;
+        esac
+        local text; text=$(_fit "${indent}${raw}")
         local lead="  "; $is_sel && lead=" $BAR"
         local body
         if $is_sel;   then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
         elif $is_back; then body=$(printf '%b%s%b' "$DIM" "$text" "$R")
         else body="$text"; fi
-        local pad=$((inner_w - 2 - ${#text})); [[ $pad -lt 0 ]] && pad=0
-        _box_row "$inner_w" "$body" "$pad" "$lead"
+        if [[ -n "$glyph" ]]; then
+            # …text…<gap>glyph<1-col margin>│  — right-aligned with a small margin
+            local gap=$((inner_w - 4 - ${#text})); [[ $gap -lt 1 ]] && gap=1
+            body="${body}$(printf '%*s' "$gap" '')$(printf '%b%s%b' "$DIM" "$glyph" "$R")"
+            _box_row "$inner_w" "$body" 1 "$lead"
+        else
+            local pad=$((inner_w - 2 - ${#text})); [[ $pad -lt 0 ]] && pad=0
+            _box_row "$inner_w" "$body" "$pad" "$lead"
+        fi
     }
 
     # Scrolling
@@ -445,6 +466,7 @@ show_menu() {
 
     local total_lines=$((visible_count + 8))
     $need_scroll && total_lines=$((total_lines + 2))
+    [[ -n "$subtitle" ]] && total_lines=$((total_lines + 1))
 
     # Restore cursor from sticky position if we've been here before
     local sel first_draw=true
@@ -466,6 +488,13 @@ show_menu() {
 
         _box_top "$title" "$inner_w"
         _box_empty "$inner_w"
+
+        # Optional dim subtitle (live state) right under the title
+        if [[ -n "$subtitle" ]]; then
+            local _st; _st=$(_fit "$subtitle")
+            local _spad=$((inner_w - 2 - ${#_st})); [[ $_spad -lt 0 ]] && _spad=0
+            _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$_st" "$R")" "$_spad"
+        fi
 
         # Scroll-up
         if $need_scroll; then
