@@ -238,20 +238,18 @@ shell_menu() {
 
         local choice
         choice=$(show_menu "Shell" \
-            "Full setup (Zinit + Starship + .zshrc)" \
+            "Full setup (Zinit + Starship + .zshrc + Catppuccin)" \
             "---" \
-            "Starship prompt only" \
-            "Starship preset" \
+            "Starship (install + preset)" \
+            "Shell colors (fzf / bat / eza)" \
             "Copy .zshrc only" \
-            "Catppuccin theme" \
             "Back")
 
         case "$choice" in
-            1) _ensure_nerd_font; install_zinit; install_starship; starship_preset; install_zshrc ;;
-            2) install_starship ;;
-            3) starship_preset ;;
+            1) _ensure_nerd_font; install_zinit; install_starship; starship_preset; install_zshrc; apply_catppuccin ;;
+            2) _ensure_nerd_font; install_starship; starship_preset ;;
+            3) apply_catppuccin ;;
             4) install_zshrc ;;
-            5) apply_catppuccin ;;
             0) break ;;
             *) ;;
         esac
@@ -324,6 +322,7 @@ starship_preset() {
         fi
     fi
 
+    clear
     local config_target="$HOME/.config/starship.toml"
 
     # preset_id:label
@@ -441,11 +440,10 @@ install_zshrc() {
 }
 
 apply_catppuccin() {
-    crumb_push "Catppuccin"
+    crumb_push "Shell colors"
     clear
     printf '\n'
     printf '  %bApply Catppuccin Mocha to shell tools:%b\n\n' "$BOLD" "$RESET"
-    printf '  %b›%b  Starship prompt colors\n' "$CYAN" "$RESET"
     printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
     printf '  %b›%b  bat syntax highlighting\n' "$CYAN" "$RESET"
     printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
@@ -453,41 +451,21 @@ apply_catppuccin() {
     printf '\n'
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would apply Catppuccin theme"
+        log_info "Dry run — would apply Catppuccin shell colors"
         wait_enter
-    elif ! confirm "Apply Catppuccin Mocha?"; then
+    elif ! confirm "Apply Catppuccin Mocha to shell tools?"; then
         :
     else
-        local applied=0
-
-        # Shell colors (fzf, bat, autosuggestions, eza)
         local theme_source="$MACRIFT_DIR/config/shell/catppuccin.zsh"
         local theme_target="$HOME/.config/zsh/catppuccin.zsh"
         if [[ -f "$theme_source" ]]; then
             mkdir -p "$HOME/.config/zsh"
             copy_config "$theme_source" "$theme_target"
-            log_ok "Shell colors (fzf, bat, autosuggestions, eza)"
-            applied=$((applied + 1))
+            log_ok "Shell colors applied (fzf, bat, autosuggestions, eza)"
+            log_info "Restart shell to apply"
         else
             log_err "catppuccin.zsh not found in config/shell/"
         fi
-
-        # Starship palette
-        local starship_target="$HOME/.config/starship.toml"
-        if [[ -f "$starship_target" ]]; then
-            if grep -q 'catppuccin_mocha' "$starship_target"; then
-                log_skip "Starship already has Catppuccin palette"
-            else
-                _starship_apply_catppuccin "$starship_target"
-                log_ok "Starship prompt"
-                applied=$((applied + 1))
-            fi
-        else
-            log_warn "No starship.toml found — install Starship first"
-        fi
-
-        printf '\n'
-        log_ok "Catppuccin applied to $applied components (restart shell)"
         wait_enter
     fi
     crumb_pop
