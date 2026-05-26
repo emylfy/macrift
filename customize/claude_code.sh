@@ -54,64 +54,83 @@ claude_code_menu() {
   crumb_pop
 }
 
+# Component registry — single source of truth for the Setup menu AND the wizard.
+# One row per component, in display order. Both consumers derive from this, so
+# adding a component is one row here (+ one arm in the wizard dispatch case for
+# its batch behavior) instead of editing the menu list, five parallel wizard
+# arrays, and two case blocks by hand.
+#
+# Fields (| delimited, 11 total — never put a literal | inside a field):
+#   key | section | menu | wiz | mwait | wdefault | menu_label | wizard_label | menu_handler | desc | usecase
+#     menu/wiz : y/n — appears in the Setup menu / the wizard
+#     mwait    : y/n — menu dispatch appends wait_enter after the handler
+#     wdefault : y/n — wizard panel default answer
+#     menu_handler : interactive installer the menu calls (menu rows only)
+#     desc/usecase : wizard panel copy (wizard rows only)
+_cc_registry() {
+  cat <<'REG'
+settings|Core|y|y|y|y|Settings|Settings|_cc_install_settings_user|permission allow/deny + plugin enable + hooks wiring|safe defaults, no per-command prompts
+statusline|Core|y|y|y|y|Statusline|Statusline|_cc_install_statusline|cwd · branch · model · ctx% · rate% with color escalation|see context burn before /compact bites
+doctor|Core|n|y|n|y||Doctor + /doctor command||/doctor command + ~/.claude/doctor.sh — verifies hooks, deps, MCP, CLAUDE.md imports|first-run health check / 'why is X broken'
+agents|AI extensions|y|y|n|y|Agents|Agents (4 subagents)|_cc_install_agents|debugger, explorer, reviewer, simplifier — each in fresh context|delegate to specialist without polluting main thread
+commands|AI extensions|y|y|n|y|Slash Commands|Slash commands (9)|_cc_install_commands|/canpush /debug /doctor /explore /mcp-context7 /refine /reflect /review /simplify|explicit one-line triggers
+rules|AI extensions|y|y|n|y|Rules|Rules (5 behavior files)|_cc_install_rules|code-style, communication, git, security, workflow — @-imported via CLAUDE.md|enforced behavior every session
+hooks|AI extensions|y|y|y|y|Hooks|Hooks (format + security-gate + session-start)|_cc_install_hooks|format-on-edit, security gate (blocks force-push), SessionStart git context inject|auto-format, block force-push, save tokens on session start
+env|Shell integration|y|y|y|y|Environment (.zshrc env vars)|Env vars (.zshrc)|_cc_install_env|SUBAGENT_MODEL=sonnet-4-6 + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99|cheap subagents + manual /compact discipline (Dex's <30% rule)
+claude_md|Shell integration|y|y|y|y|CLAUDE.md (rule imports)|CLAUDE.md sync|_cc_install_claude_md|auto-add @~/.claude/rules/<name>.md imports; remove stale ones|leave checked unless skipping rules
+ralias|Shell integration|y|y|y|y|'r' alias|'r' alias|_cc_install_r_alias|alias r='bash /tmp/cmd.sh' in ~/.zshrc|workflow.md 'claude writes script, you type r' pattern
+mcp|MCP servers|y|n|n|n|MCP Servers (context7, playwright)||_cc_install_mcp||
+mcp_context7|MCP servers|n|y|n|y||MCP context7||live library docs lookup (kills hallucinated APIs)|any project pulling third-party libs
+mcp_playwright|MCP servers|n|y|n|y||MCP playwright||browser automation / E2E test generation|web testing only
+REG
+}
+
+# Wizard label for a component key (used by the wizard summary screen).
+_cc_wizard_label() {
+  local want="$1" key section menu wiz mwait wdefault mlabel wlabel rest
+  while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel rest; do
+    [[ "$key" == "$want" ]] && {
+      printf '%s' "$wlabel"
+      return
+    }
+  done < <(_cc_registry)
+}
+
 _cc_custom_menu() {
   crumb_push "Setup"
   while true; do
     clear
 
-    local choice
-    choice=$(show_menu "Setup" \
-      "Setup wizard" \
-      "---" \
-      "## CORE" \
-      "Settings" \
-      "Statusline" \
-      "## AI EXTENSIONS" \
-      "Agents" \
-      "Slash Commands" \
-      "Rules" \
-      "Hooks" \
-      "## SHELL INTEGRATION" \
-      "Environment (.zshrc env vars)" \
-      "CLAUDE.md (rule imports)" \
-      "'r' alias" \
-      "## MCP SERVERS" \
-      "MCP Servers (context7, playwright)" \
-      "Back")
+    # Build the menu (and a parallel dispatch table) from the registry.
+    # Item 1 is always the wizard; components follow, grouped by section header.
+    local menu_items=("Setup wizard" "---")
+    local keys=("__wizard__") handlers=("") waits=("")
+    local prev_sec=""
+    local key section menu wiz mwait wdefault mlabel wlabel handler desc usecase
+    while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
+      [[ "$menu" == y ]] || continue
+      if [[ "$section" != "$prev_sec" ]]; then
+        menu_items+=("## $section")
+        prev_sec="$section"
+      fi
+      menu_items+=("$mlabel")
+      keys+=("$key")
+      handlers+=("$handler")
+      waits+=("$mwait")
+    done < <(_cc_registry)
+    menu_items+=("Back")
 
-    case "$choice" in
-      1) _cc_full_setup ;;
-      2)
-        _cc_install_settings_user
-        wait_enter
-        ;;
-      3)
-        _cc_install_statusline
-        wait_enter
-        ;;
-      4) _cc_install_agents ;;
-      5) _cc_install_commands ;;
-      6) _cc_install_rules ;;
-      7)
-        _cc_install_hooks
-        wait_enter
-        ;;
-      8)
-        _cc_install_env
-        wait_enter
-        ;;
-      9)
-        _cc_install_claude_md
-        wait_enter
-        ;;
-      10)
-        _cc_install_r_alias
-        wait_enter
-        ;;
-      11) _cc_install_mcp ;;
-      0) break ;;
-      *) ;;
-    esac
+    local choice
+    choice=$(show_menu "Setup" "${menu_items[@]}")
+    [[ "$choice" == 0 ]] && break
+
+    local sel_key="${keys[$((choice - 1))]}"
+    if [[ "$sel_key" == "__wizard__" ]]; then
+      _cc_full_setup
+      continue
+    fi
+    "${handlers[$((choice - 1))]}"
+    [[ "${waits[$((choice - 1))]}" == y ]] && wait_enter
   done
   crumb_pop
 }
@@ -199,68 +218,31 @@ _cc_full_setup() {
 
   _cc_wizard_accept_all=false
 
-  # Parallel arrays — bash 3.2 compatible.
-  local sections=(
-    "CORE" "CORE" "CORE"
-    "AI EXTENSIONS" "AI EXTENSIONS" "AI EXTENSIONS" "AI EXTENSIONS"
-    "SHELL INTEGRATION" "SHELL INTEGRATION" "SHELL INTEGRATION"
-    "MCP SERVERS" "MCP SERVERS"
-  )
-  local names=(
-    "Settings"
-    "Statusline"
-    "Doctor + /doctor command"
-    "Agents (4 subagents)"
-    "Slash commands (9)"
-    "Rules (5 behavior files)"
-    "Hooks (format + security-gate + session-start)"
-    "Env vars (.zshrc)"
-    "CLAUDE.md sync"
-    "'r' alias"
-    "MCP context7"
-    "MCP playwright"
-  )
-  local descs=(
-    "permission allow/deny + plugin enable + hooks wiring"
-    "cwd · branch · model · ctx% · rate% with color escalation"
-    "/doctor command + ~/.claude/doctor.sh — verifies hooks, deps, MCP, CLAUDE.md imports"
-    "debugger, explorer, reviewer, simplifier — each in fresh context"
-    "/canpush /debug /doctor /explore /mcp-context7 /refine /reflect /review /simplify"
-    "code-style, communication, git, security, workflow — @-imported via CLAUDE.md"
-    "format-on-edit, security gate (blocks force-push), SessionStart git context inject"
-    "SUBAGENT_MODEL=sonnet-4-6 + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99"
-    "auto-add @~/.claude/rules/<name>.md imports; remove stale ones"
-    "alias r='bash /tmp/cmd.sh' in ~/.zshrc"
-    "live library docs lookup (kills hallucinated APIs)"
-    "browser automation / E2E test generation"
-  )
-  local usecases=(
-    "safe defaults, no per-command prompts"
-    "see context burn before /compact bites"
-    "first-run health check / 'why is X broken'"
-    "delegate to specialist without polluting main thread"
-    "explicit one-line triggers"
-    "enforced behavior every session"
-    "auto-format, block force-push, save tokens on session start"
-    "cheap subagents + manual /compact discipline (Dex's <30% rule)"
-    "leave checked unless skipping rules"
-    "workflow.md 'claude writes script, you type r' pattern"
-    "any project pulling third-party libs"
-    "web testing only"
-  )
-  # All default-yes. Each panel's description tells user when to skip with 'n'.
-  local defaults=(y y y y y y y y y y y y)
+  # Build wizard panels from the component registry (wiz=y rows). Keeping the
+  # five values per row together — instead of five index-aligned arrays — is
+  # what removes the alignment footgun.
+  local r_keys=() r_sections=() r_names=() r_descs=() r_usecases=() r_defaults=()
+  local key section menu wiz mwait wdefault mlabel wlabel handler desc usecase
+  while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
+    [[ "$wiz" == y ]] || continue
+    r_keys+=("$key")
+    r_sections+=("$section")
+    r_names+=("$wlabel")
+    r_descs+=("$desc")
+    r_usecases+=("$usecase")
+    r_defaults+=("$wdefault")
+  done < <(_cc_registry)
 
-  local total=${#names[@]}
-  local sel=()
+  local total=${#r_keys[@]}
+  local sel=() # collects component keys
   local i=0
   while ((i < total)); do
     _cc_wizard_ask \
-      "${sections[$i]}" "${names[$i]}" "${descs[$i]}" \
-      "${usecases[$i]}" "${defaults[$i]}" "$((i + 1))" "$total"
+      "${r_sections[$i]}" "${r_names[$i]}" "${r_descs[$i]}" \
+      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total"
     local rc=$?
     case $rc in
-      0) sel+=("${names[$i]}") ;;
+      0) sel+=("${r_keys[$i]}") ;;
       1) ;; # skip
       2)
         log_info "Wizard cancelled"
@@ -279,7 +261,7 @@ _cc_full_setup() {
     return
   fi
   for s in "${sel[@]}"; do
-    printf '    %b•%b %s\n' "$GREEN" "$RESET" "$s"
+    printf '    %b•%b %s\n' "$GREEN" "$RESET" "$(_cc_wizard_label "$s")"
   done
   printf '\n'
   if ! confirm "Proceed?" "y"; then
@@ -293,38 +275,73 @@ _cc_full_setup() {
   _cc_require_jq
   _cc_ensure_dir
 
-  for item in "${sel[@]}"; do
-    case "$item" in
-      "Settings")
+  # Dependency preflight — capability flags so MCP/statusline steps skip with a
+  # clear reason instead of failing silently mid-batch on a clean system.
+  local have_claude=true have_npx=true have_statusline_rt=true
+  command -v claude >/dev/null 2>&1 || have_claude=false
+  command -v npx >/dev/null 2>&1 || have_npx=false
+  { command -v bun >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; } || have_statusline_rt=false
+  $have_claude || log_info "'claude' CLI not detected — get it at https://claude.com/code (file steps below still apply)"
+
+  # Dispatch by component key (matches the registry). Behavior — coherence
+  # flags, preflight skips — stays here; only the data lives in the registry.
+  for key in "${sel[@]}"; do
+    case "$key" in
+      settings)
         sel_settings=true
         _cc_install_settings_user --full
         ;;
-      "Statusline") _cc_install_statusline_copy ;;
-      "Doctor"*) _cc_install_doctor_copy ;;
-      "Agents"*) _cc_install_dir "agents" ;;
-      "Slash commands"*) _cc_install_dir "commands" ;;
-      "Rules"*)
+      statusline)
+        if $have_statusline_rt; then
+          _cc_install_statusline_copy
+        else
+          log_warn "Statusline skipped — neither bun nor npx in PATH"
+          log_info "  → settings.json still wires it; install bun or node to render"
+        fi
+        ;;
+      doctor) _cc_install_doctor_copy ;;
+      agents) _cc_install_dir "agents" ;;
+      commands) _cc_install_dir "commands" ;;
+      rules)
         sel_rules=true
         _cc_install_dir "rules"
         ;;
-      "Hooks"*)
+      hooks)
         sel_hooks=true
         _cc_install_hooks_copy
         ;;
-      "Env vars (.zshrc)") _cc_install_env_copy ;;
-      "CLAUDE.md sync")
+      env) _cc_install_env_copy ;;
+      claude_md)
         sel_claude_md=true
         _cc_install_claude_md_copy
         ;;
-      "'r' alias") _cc_install_r_alias_copy ;;
-      "MCP context7") _cc_mcp_install_one context7 && log_ok "context7 MCP installed" ;;
-      "MCP playwright") _cc_mcp_install_one playwright && log_ok "playwright MCP installed" ;;
+      ralias) _cc_install_r_alias_copy ;;
+      mcp_context7)
+        if ! $have_claude; then
+          log_warn "context7 MCP skipped — 'claude' CLI not found"
+        elif _cc_mcp_install_one context7; then
+          log_ok "context7 MCP installed"
+        else
+          log_err "context7 MCP install failed"
+        fi
+        ;;
+      mcp_playwright)
+        if ! $have_claude; then
+          log_warn "playwright MCP skipped — 'claude' CLI not found"
+        elif ! $have_npx; then
+          log_warn "playwright MCP skipped — needs 'npx' (Node.js)"
+        elif _cc_mcp_install_one playwright; then
+          log_ok "playwright MCP installed"
+        else
+          log_err "playwright MCP install failed"
+        fi
+        ;;
     esac
   done
 
   # Optional formatters — separate step (these are brew installs, not macrift configs)
   printf '\n'
-  log_info "Optional formatters for hooks/format.sh — brew install if you want them:"
+  log_info "Optional formatters for hooks/format.sh — un-installed ones are silently skipped by the hook:"
   local tool desc
   for tool in prettier ruff shfmt; do
     if command -v "$tool" >/dev/null 2>&1; then
@@ -340,6 +357,10 @@ _cc_full_setup() {
       _cc_brew_install_optional "$tool"
     fi
   done
+  # gofmt (.go) and rustfmt (.rs) are also wired in format.sh — they ship with
+  # the Go / Rust toolchains, so there's no standalone formula to brew-install.
+  command -v gofmt >/dev/null 2>&1 || log_skip "gofmt absent (.go) — comes with 'brew install go'"
+  command -v rustfmt >/dev/null 2>&1 || log_skip "rustfmt absent (.rs) — comes with the Rust toolchain (rustup)"
 
   # Coherence warnings
   printf '\n'
@@ -978,12 +999,20 @@ _cc_mcp_desc() {
 }
 
 _cc_mcp_install_one() {
+  command -v claude >/dev/null 2>&1 || {
+    log_err "'claude' CLI not found — install Claude Code first"
+    return 1
+  }
   case "$1" in
     context7)
       claude mcp add --scope user --transport http context7 \
         https://mcp.context7.com/mcp >/dev/null 2>&1
       ;;
     playwright)
+      command -v npx >/dev/null 2>&1 || {
+        log_err "playwright MCP needs 'npx' (Node.js) — not in PATH"
+        return 1
+      }
       claude mcp add --scope user playwright -- \
         npx -y @playwright/mcp@latest >/dev/null 2>&1
       ;;
@@ -1244,9 +1273,11 @@ _cc_install_ccgram_install_copy() {
   if command -v ccgram >/dev/null 2>&1; then
     log_ok "ccgram binary at: $(command -v ccgram)"
   else
-    log_warn "ccgram installed but not in PATH. Add to ~/.zshrc:"
-    log_warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
-    _cc_ensure_local_bin_on_path 2>/dev/null || true
+    log_warn "ccgram not on PATH — adding ~/.local/bin"
+    if ! _cc_ensure_local_bin_on_path; then
+      log_warn "Could not update PATH automatically. Add to ~/.zshrc:"
+      log_warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
   fi
 }
 
@@ -2062,7 +2093,7 @@ PLIST
   launchctl kickstart -k "gui/$UID/$label" 2>/dev/null || true
   log_ok "LaunchAgent installed and started"
 
-  _cc_ensure_local_bin_on_path 2>/dev/null || true
+  _cc_ensure_local_bin_on_path
 }
 
 # 7. Full setup orchestrator
@@ -2343,4 +2374,19 @@ _cc_reset() {
 
 _cc_ensure_dir() {
   mkdir -p "$CLAUDE_DIR"
+}
+
+# Ensure ~/.local/bin is on PATH. uv/bun drop launchers (ccgram, supercharged)
+# there, but a clean login shell may not include it. Idempotent via marker block;
+# also exports for the current session so the just-installed binary runs now.
+# Returns 1 only if the .zshrc write fails (e.g. unbalanced marker).
+_cc_ensure_local_bin_on_path() {
+  local bindir="$HOME/.local/bin"
+  case ":$PATH:" in
+    *":$bindir:"*) return 0 ;;
+  esac
+  printf 'export PATH="$HOME/.local/bin:$PATH"\n' |
+    _cc_replace_marked_block "$HOME/.zshrc" "$CC_TG_PATH_MARKER" || return 1
+  export PATH="$bindir:$PATH"
+  log_ok "Added ~/.local/bin to PATH (~/.zshrc + this session)"
 }
