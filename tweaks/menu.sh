@@ -408,11 +408,10 @@ tweaks_menu() {
 
         local choice
         choice=$(show_menu "System Tweaks" \
-            "## Defaults" \
             "Browse & Apply ›" \
-            "---" \
-            "## Tools" \
             "Hot Corners… ↗" \
+            "Spotlight Hotkey… ↗" \
+            "---" \
             "Dithering ›" \
             "Space Switcher ›" \
             "Back")
@@ -425,8 +424,18 @@ tweaks_menu() {
                  log_err "Failed to open System Settings"
                fi
                wait_enter ;;
-            3) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
-            4) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
+            3) # Disable Spotlight ⌘Space directly via prefs — no UI needed
+               local plist="$HOME/Library/Preferences/com.apple.symbolichotkeys.plist"
+               if /usr/libexec/PlistBuddy \
+                    -c "Set :AppleSymbolicHotKeys:64:enabled false" "$plist" 2>/dev/null; then
+                 killall SystemUIServer 2>/dev/null
+                 log_ok "⌘Space Spotlight shortcut disabled — ⌘Space is now free"
+               else
+                 log_err "Failed to modify shortcut — try System Settings → Keyboard → Keyboard Shortcuts → Spotlight"
+               fi
+               wait_enter ;;
+            4) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
+            5) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
             0) break ;;
             *) ;;
         esac
