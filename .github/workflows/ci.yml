@@ -30,6 +30,9 @@ jobs:
             bash -n "$file" || exit 1
           done
 
+      - name: Tests
+        run: bash tests/run.sh
+
       - name: Brewfile syntax
         run: |
           for bf in config/Brewfile.*; do
