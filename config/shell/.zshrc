@@ -101,5 +101,3 @@ alias ports="lsof -i -P -n | grep LISTEN"
 # Starship prompt
 eval "$(starship init zsh)" 2>/dev/null
 
-# FastFetch on new shell
-fastfetch 2>/dev/null
