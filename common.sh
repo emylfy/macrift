@@ -371,6 +371,11 @@ show_menu() {
     local count=${#items[@]}
     local last_idx=$((count - 1))
 
+    # A trailing "Back" item is implicit now — esc/← handles it (footer says so),
+    # so don't render it as a selectable row. Other trailing items (e.g. "Exit") stay.
+    local hide_back=false
+    [[ "${items[$last_idx]}" == "Back" ]] && hide_back=true
+
     # Build selectable items map
     local sel_nums=() sel_to_item=()
     local i num=0
@@ -381,16 +386,23 @@ show_menu() {
         sel_nums+=("$num")
         sel_to_item+=("$i")
     done
-    sel_nums+=(0)
-    sel_to_item+=("$last_idx")
+    if ! $hide_back; then
+        sel_nums+=(0)
+        sel_to_item+=("$last_idx")
+    fi
     local sel_total=${#sel_nums[@]}
 
-    # Box dimensions
-    local max_len=0
+    # Box dimensions. Items under a section header render indented by one space,
+    # so count that extra column toward the width.
+    local max_len=0 has_header=false
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
         local _wtext="${items[$i]}"
-        [[ "$_wtext" == "## "* ]] && _wtext="${_wtext#\#\# }"
+        if [[ "$_wtext" == "## "* ]]; then
+            _wtext="${_wtext#\#\# }"; has_header=true
+        elif $has_header; then
+            _wtext=" $_wtext"
+        fi
         [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
     local BP="${BOLD}${GRAY}" R="${RESET}"
@@ -412,8 +424,8 @@ show_menu() {
     # Render one selectable row: text, is_selected, is_back. The cursor is a
     # left accent bar (▌) in the gutter, so selection reads without relying on color.
     _menu_row() {
-        local is_sel="$2" is_back="${3:-false}" text
-        text=$(_fit "$1")
+        local is_sel="$2" is_back="${3:-false}" indent="${4:-}" text
+        text=$(_fit "${indent}$1")
         local lead="  "; $is_sel && lead=" $BAR"
         local body
         if $is_sel;   then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
@@ -465,10 +477,11 @@ show_menu() {
         fi
 
         # Items
-        local sel_idx=0 rendered=0
+        local sel_idx=0 rendered=0 seen_header=false
         for ((i=0; i<last_idx; i++)); do
             if $need_scroll; then
                 if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
+                    [[ "${items[$i]}" == "## "* ]] && seen_header=true
                     if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
                         sel_idx=$((sel_idx + 1))
                     fi
@@ -483,8 +496,9 @@ show_menu() {
             fi
 
             if [[ "${items[$i]}" == "## "* ]]; then
-                # Uppercase section headings so they read as labels, not disabled rows
-                local htext="${items[$i]#\#\# }"; htext=$(_fit "${htext^^}")
+                # Section heading: dim, sentence-case as written (not uppercased)
+                seen_header=true
+                local htext="${items[$i]#\#\# }"; htext=$(_fit "$htext")
                 local hpad=$((inner_w - 2 - ${#htext})); [[ $hpad -lt 0 ]] && hpad=0
                 _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$htext" "$R")" "$hpad"
                 rendered=$((rendered + 1))
@@ -492,7 +506,8 @@ show_menu() {
             fi
 
             local is_sel=false; [[ $sel_idx -eq $sel ]] && is_sel=true
-            _menu_row "${items[$i]}" "$is_sel"
+            local _ind=""; $seen_header && _ind=" "    # indent items beneath a heading
+            _menu_row "${items[$i]}" "$is_sel" false "$_ind"
             sel_idx=$((sel_idx + 1))
             rendered=$((rendered + 1))
         done
@@ -506,20 +521,24 @@ show_menu() {
             fi
         fi
 
-        # Back / Exit item
-        _box_empty "$inner_w"
-        local is_sel=false; [[ $sel -eq $((sel_total - 1)) ]] && is_sel=true
-        _menu_row "${items[$last_idx]}" "$is_sel" true
-
-        _box_empty "$inner_w"
+        # Trailing item: an implicit "Back" is hidden (use ← instead); a real
+        # item like "Exit" is still shown and selectable.
+        if $hide_back; then
+            _box_empty "$inner_w"
+        else
+            _box_empty "$inner_w"
+            local is_sel=false; [[ $sel -eq $((sel_total - 1)) ]] && is_sel=true
+            _menu_row "${items[$last_idx]}" "$is_sel" true
+            _box_empty "$inner_w"
+        fi
         _box_bottom "$inner_w"
 
-        # Footer — full key contract + active flags
-        local hint="↑↓ move  →/enter open"
-        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+="  ←/esc back"
-        # Title already shows short version (e.g. 26.05); only echo full
-        # version in footer when there's a patch suffix to disambiguate
-        [[ "$MACRIFT_VERSION" != "$MACRIFT_VERSION_SHORT" ]] && hint+="  ·  v$MACRIFT_VERSION"
+        # Footer — key contract + active flags. Back is ← (esc is unreliable in
+        # many terminals — a lone ESC can't be told apart from an arrow sequence).
+        # Version only at the root level, not on every submenu.
+        local hint="↑↓ move · →/↵ select"
+        [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]] && hint+=" · ← back"
+        [[ ${#MACRIFT_CRUMBS[@]} -le 1 && "$MACRIFT_VERSION" != "$MACRIFT_VERSION_SHORT" ]] && hint+=" · v$MACRIFT_VERSION"
         local flags=""
         [[ "$MACRIFT_DRY_RUN" == true ]] && flags+=" [dry-run]"
         [[ "$MACRIFT_NO_CONFIRM" == true ]] && flags+=" [auto]"
@@ -537,14 +556,14 @@ show_menu() {
         # Sticky cursor: save sel when leaving, but skip if cursor was on the Back item
         # (otherwise cursor would re-stick on Back and create an immediate-exit loop next visit)
         local on_back=false
-        [[ $sel -ge $((sel_total - 1)) ]] && on_back=true
+        if ! $hide_back && [[ $sel -ge $((sel_total - 1)) ]]; then on_back=true; fi
         case "$key" in
             up)    [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
             down)  [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
             right|enter)
                    $on_back || _menu_pos_set "$title" "$sel"
                    _ui_end; echo "${sel_nums[$sel]}"; return ;;
-            left|esc)
+            left)
                    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
                        $on_back || _menu_pos_set "$title" "$sel"
                        _ui_end; echo "0"; return
@@ -740,7 +759,7 @@ show_multiselect() {
             _box_empty "$inner_w"
             _box_bottom "$inner_w"
 
-            printf '  %b%s%b\033[K\n' "$DIM" "↑↓ scroll  ←/esc back" "$R" >&2
+            printf '  %b%s%b\033[K\n' "$DIM" "↑↓ scroll  ← back" "$R" >&2
             printf '\033[K\n' >&2
             _frame_end
 
@@ -749,7 +768,7 @@ show_multiselect() {
             case "$key" in
                 up)   [[ $view_cursor -gt 0 ]] && view_cursor=$((view_cursor - 1)) ;;
                 down) [[ $view_cursor -lt $((view_count - 1)) ]] && view_cursor=$((view_cursor + 1)) ;;
-                left|esc|right|enter) view_mode=false ;;   # installed-view is a drill-in; any of these returns to the picker
+                left|right|enter) view_mode=false ;;   # installed-view is a drill-in; any of these returns to the picker
             esac
             continue
         fi
@@ -819,7 +838,7 @@ show_multiselect() {
             printf '\033[K\n' >&2
         else
             printf '  %b↑↓ move  space toggle  a all%b\033[K\n' "$DIM" "$R" >&2
-            local hint2="←/esc back  enter confirm"
+            local hint2="← back  enter confirm"
             $view_available && hint2+="  → installed"
             printf '  %b%s%b\033[K\n' "$DIM" "$hint2" "$R" >&2
         fi
@@ -849,7 +868,7 @@ show_multiselect() {
                 if [[ $cursor -eq $count ]]; then _ui_end; return 0; fi
                 if $view_available; then view_mode=true; view_cursor=0; fi
                 ;;
-            left|esc) _ui_end; return 0 ;;
+            left) _ui_end; return 0 ;;
             space)
                 if [[ $cursor -lt $count ]]; then
                     if [[ "${selected[cursor]}" == "1" ]]; then selected[cursor]="0"; else selected[cursor]="1"; fi

@@ -171,7 +171,7 @@ _tweak_wizard() {
             local hint="↑↓ move  ␣ skip→apply→reset  a all"
             if [[ $cat_count -eq 1 ]]; then hint+="  ↵ review"
             elif [[ $cat_idx -eq 0 ]]; then hint+="  →/↵ next"
-            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ←/esc prev  ↵ review"
+            elif [[ $cat_idx -eq $(( cat_count - 1 )) ]]; then hint+="  ← prev  ↵ review"
             else hint+="  ←/→ prev/next"
             fi
 
@@ -205,7 +205,7 @@ _tweak_wizard() {
                         cat_idx=$(( cat_idx + 1 ))
                     else wizard_done=true; fi
                     break ;;
-                left|esc)
+                left)
                     cursors[cat_idx]=$cursor
                     if [[ $cat_idx -gt 0 ]]; then
                         cat_idx=$(( cat_idx - 1 )); break
