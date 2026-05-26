@@ -4,6 +4,7 @@
 ITERM2_DOMAIN="com.googlecode.iterm2"
 
 terminal_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Terminal"
     while true; do
         clear
@@ -229,6 +230,7 @@ _ghostty_install_themes() {
 }
 
 shell_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Shell"
     while true; do
         clear
@@ -378,6 +380,7 @@ setup_fastfetch() {
 
     if ! command -v fastfetch &>/dev/null; then
         log_warn "FastFetch not found"
+        if ! check_homebrew; then wait_enter; return; fi
         if ! brew_install "fastfetch"; then return; fi
     fi
 

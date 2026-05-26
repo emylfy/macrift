@@ -209,13 +209,7 @@ main_menu() {
         case "$choice" in
             1) source "$MACRIFT_DIR/tweaks/menu.sh" && tweaks_menu ;;
             2) source "$MACRIFT_DIR/apps/menu.sh" && apps_menu ;;
-            3)
-                if check_homebrew; then
-                    source "$MACRIFT_DIR/customize/menu.sh" && customize_menu
-                else
-                    wait_enter
-                fi
-                ;;
+            3) source "$MACRIFT_DIR/customize/menu.sh" && customize_menu ;;
             4) source "$MACRIFT_DIR/security/menu.sh" && privacy_menu ;;
             5) source "$MACRIFT_DIR/cleanup/menu.sh" && cleanup_menu ;;
             6)

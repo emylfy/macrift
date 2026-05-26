@@ -4,6 +4,7 @@
 DOCK_LAYOUT_DIR="$HOME/.macrift"
 
 dock_layout_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Dock Layout"
     while true; do
         clear

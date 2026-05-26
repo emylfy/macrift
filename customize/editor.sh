@@ -2,6 +2,7 @@
 # macrift — Code editor config
 
 editor_menu() {
+    if ! check_homebrew; then wait_enter; return; fi
     crumb_push "Code Editor"
     while true; do
         clear
