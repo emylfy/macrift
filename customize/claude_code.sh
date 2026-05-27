@@ -425,12 +425,27 @@ _cc_install_settings_user() {
       fi
       if [[ -f "$target" ]]; then
         local merged jq_err err_log
-        # jq `*` deep-merges objects but REPLACES arrays — so any user-added
-        # entries in permissions.allow/deny will be overwritten by macrift's lists.
-        # Capture stderr separately: if it leaked into $merged, a jq warning
-        # would corrupt settings.json.
+        # Deep-merge that UNIONS arrays (vs jq's `*`, which replaces them).
+        # macrift wins on scalar conflicts (model, statusLine, etc.), objects
+        # recurse, but arrays — permissions.allow/deny, hooks — are merged and
+        # deduped so re-running setup never clobbers the user's own entries.
+        # Capture stderr separately: a jq warning leaking into $merged would
+        # corrupt settings.json.
         err_log=$(mktemp)
-        merged=$(jq -s '.[0] * .[1]' "$target" "$source" 2>"$err_log")
+        # $a/$b bind the args as values; bare params would be filters re-run
+        # against the reduce accumulator (a classic jq footgun).
+        merged=$(jq -s '
+          def deepmerge($a; $b):
+            reduce ($b | keys_unsorted[]) as $k ($a;
+              if ($a[$k] | type) == "object" and ($b[$k] | type) == "object" then
+                .[$k] = deepmerge($a[$k]; $b[$k])
+              elif ($a[$k] | type) == "array" and ($b[$k] | type) == "array" then
+                .[$k] = ($a[$k] + $b[$k] | unique)
+              else
+                .[$k] = $b[$k]
+              end);
+          deepmerge(.[0]; .[1])
+        ' "$target" "$source" 2>"$err_log")
         local jq_status=$?
         jq_err=$(cat "$err_log")
         rm -f "$err_log"
@@ -478,7 +493,7 @@ _cc_install_settings_user() {
 
         backup_file "$target"
         printf '%s\n' "$merged" >"$target"
-        log_ok "User settings merged (objects deep-merged, arrays replaced)"
+        log_ok "User settings merged (objects deep-merged, arrays unioned + deduped)"
       else
         copy_config "$source" "$target"
         log_ok "User settings installed"
