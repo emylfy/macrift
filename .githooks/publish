@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Cut a release: bump VERSION right before pushing, commit it, push main.
+# Run this INSTEAD of `git push` when you want to publish — the VERSION bump is
+# what users see as "update available" (they get the file via the release
+# tarball). The pre-push hook then tags v<VERSION>.
+#
+# Plain `git push` ships code WITHOUT a release (no bump, no new tag) — use it
+# for WIP. Version is bumped only here, never per-commit, so day-to-day history
+# stays free of version churn.
+
+set -euo pipefail
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+if [[ "$branch" != "main" ]]; then
+    printf 'publish: not on main (on %s) — aborting\n' "${branch:-detached HEAD}" >&2
+    exit 1
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    printf 'publish: working tree not clean — commit your work first\n' >&2
+    exit 1
+fi
+
+# Calver bump: YY.MM → YY.MM.1 → YY.MM.2 … ; a new month resets (26.05.7 → 26.06).
+current=$(cat VERSION 2>/dev/null || echo "")
+today_major=$(date +%y.%m)
+if [[ "$current" =~ ^([0-9]+\.[0-9]+)(\.([0-9]+))?$ ]]; then
+    cur_major="${BASH_REMATCH[1]}"
+    cur_patch="${BASH_REMATCH[3]:-0}"
+else
+    cur_major=""
+    cur_patch=0
+fi
+# Compare YYMM integers so a future-dated VERSION never downgrades.
+cur_int="${cur_major//./}"
+today_int="${today_major//./}"
+: "${cur_int:=0}"
+if [[ "$today_int" -gt "$cur_int" ]]; then
+    new_version="$today_major"
+else
+    new_version="${cur_major:-$today_major}.$((cur_patch + 1))"
+fi
+
+printf '%s\n' "$new_version" >VERSION
+git add VERSION
+git commit -q -m "chore(release): v$new_version"
+printf 'publish: %s → %s\n' "${current:-<empty>}" "$new_version"
+
+# pre-push tags v<new_version> and carries it with the push.
+git push origin main
+printf 'publish: released v%s\n' "$new_version"

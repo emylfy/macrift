@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Auto-tag the pushed VERSION so the in-app update changelog ALWAYS has a
+# precise `v<VERSION>...main` compare range. One tag per push (the pushed tip),
+# not per commit — every published VERSION ends up tagged, with no tag spam.
+#
+# We create the tag and push it from inside this hook (git's own ref list for
+# the in-flight push is already fixed, so we can't rely on follow-tags here).
+# MACRIFT_TAG_PUSH guards against re-entering this hook on that tag push.
+
+set -euo pipefail
+
+[[ -n "${MACRIFT_TAG_PUSH:-}" ]] && exit 0
+
+remote="$1"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Only tag pushes of main; skip branch deletions (all-zero sha)
+    [[ "$local_ref" == "refs/heads/main" ]] || continue
+    [[ "$local_sha" =~ ^0+$ ]] && continue
+
+    v=$(git show "$local_sha:VERSION" 2>/dev/null || true)
+    [[ -z "$v" ]] && continue
+
+    if ! git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+        git tag -a "v$v" -m "Release v$v" "$local_sha"
+        printf '[pre-push] tagged v%s\n' "$v" >&2
+    fi
+
+    # Push ONLY this tag now (carries the tip commit too). followTags is forced
+    # off here so we don't also shove every reachable tag and collide with the
+    # outer push. Guarded against re-entering this hook.
+    MACRIFT_TAG_PUSH=1 git -c push.followTags=false push "$remote" "refs/tags/v$v" >&2
+done
+
+exit 0

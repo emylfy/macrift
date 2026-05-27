@@ -7,14 +7,16 @@ git config core.hooksPath .githooks
 git config push.followTags true
 ```
 
-## what they do
+## the model: version = release, not commit
 
-- **pre-commit** — bumps `VERSION` patch on code commits to `main` (calver `YY.MM` / `YY.MM.N`). Skips docs-only commits (`*.md`, `.claude/`, `.githooks/`). New month → resets patch (e.g. `26.05.7` → `26.06`).
-  - skip once: `SKIP_BUMP=1 git commit ...`
-  - skip and set version manually: `git add VERSION` before commit
-- **post-commit** — creates lightweight tag `v<VERSION>` when the commit touches `VERSION`. Idempotent.
+`VERSION` is bumped **once per release, right before the push** — not on every commit. Day-to-day commits never touch it, so history stays free of version churn. Why not auto-bump in a push hook? Bumping `VERSION` needs a commit, and a `pre-push` hook can't inject a commit into the push that's already in flight. And the file must stay the source of truth because `macrift update` ships a tarball (no `.git`/tags) — end users only have the file. So the bump lives in a command you run.
 
-`push.followTags` makes `git push` also push the new tags so the in-app update changelog can use GitHub's compare API (`v<old>...main`) instead of falling back to last-10-commits.
+- **`publish`** (`./.githooks/publish`) — **run this instead of `git push` to release**: bumps `VERSION` (calver `YY.MM` / `YY.MM.N`; new month resets, e.g. `26.05.7` → `26.06`), commits `chore(release): vX`, and pushes `main`.
+- **pre-push** — on any push of `main`, tags the pushed tip `v<VERSION>` (annotated, if not already tagged) and pushes that one tag. So `publish`'s push gets tagged automatically.
+
+Plain **`git push`** ships code **without** a release — no bump, no new tag (the tip's `VERSION` is already tagged, so pre-push is a no-op). Use it for WIP; use `publish` when you want users to see "update available".
+
+The in-app changelog uses GitHub's compare API (`v<installed>...main`); since every release is tagged, the compare always resolves. pre-push force-disables `push.followTags` on its own tag push so it sends only the new tag (no collision with the outer push).
 
 ## flagging manual actions
 
