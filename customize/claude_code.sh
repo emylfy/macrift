@@ -736,13 +736,14 @@ _cc_marker_balanced() {
   ((count % 2 == 0))
 }
 
-# .zshrc marker-block helper
+# Shell-rc marker-block helper (works for zsh/bash/fish — all use # comments).
 # Replaces (or appends) a block in $zshrc bounded by two identical marker lines.
 # Body is read from stdin.
 _cc_replace_marked_block() {
   local zshrc="$1"
   local marker="$2"
 
+  mkdir -p "$(dirname "$zshrc")" 2>/dev/null  # fish: ~/.config/fish may not exist
   [[ -f "$zshrc" ]] || touch "$zshrc"
 
   if grep -qF "$marker" "$zshrc" 2>/dev/null; then
@@ -787,6 +788,39 @@ _cc_strip_marked_block() {
   rm -f "$temp"
 }
 
+# Cross-shell support. macrift is zsh-first; bash/fish users get the right rc
+# file + syntax. Unknown shells fall back to zsh (macOS default).
+_cc_shell_kind() {
+  case "${SHELL##*/}" in
+    fish) printf 'fish' ;;
+    bash) printf 'bash' ;;
+    *) printf 'zsh' ;;
+  esac
+}
+
+_cc_target_rc() {
+  case "$(_cc_shell_kind)" in
+    fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
+    bash) printf '%s\n' "$HOME/.bashrc" ;;
+    *) printf '%s\n' "$HOME/.zshrc" ;;
+  esac
+}
+
+# Render an `export VAR=value` line in the target shell's syntax.
+# zsh/bash keep `export`; fish uses `set -gx`. Values in env.sh are bare tokens
+# (no spaces), so no requoting is needed.
+_cc_export_line() {
+  local kind="$1" line="$2" body var val
+  body="${line#export }"
+  var="${body%%=*}"
+  val="${body#*=}"
+  if [[ "$kind" == fish ]]; then
+    printf 'set -gx %s %s\n' "$var" "$val"
+  else
+    printf '%s\n' "$line"
+  fi
+}
+
 # Environment
 
 _cc_install_env() {
@@ -797,19 +831,22 @@ _cc_install_env() {
     return
   fi
 
-  log_info "Environment variables to add to .zshrc:"
+  local kind rc
+  kind=$(_cc_shell_kind)
+  rc=$(_cc_target_rc)
+  log_info "Environment variables to add to $rc:"
   printf '\n'
   while IFS= read -r line; do
-    printf '  %b›%b %s\n' "$CYAN" "$RESET" "$line"
+    printf '  %b›%b %s\n' "$CYAN" "$RESET" "$(_cc_export_line "$kind" "$line")"
   done < <(grep -E '^export ' "$source")
   printf '\n'
 
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Dry run — would add env vars to .zshrc"
+    log_info "Dry run — would add env vars to $rc"
     return
   fi
 
-  if ! confirm "Add Claude Code env vars to .zshrc?"; then return; fi
+  if ! confirm "Add Claude Code env vars to $rc?"; then return; fi
 
   _cc_install_env_copy
   log_info "Restart shell to apply"
@@ -818,14 +855,19 @@ _cc_install_env() {
 _cc_install_env_copy() {
   local source="$CC_CONFIG/env.sh"
   [[ -f "$source" ]] || return 0
+  local kind rc line
+  kind=$(_cc_shell_kind)
+  rc=$(_cc_target_rc)
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Would write env block to .zshrc"
+    log_info "Would write env block to $rc"
     return
   fi
 
-  grep -E '^export ' "$source" |
-    _cc_replace_marked_block "$HOME/.zshrc" "$CC_ENV_MARKER"
-  log_ok "Environment variables added to .zshrc"
+  while IFS= read -r line; do
+    _cc_export_line "$kind" "$line"
+  done < <(grep -E '^export ' "$source") |
+    _cc_replace_marked_block "$rc" "$CC_ENV_MARKER"
+  log_ok "Environment variables added to $rc"
 }
 
 # brew install a tool if missing. Used by Full Setup multi-select to
@@ -942,27 +984,32 @@ _cc_install_claude_md_copy() {
 # 'r' alias
 
 _cc_install_r_alias() {
+  local rc
+  rc=$(_cc_target_rc)
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Dry run — would add 'r' alias to .zshrc"
+    log_info "Dry run — would add 'r' alias to $rc"
     return
   fi
 
   log_info "Adds: alias r='bash /tmp/cmd.sh'  (used by workflow rule)"
   printf '\n'
-  if ! confirm "Add 'r' alias to .zshrc?"; then return; fi
+  if ! confirm "Add 'r' alias to $rc?"; then return; fi
 
   _cc_install_r_alias_copy
   log_info "Restart shell to apply"
 }
 
 _cc_install_r_alias_copy() {
+  local rc
+  rc=$(_cc_target_rc)
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Would add 'r' alias to .zshrc"
+    log_info "Would add 'r' alias to $rc"
     return
   fi
+  # `alias r='bash /tmp/cmd.sh'` is valid in zsh, bash, and fish alike.
   printf "alias r='bash /tmp/cmd.sh'\n" |
-    _cc_replace_marked_block "$HOME/.zshrc" "$CC_RALIAS_MARKER"
-  log_ok "'r' alias added to .zshrc"
+    _cc_replace_marked_block "$rc" "$CC_RALIAS_MARKER"
+  log_ok "'r' alias added to $rc"
 }
 
 # MCP servers
@@ -1064,6 +1111,8 @@ _cc_install_mcp_copy() {
 # Reset
 
 _cc_reset() {
+  local rc
+  rc=$(_cc_target_rc)
   clear
   printf '\n'
   printf '  %bClaude Code — Reset%b\n\n' "$BOLD" "$RESET"
@@ -1073,7 +1122,7 @@ _cc_reset() {
   printf '    %s/CLAUDE.md\n' "$CLAUDE_DIR"
   printf '    %s/env.sh\n' "$CLAUDE_DIR"
   printf '    %s/{agents,commands,rules,hooks}/ (incl. *.bak inside)\n' "$CLAUDE_DIR"
-  printf '    macrift sections in ~/.zshrc (env block + r-alias block)\n\n'
+  printf '    macrift sections in %s (env block + r-alias block)\n\n' "$rc"
   printf '  Will %bPRESERVE%b: sessions, history, projects, plugins, channels, cache\n\n' "$GREEN" "$RESET"
 
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -1091,8 +1140,8 @@ _cc_reset() {
     "$CLAUDE_DIR/CLAUDE.md.bak" "$CLAUDE_DIR/env.sh"
   rm -rf "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands" "$CLAUDE_DIR/rules" "$CLAUDE_DIR/hooks"
 
-  _cc_strip_marked_block "$HOME/.zshrc" "$CC_ENV_MARKER"
-  _cc_strip_marked_block "$HOME/.zshrc" "$CC_RALIAS_MARKER"
+  _cc_strip_marked_block "$rc" "$CC_ENV_MARKER"
+  _cc_strip_marked_block "$rc" "$CC_RALIAS_MARKER"
 
   log_ok "Claude Code state wiped"
 
@@ -1170,9 +1219,9 @@ _cc_reset() {
     fi
   fi
 
-  if grep -qF "$CC_TG_PATH_MARKER" "$HOME/.zshrc" 2>/dev/null; then
-    if confirm "Strip ~/.local/bin PATH block from ~/.zshrc?" "n"; then
-      _cc_strip_marked_block "$HOME/.zshrc" "$CC_TG_PATH_MARKER"
+  if grep -qF "$CC_TG_PATH_MARKER" "$rc" 2>/dev/null; then
+    if confirm "Strip ~/.local/bin PATH block from $rc?" "n"; then
+      _cc_strip_marked_block "$rc" "$CC_TG_PATH_MARKER"
       log_ok "PATH block stripped"
     fi
   fi
@@ -1195,8 +1244,16 @@ _cc_ensure_local_bin_on_path() {
   case ":$PATH:" in
     *":$bindir:"*) return 0 ;;
   esac
-  printf 'export PATH="$HOME/.local/bin:$PATH"\n' |
-    _cc_replace_marked_block "$HOME/.zshrc" "$CC_TG_PATH_MARKER" || return 1
+  local kind rc body
+  kind=$(_cc_shell_kind)
+  rc=$(_cc_target_rc)
+  if [[ "$kind" == fish ]]; then
+    body='fish_add_path "$HOME/.local/bin"'
+  else
+    body='export PATH="$HOME/.local/bin:$PATH"'
+  fi
+  printf '%s\n' "$body" |
+    _cc_replace_marked_block "$rc" "$CC_TG_PATH_MARKER" || return 1
   export PATH="$bindir:$PATH"
-  log_ok "Added ~/.local/bin to PATH (~/.zshrc + this session)"
+  log_ok "Added ~/.local/bin to PATH ($rc + this session)"
 }

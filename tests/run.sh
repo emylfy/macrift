@@ -110,5 +110,18 @@ printf '# M\nfoo\n' >"$tmp"
 if _cc_marker_balanced "$tmp" "# M"; then no "single marker → should be non-zero"; else ok "single marker → non-zero"; fi
 rm -f "$tmp"
 
+printf '== cross-shell resolver (_cc_target_rc / _cc_shell_kind) ==\n'
+eq "zsh → .zshrc" "$(SHELL=/bin/zsh _cc_target_rc)" "$HOME/.zshrc"
+eq "bash → .bashrc" "$(SHELL=/bin/bash _cc_target_rc)" "$HOME/.bashrc"
+eq "fish → config.fish" "$(SHELL=/usr/local/bin/fish _cc_target_rc)" "$HOME/.config/fish/config.fish"
+eq "unknown → zsh fallback" "$(SHELL=/bin/sh _cc_target_rc)" "$HOME/.zshrc"
+
+printf '== export-line translation (_cc_export_line) ==\n'
+eq "zsh keeps export" "$(_cc_export_line zsh 'export FOO=bar')" "export FOO=bar"
+eq "bash keeps export" "$(_cc_export_line bash 'export FOO=bar')" "export FOO=bar"
+eq "fish → set -gx" "$(_cc_export_line fish 'export FOO=bar')" "set -gx FOO bar"
+eq "fish real var" "$(_cc_export_line fish 'export CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-4-6')" \
+  "set -gx CLAUDE_CODE_SUBAGENT_MODEL claude-sonnet-4-6"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

@@ -228,8 +228,7 @@ _cc_install_ccgram_install_copy() {
   else
     log_warn "ccgram not on PATH — adding ~/.local/bin"
     if ! _cc_ensure_local_bin_on_path; then
-      log_warn "Could not update PATH automatically. Add to ~/.zshrc:"
-      log_warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      log_warn "Could not update PATH automatically — add ~/.local/bin to your shell rc"
     fi
   fi
 }

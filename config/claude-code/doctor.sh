@@ -39,6 +39,14 @@ section() { printf '\n%b%s%b\n' "$B" "$*" "$N"; }
 
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 
+# Resolve the shell rc macrift writes to (zsh-first; bash/fish supported).
+case "${SHELL##*/}" in
+  fish) SHELL_RC="$HOME/.config/fish/config.fish" ;;
+  bash) SHELL_RC="$HOME/.bashrc" ;;
+  *) SHELL_RC="$HOME/.zshrc" ;;
+esac
+RC_SHORT="${SHELL_RC/#$HOME/\~}"
+
 printf '%bClaude Code health check%b\n' "$B" "$N"
 printf '%b%s%b\n' "$D" "$(date '+%Y-%m-%d %H:%M')" "$N"
 
@@ -191,16 +199,16 @@ else
   fail "/tmp not writable — workflow.md /tmp/cmd.sh pattern broken"
 fi
 
-if grep -q "alias r='bash /tmp/cmd.sh'" "$HOME/.zshrc" 2>/dev/null; then
-  ok "'r' alias set in ~/.zshrc"
+if grep -q "alias r='bash /tmp/cmd.sh'" "$SHELL_RC" 2>/dev/null; then
+  ok "'r' alias set in $RC_SHORT"
 else
   miss "'r' alias missing — workflow.md tells Claude to suggest \`r\`, fallback is manual \`bash /tmp/cmd.sh\`"
 fi
 
-if grep -q '^# macrift:claude-code env' "$HOME/.zshrc" 2>/dev/null; then
-  ok "env block in ~/.zshrc"
+if grep -q '^# macrift:claude-code env' "$SHELL_RC" 2>/dev/null; then
+  ok "env block in $RC_SHORT"
 else
-  miss "no env block in ~/.zshrc — subagent model / autocompact / concurrency not set"
+  miss "no env block in $RC_SHORT — subagent model / autocompact / concurrency not set"
 fi
 
 # Statusline (delegated to ccstatusline via bunx — see settings.json)
