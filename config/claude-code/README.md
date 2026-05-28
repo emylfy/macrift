@@ -41,7 +41,16 @@ Two more components live in [`customize/claude_code.sh`](../../customize/claude_
 
 ## settings/user.json
 
-Merged into `~/.claude/settings.json` via `jq '.[0] * .[1]'` (existing user keys win on conflict).
+Deep-merged into `~/.claude/settings.json`: **macrift wins on scalar conflicts** (model, `statusLine`, etc.), nested objects recurse, and **arrays are unioned + deduped** — so re-running setup keeps your own `permissions.allow`/`deny` and hook entries instead of clobbering them. Idempotent.
+
+### permission philosophy (threat model)
+
+`defaultMode: "auto"` + a broad `allow` keeps Claude unblocked on everyday commands; `deny` + the `security-gate.sh` hook are the guardrails. This is **defense-in-depth, not a sandbox** — a determined prompt-injection could still do damage. Deliberate choices:
+
+- **`curl`/`wget` are allowed** (fetching is too common to gate). The dangerous shapes — `curl … | sh`, `$(…)` eval, secret exfil to a URL — are caught by `security-gate.sh` regex, which sees the whole command line where a prefix-match `deny` can't.
+- **`deny` is prefix-matched**, so it blocks the obvious destructive verbs (`rm`, `mv`, `sudo`, force-git, `kill`, `dd`, `mkfs`, `defaults write`, `eval`/`exec`) but not every disguise — hence the hook backstop.
+- **`defaults write` is denied** on purpose: Claude shouldn't silently change macOS prefs. Loosen it yourself if you want Claude driving `defaults`.
+- **`cp` is allowed** and can overwrite files; it's kept for practicality. If that worries you, move it to `deny`.
 
 | key                  | purpose                                                                                                                                                                                                              |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
