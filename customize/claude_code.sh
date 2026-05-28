@@ -226,10 +226,12 @@ _cc_full_setup() {
   local sel=() # collects component keys
   local i=0
   while ((i < total)); do
+    # `|| rc=$?` is required: _cc_wizard_ask returns 1 (skip) / 2 (quit), and
+    # under `set -e` a bare non-zero call would abort the whole script.
+    local rc=0
     _cc_wizard_ask \
       "${r_sections[$i]}" "${r_names[$i]}" "${r_descs[$i]}" \
-      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total"
-    local rc=$?
+      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total" || rc=$?
     case $rc in
       0) sel+=("${r_keys[$i]}") ;;
       1) ;; # skip
