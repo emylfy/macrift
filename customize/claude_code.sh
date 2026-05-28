@@ -60,9 +60,9 @@ _cc_registry() {
   cat <<'REG'
 settings|Core|y|y|y|y|Settings|Settings|_cc_install_settings_user|permission allow/deny + plugin enable + hooks wiring|safe defaults, no per-command prompts
 statusline|Core|y|y|y|y|Statusline|Statusline|_cc_install_statusline|cwd · branch · model · ctx% · rate% with color escalation|see context burn before /compact bites
-doctor|Core|n|y|n|y||Doctor + /doctor command||/doctor command + ~/.claude/doctor.sh — verifies hooks, deps, MCP, CLAUDE.md imports|first-run health check / 'why is X broken'
+doctor|Core|n|y|n|y||Doctor + /doctor command||/doctor (health) + /macrift (toolkit catalog) scripts in ~/.claude — verifies hooks/deps/MCP/imports, lists what's installed|first-run health check / 'what did macrift give me'
 agents|AI extensions|y|y|n|y|Agents|Agents (4 subagents)|_cc_install_agents|debugger, explorer, reviewer, simplifier — each in fresh context|delegate to specialist without polluting main thread
-commands|AI extensions|y|y|n|y|Slash Commands|Slash commands (9)|_cc_install_commands|/canpush /debug /doctor /explore /mcp-context7 /refine /reflect /review /simplify|explicit one-line triggers
+commands|AI extensions|y|y|n|y|Slash Commands|Slash commands (10)|_cc_install_commands|/canpush /debug /doctor /explore /macrift /mcp-context7 /refine /reflect /review /simplify|explicit one-line triggers
 rules|AI extensions|y|y|n|y|Rules|Rules (5 behavior files)|_cc_install_rules|code-style, communication, git, security, workflow — @-imported via CLAUDE.md|enforced behavior every session
 hooks|AI extensions|y|y|y|y|Hooks|Hooks (format + security-gate + session-start)|_cc_install_hooks|format-on-edit, security gate (blocks force-push), SessionStart git context inject|auto-format, block force-push, save tokens on session start
 env|Shell integration|y|y|y|y|Environment (.zshrc env vars)|Env vars (.zshrc)|_cc_install_env|SUBAGENT_MODEL=sonnet-4-6 + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99|cheap subagents + manual /compact discipline (Dex's <30% rule)
@@ -599,12 +599,17 @@ _cc_install_doctor_copy() {
   local target="$CLAUDE_DIR/doctor.sh"
   [[ -f "$source" ]] || return 0
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Would copy doctor.sh → $target"
+    log_info "Would copy doctor.sh + macrift-toolkit.sh → $CLAUDE_DIR"
     return
   fi
   _cc_ensure_dir
   copy_config "$source" "$target"
   chmod +x "$target" 2>/dev/null || true
+  # toolkit catalog (powers /macrift) — sibling meta-script to doctor.sh
+  if [[ -f "$CC_CONFIG/macrift-toolkit.sh" ]]; then
+    copy_config "$CC_CONFIG/macrift-toolkit.sh" "$CLAUDE_DIR/macrift-toolkit.sh"
+    chmod +x "$CLAUDE_DIR/macrift-toolkit.sh" 2>/dev/null || true
+  fi
 }
 
 # Hooks

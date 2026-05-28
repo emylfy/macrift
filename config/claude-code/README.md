@@ -2,11 +2,12 @@
 
 > **What is this?** [macrift](../../README.md) is a macOS dotfiles + setup framework. **Claude Code** is Anthropic's CLI for Claude ([claude.com/code](https://claude.com/code)). This directory ships an opinionated configuration into `~/.claude/`. All paths in this README are relative to the macrift repo root.
 
-Opinionated drop-in: 4 subagents, 9 slash-commands, 5 behavior rules, 3 hooks, custom statusline, health-check script, broad permission allowlist with destructive-ops deny, and an optional Telegram bot bridge. Every component is independently togglable from `macrift → Claude Code`.
+Opinionated drop-in: 4 subagents, 10 slash-commands, 5 behavior rules, 3 hooks, custom statusline, health-check + toolkit-catalog scripts, broad permission allowlist with destructive-ops deny, and an optional Telegram bot bridge. Every component is independently togglable from `macrift → Claude Code`.
 
 Things you don't get in most other Claude Code configs:
 
 - **`/doctor`** — runs `~/.claude/doctor.sh` to verify hooks, deps, MCP servers, CLAUDE.md @-imports are all wired correctly. Color-coded report. Run after install or when something stops working.
+- **`/macrift`** — runs `~/.claude/macrift-toolkit.sh`, a live catalog of what macrift installed (agents, commands, rules, hooks, env, statusline, MCP) with one-line descriptions. The complement to `/doctor`: doctor answers "is it healthy?", this answers "what do I have?".
 - **SessionStart hook** — auto-injects branch, working-tree status, recent commits, detected test runner, and latest CI status into Claude's first turn. Saves tokens by not making Claude re-discover the basics every session.
 - **Dependency bootstrap** — at Full Setup, the installer detects missing `jq` / `prettier` / `ruff` / `shfmt` and offers to `brew install` them. Hooks no longer fail silently because a formatter wasn't installed.
 - **Settings dry-run** — interactive settings install shows a unified diff of `~/.claude/settings.json` before applying. No more guessing what got merged.
@@ -31,6 +32,7 @@ hooks/       → ~/.claude/hooks/       — lifecycle hooks (format + security +
 rules/       → ~/.claude/rules/       — behavior rules @-imported into CLAUDE.md
 settings/    → ~/.claude/settings.json (merged) — permissions, plugins, hooks wiring, statusLine
 doctor.sh    → ~/.claude/doctor.sh   — health check script (also via /doctor)
+macrift-toolkit.sh → ~/.claude/macrift-toolkit.sh — toolkit catalog (also via /macrift)
 env.sh       → marker-bounded block in ~/.zshrc — Claude Code env vars
 ```
 
@@ -99,6 +101,7 @@ Subagents Claude can delegate to. Each runs in fresh context with limited tools.
 | `/debug`                                           | runs `debugger` agent                                                                                                                                                                                 |
 | `/doctor`                                          | runs `~/.claude/doctor.sh` and reports — verifies hooks, deps, MCP servers, CLAUDE.md @-imports                                                                                                       |
 | `/explore <query> [--quick\|--medium\|--thorough]` | runs `explorer` agent for read-only codebase mapping                                                                                                                                                  |
+| `/macrift`                                         | runs `~/.claude/macrift-toolkit.sh` — live catalog of installed agents/commands/rules/hooks/env/MCP. Complement to `/doctor` (health vs inventory)                                                    |
 | `/mcp-context7`                                    | creates `.mcp.json` in cwd with context7 MCP server config (per-project; for a repo you share with others — see [MCP servers](#mcp-servers) below for the difference vs user-scoped install)          |
 | `/refine <path>`                                   | iterative critique→fix loop on a file until convergence (max 8 rounds)                                                                                                                                |
 | `/reflect`                                         | post-session retro — surfaces mistakes that cost time across 6 categories (tool use, verification gaps, scope creep, style/comms, rule violations), offers to save fixes as rules                     |
