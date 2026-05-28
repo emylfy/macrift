@@ -440,9 +440,11 @@ _cc_install_settings_user() {
       if [[ -f "$target" ]]; then
         local merged jq_err err_log
         # Deep-merge that UNIONS arrays (vs jq's `*`, which replaces them).
-        # macrift wins on scalar conflicts (model, statusLine, etc.), objects
-        # recurse, but arrays — permissions.allow/deny, hooks — are merged and
-        # deduped so re-running setup never clobbers the user's own entries.
+        # macrift wins on scalar conflicts (model, etc.), objects recurse, but
+        # arrays — permissions.allow/deny, hooks — are merged and deduped so
+        # re-running setup never clobbers the user's own entries. One carve-out:
+        # if the user already has a statusLine, KEEP theirs (a built-in /statusline
+        # or custom one) instead of forcing ccstatusline.
         # Capture stderr separately: a jq warning leaking into $merged would
         # corrupt settings.json.
         err_log=$(mktemp)
@@ -458,7 +460,9 @@ _cc_install_settings_user() {
               else
                 .[$k] = $b[$k]
               end);
-          deepmerge(.[0]; .[1])
+          (.[0]) as $user
+          | deepmerge(.[0]; .[1])
+          | if ($user.statusLine.command // null) != null then .statusLine = $user.statusLine else . end
         ' "$target" "$source" 2>"$err_log")
         local jq_status=$?
         jq_err=$(cat "$err_log")
@@ -557,6 +561,7 @@ _cc_install_statusline() {
   log_info "Statusline is delegated to ccstatusline (community-standard)"
   log_info "Wired via settings.json → statusLine.command = bun x $CC_CCSTATUSLINE_SPEC"
   log_info "Customize widgets/colors with: bun x $CC_CCSTATUSLINE_SPEC (TUI)"
+  log_info "Already have your own (built-in /statusline, custom)? It's kept — not replaced."
   printf '\n'
 
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -573,6 +578,16 @@ _cc_install_statusline() {
 _cc_install_statusline_copy() {
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
     log_info "Would prime ccstatusline cache via bun/npx"
+    return
+  fi
+  # If the wired statusline isn't ccstatusline (e.g. user kept built-in /statusline),
+  # there's nothing to prime — don't pull ccstatusline for no reason.
+  local sl=""
+  if [[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq >/dev/null 2>&1; then
+    sl=$(jq -r '.statusLine.command // ""' "$CLAUDE_DIR/settings.json" 2>/dev/null)
+  fi
+  if [[ -n "$sl" && "$sl" != *ccstatusline* ]]; then
+    log_skip "statusline is your own ($sl) — skipping ccstatusline prime"
     return
   fi
   if command -v bun >/dev/null 2>&1; then

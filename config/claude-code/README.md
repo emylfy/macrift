@@ -136,6 +136,8 @@ Custom status line shown at the bottom of Claude Code. Wired via `settings.json 
 
 Invoked as `bun x ccstatusline@latest` (npm-cached; first run fetches, subsequent invocations are fast). To customize widgets / colors / powerline arrows, run `bun x ccstatusline@latest` in any shell — it launches a TUI configurator that writes to `~/.config/ccstatusline/settings.json`.
 
+**Prefer your own?** If your `settings.json` already has a `statusLine.command` (Claude's built-in `/statusline`, or a custom script), the settings merge **keeps it** — macrift won't replace it with ccstatusline, and the Statusline step / doctor skip the ccstatusline checks. ccstatusline is only wired on a fresh install with no statusline yet. The built-in `/statusline` can read your shell theme (e.g. Catppuccin) and generate a dependency-free script, which some prefer over a `bun x` runtime.
+
 Previous setup used a hand-rolled `statusline.sh` here; removed because `ccstatusline` solves the terminal-width and right-align edge cases properly (CC doesn't expose terminal width in its statusline JSON, so detection has to walk the process tree to find a controlling TTY — easier to delegate).
 
 ## MCP servers

@@ -211,17 +211,26 @@ else
   miss "no env block in $RC_SHORT — subagent model / autocompact / concurrency not set"
 fi
 
-# Statusline (delegated to ccstatusline via bunx — see settings.json)
+# Statusline — checks depend on which one is wired (ccstatusline vs your own)
 section "Statusline"
-if command -v bun >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; then
-  ok "bunx/npx available — ccstatusline can run"
+sl_cmd=""
+[[ -f "$CLAUDE_DIR/settings.json" ]] && command -v jq >/dev/null 2>&1 &&
+  sl_cmd=$(jq -r '.statusLine.command // ""' "$CLAUDE_DIR/settings.json" 2>/dev/null)
+if [[ -z "$sl_cmd" ]]; then
+  miss "no statusLine.command set — run setup or /statusline"
+elif [[ "$sl_cmd" == *ccstatusline* ]]; then
+  if command -v bun >/dev/null 2>&1 || command -v npx >/dev/null 2>&1; then
+    ok "bunx/npx available — ccstatusline can run"
+  else
+    fail "neither bun nor npx in PATH — ccstatusline cannot run"
+  fi
+  if [[ -f "$HOME/.config/ccstatusline/settings.json" ]]; then
+    ok "ccstatusline config at ~/.config/ccstatusline/settings.json"
+  else
+    miss "no ccstatusline config (first run will write defaults)"
+  fi
 else
-  fail "neither bun nor npx in PATH — ccstatusline cannot run"
-fi
-if [[ -f "$HOME/.config/ccstatusline/settings.json" ]]; then
-  ok "ccstatusline config at ~/.config/ccstatusline/settings.json"
-else
-  miss "no ccstatusline config (first run will write defaults)"
+  ok "custom statusLine — $sl_cmd"
 fi
 
 # Summary
