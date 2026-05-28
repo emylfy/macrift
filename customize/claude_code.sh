@@ -359,7 +359,15 @@ _cc_full_setup() {
   printf '\n'
   log_ok "Setup complete"
   log_info "Restart shell + Claude Code to apply"
-  log_info "Run /doctor or 'bash ~/.claude/doctor.sh' to verify"
+
+  # Close the loop: run the health check so the user sees what's wired (and
+  # what's missing) instead of having to remember to run it. Read-only; a
+  # non-zero exit (FAILs found) is informational, so never abort on it.
+  if [[ -f "$CLAUDE_DIR/doctor.sh" ]]; then
+    printf '\n'
+    log_info "Health check (re-run anytime with /doctor):"
+    bash "$CLAUDE_DIR/doctor.sh" || true
+  fi
   wait_enter
 }
 
