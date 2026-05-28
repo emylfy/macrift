@@ -123,5 +123,15 @@ eq "fish → set -gx" "$(_cc_export_line fish 'export FOO=bar')" "set -gx FOO ba
 eq "fish real var" "$(_cc_export_line fish 'export CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-4-6')" \
   "set -gx CLAUDE_CODE_SUBAGENT_MODEL claude-sonnet-4-6"
 
+printf '== _cc_effect_for (every wizard component has a system-effect line) ==\n'
+missing_eff=0
+while IFS='|' read -r key section menu wiz rest; do
+  [[ "$wiz" == y ]] || continue
+  [[ -n "$(_cc_effect_for "$key")" ]] || missing_eff=$((missing_eff + 1))
+done < <(_cc_registry)
+eq "all wizard keys have an effect" "$missing_eff" "0"
+eq "effect: settings mentions merge+kept" \
+  "$(_cc_effect_for settings | grep -c 'merged')" "1"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

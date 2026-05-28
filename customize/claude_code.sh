@@ -134,7 +134,7 @@ _cc_wizard_accept_all=false
 #   1 = no  (skip)
 #   2 = quit wizard
 _cc_wizard_ask() {
-  local section=$1 name=$2 desc=$3 use_case=$4 default=$5 idx=$6 total=$7
+  local section=$1 name=$2 desc=$3 use_case=$4 default=$5 idx=$6 total=$7 effect=$8
 
   if $_cc_wizard_accept_all; then
     [[ "$default" == "y" ]] && return 0 || return 1
@@ -145,13 +145,17 @@ _cc_wizard_ask() {
 
   # Box width — fit longest line + 4 padding, min 64
   local uc_str="use case: $use_case"
+  local eff_str="→ $effect"
   local max_len=${#name}
   [[ ${#desc} -gt $max_len ]] && max_len=${#desc}
+  [[ ${#eff_str} -gt $max_len ]] && max_len=${#eff_str}
   [[ ${#uc_str} -gt $max_len ]] && max_len=${#uc_str}
   local inner_w=$((max_len + 4))
   [[ $inner_w -lt 64 ]] && inner_w=64
 
   local title="Setup wizard · $section · $idx/$total"
+  local def_word=yes
+  [[ "$default" == "y" ]] || def_word=no
 
   while true; do
     clear
@@ -169,6 +173,14 @@ _cc_wizard_ask() {
     _box_row "$inner_w" "$desc" $((inner_w - 2 - ${#desc}))
     _box_empty "$inner_w"
 
+    # Effect (dim) — what it actually does to your system
+    if [[ -n "$effect" ]]; then
+      local eff_content
+      eff_content=$(printf '%b→ %s%b' "$DIM" "$effect" "$RESET")
+      _box_row "$inner_w" "$eff_content" $((inner_w - 2 - ${#eff_str}))
+      _box_empty "$inner_w"
+    fi
+
     # Use case (dim)
     local uc_content
     uc_content=$(printf '%buse case:%b %s' "$DIM" "$RESET" "$use_case")
@@ -177,9 +189,8 @@ _cc_wizard_ask() {
 
     _box_bottom "$inner_w"
 
-    # Footer — minimal. Enter accepts (default for all panels is yes).
-    # 'a' (accept-rest) and 'q' (quit) remain functional but hidden.
-    printf '  %by/n%b\n' "$DIM" "$RESET" >&2
+    # Footer — full controls so a/q/Enter aren't hidden; ↵ takes the default.
+    printf '  %by install · n skip · a all · q quit · ↵ = %s%b\n' "$DIM" "$def_word" "$RESET" >&2
 
     local key
     key=$(_read_key)
@@ -196,6 +207,26 @@ _cc_wizard_ask() {
       *) ;; # unknown — re-prompt
     esac
   done
+}
+
+# One-line "what this does to your system" per component key, shown in the
+# wizard panel so the user knows the concrete effect (file written / command
+# run) before answering — not just an abstract description.
+_cc_effect_for() {
+  case "$1" in
+    settings) printf 'writes ~/.claude/settings.json (merged — your keys + statusLine kept)' ;;
+    statusline) printf 'primes the ccstatusline cache (no config file written)' ;;
+    doctor) printf 'writes ~/.claude/doctor.sh + macrift-toolkit.sh' ;;
+    agents) printf 'writes ~/.claude/agents/*.md (4 files, .bak on overwrite)' ;;
+    commands) printf 'writes ~/.claude/commands/*.md (10 files, .bak on overwrite)' ;;
+    rules) printf 'writes ~/.claude/rules/*.md (5 files, .bak on overwrite)' ;;
+    hooks) printf 'writes ~/.claude/hooks/*.sh (3 files, .bak on overwrite)' ;;
+    env) printf 'adds a marker block to your shell rc (~/.zshrc / bash / fish)' ;;
+    claude_md) printf 'syncs @-import lines in ~/.claude/CLAUDE.md' ;;
+    ralias) printf "adds alias r to your shell rc (reversible; shadows zsh's r)" ;;
+    mcp_context7) printf 'runs: claude mcp add context7 (user scope)' ;;
+    mcp_playwright) printf 'runs: claude mcp add playwright (user scope; needs npx)' ;;
+  esac
 }
 
 _cc_full_setup() {
@@ -228,10 +259,11 @@ _cc_full_setup() {
   while ((i < total)); do
     # `|| rc=$?` is required: _cc_wizard_ask returns 1 (skip) / 2 (quit), and
     # under `set -e` a bare non-zero call would abort the whole script.
-    local rc=0
+    local rc=0 eff
+    eff=$(_cc_effect_for "${r_keys[$i]}")
     _cc_wizard_ask \
       "${r_sections[$i]}" "${r_names[$i]}" "${r_descs[$i]}" \
-      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total" || rc=$?
+      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total" "$eff" || rc=$?
     case $rc in
       0) sel+=("${r_keys[$i]}") ;;
       1) ;; # skip
