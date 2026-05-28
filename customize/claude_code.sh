@@ -9,6 +9,12 @@ CC_RALIAS_MARKER="# macrift:claude-code r-alias"
 # stripped by reset). Kept here — used outside the Telegram engine file too.
 CC_TG_PATH_MARKER="# macrift:claude-code local-bin-path"
 
+# External tool versions — one place to pin for reproducible installs. Defaults
+# track upstream latest; override to freeze, e.g.
+#   export CC_CCSTATUSLINE_SPEC=ccstatusline@2.0.0
+CC_CCSTATUSLINE_SPEC="${CC_CCSTATUSLINE_SPEC:-ccstatusline@latest}"
+CC_PLAYWRIGHT_MCP_SPEC="${CC_PLAYWRIGHT_MCP_SPEC:-@playwright/mcp@latest}"
+
 claude_code_menu() {
   crumb_push "Claude Code"
   while true; do
@@ -521,6 +527,12 @@ _cc_install_settings_user() {
   if [[ -f "$target" ]] && grep -q '\$HOME' "$target"; then
     sed -i '' "s|\\\$HOME|$HOME|g" "$target"
   fi
+
+  # Apply the pinned ccstatusline spec to the statusLine command. No-op at the
+  # default (ccstatusline@latest → ccstatusline@latest); pins when overridden.
+  if [[ -f "$target" && "$CC_CCSTATUSLINE_SPEC" != "ccstatusline@latest" ]]; then
+    sed -i '' "s|ccstatusline@latest|$CC_CCSTATUSLINE_SPEC|g" "$target"
+  fi
 }
 
 # Statusline
@@ -543,8 +555,8 @@ _cc_require_jq() {
 _cc_install_statusline() {
   printf '\n'
   log_info "Statusline is delegated to ccstatusline (community-standard)"
-  log_info "Wired via settings.json → statusLine.command = bun x ccstatusline@latest"
-  log_info "Customize widgets/colors with: bun x ccstatusline@latest (TUI)"
+  log_info "Wired via settings.json → statusLine.command = bun x $CC_CCSTATUSLINE_SPEC"
+  log_info "Customize widgets/colors with: bun x $CC_CCSTATUSLINE_SPEC (TUI)"
   printf '\n'
 
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -564,13 +576,13 @@ _cc_install_statusline_copy() {
     return
   fi
   if command -v bun >/dev/null 2>&1; then
-    if bun x ccstatusline@latest --version >/dev/null 2>&1; then
+    if bun x "$CC_CCSTATUSLINE_SPEC" --version >/dev/null 2>&1; then
       log_ok "ccstatusline primed via bun"
     else
       log_warn "ccstatusline prime via bun failed — first render may be slow"
     fi
   elif command -v npx >/dev/null 2>&1; then
-    if npx -y ccstatusline@latest --version >/dev/null 2>&1; then
+    if npx -y "$CC_CCSTATUSLINE_SPEC" --version >/dev/null 2>&1; then
       log_ok "ccstatusline primed via npx"
     else
       log_warn "ccstatusline prime via npx failed — first render may be slow"
@@ -1067,7 +1079,7 @@ _cc_mcp_install_one() {
         return 1
       }
       claude mcp add --scope user playwright -- \
-        npx -y @playwright/mcp@latest >/dev/null 2>&1
+        npx -y "$CC_PLAYWRIGHT_MCP_SPEC" >/dev/null 2>&1
       ;;
     *)
       return 1
