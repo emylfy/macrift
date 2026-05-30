@@ -163,8 +163,9 @@ _cc_wizard_ask() {
   [[ $inner_w -lt 64 ]] && inner_w=64
 
   local title="Setup wizard · $section · $idx/$total"
-  local def_word=yes
-  [[ "$default" == "y" ]] || def_word=no
+  # ↵ takes the default, so fold it into that action (no separate "↵ = yes").
+  local y_hint="y" n_hint="n"
+  if [[ "$default" == "y" ]]; then y_hint="y/↵"; else n_hint="n/↵"; fi
 
   while true; do
     clear
@@ -206,8 +207,8 @@ _cc_wizard_ask() {
 
     _box_bottom "$inner_w"
 
-    # Footer — full controls so a/q/Enter aren't hidden; ↵ takes the default.
-    printf '  %by install · n skip · a all · q quit · ↵ = %s%b\n' "$DIM" "$def_word" "$RESET" >&2
+    # Footer — full controls; ↵ is folded into the default action (above).
+    printf '  %b%s install · %s skip · a all · q quit%b\n' "$DIM" "$y_hint" "$n_hint" "$RESET" >&2
 
     local key
     key=$(_read_key)
