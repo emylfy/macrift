@@ -37,19 +37,17 @@ _cc_telegram_menu() {
   crumb_push "Telegram"
   while true; do
     clear
-    printf '\n'
-    printf '  %bChoose engine%b — both manage to ~/.claude/channels/telegram + their own dirs\n\n' "$BOLD" "$RESET"
-    printf '  %bsupercharged%b: drop-in over the official anthropic plugin. DM-friendly,\n' "$CYAN" "$RESET"
-    printf '    pairing flow with 6-char code, SQLite memory, Telegraph instant view,\n'
-    printf '    one shared claude session.  ✓ simpler setup\n\n'
-    printf '  %bccgram%b: tmux-bridge. Each Telegram Forum topic = 1 tmux window =\n' "$CYAN" "$RESET"
-    printf '    1 standalone claude session. /esc interrupts, desktop continuity\n'
-    printf '    via tmux attach.  ✓ parallel sessions, %brequires forum group%b (not DM)\n\n' "$YELLOW" "$RESET"
-
+    # Engine descriptions live as section headers INSIDE show_menu (it counts
+    # them in its layout/scroll). Printing a freeform intro before show_menu
+    # breaks its in-place redraw when intro+frame exceed the terminal height.
     local choice
-    choice=$(show_menu "Telegram bot" \
-      "supercharged (DM, single session) ›" \
-      "ccgram (forum, parallel sessions) ›" \
+    choice=$(show_menu "Telegram bot — pick an engine" \
+      "## supercharged · DM-friendly, one shared claude session — simpler setup" \
+      "##   6-char pairing · SQLite memory · Telegraph instant view" \
+      "supercharged ›" \
+      "## ccgram · tmux bridge, a parallel session per forum topic (not DM)" \
+      "##   /esc interrupts · tmux attach = desktop↔phone continuity" \
+      "ccgram ›" \
       "Back")
 
     case "$choice" in
