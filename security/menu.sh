@@ -785,10 +785,24 @@ quarantine_fix_cli() {
         set -- "$raw"
     fi
 
+    # Validate (normalize + existence) BEFORE confirming, so we never offer to
+    # "Proceed" on a path that doesn't exist (and we show the resolved path).
+    local valid=() p np
+    for p in "$@"; do
+        np=$(_quarantine_normalize_path "$p")
+        if [[ -e "$np" ]]; then
+            valid+=("$np")
+        else
+            log_err "Not found: $np"
+        fi
+    done
+    if [[ ${#valid[@]} -eq 0 ]]; then
+        return 1
+    fi
+
     if [[ "$MACRIFT_NO_CONFIRM" != true && "$MACRIFT_DRY_RUN" != true ]]; then
         printf '\n  %bWill unquarantine:%b\n' "$DIM" "$RESET"
-        local p
-        for p in "$@"; do printf '    %s\n' "$p"; done
+        for p in "${valid[@]}"; do printf '    %s\n' "$p"; done
         printf '\n'
         if ! confirm "Proceed?" "y"; then
             log_info "Cancelled"
@@ -796,7 +810,7 @@ quarantine_fix_cli() {
         fi
     fi
 
-    quarantine_remove "$@"
+    quarantine_remove "${valid[@]}"
 }
 
 # Menu wrapper — adds the screen-clear and wait-for-enter that other
@@ -804,7 +818,7 @@ quarantine_fix_cli() {
 unquarantine_menu() {
     clear
     log_info "Removes com.apple.quarantine — fixes 'app is damaged' errors"
-    quarantine_fix_cli
+    quarantine_fix_cli || true # non-zero (e.g. not found) must not abort the menu
     wait_enter
 }
 
