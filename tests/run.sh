@@ -133,5 +133,10 @@ eq "all wizard keys have an effect" "$missing_eff" "0"
 eq "effect: settings mentions merge+kept" \
   "$(_cc_effect_for settings | grep -c 'merged')" "1"
 
+printf '== _cc_caveat_for ==\n'
+eq "ralias caveat warns at default 'r'" "$(CC_RUN_ALIAS=r _cc_caveat_for ralias | grep -c shadows)" "1"
+eq "ralias caveat silent when renamed" "$(CC_RUN_ALIAS=rr _cc_caveat_for ralias)" ""
+eq "rules caveat present" "$([ -n "$(_cc_caveat_for rules)" ] && echo yes)" "yes"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

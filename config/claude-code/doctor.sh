@@ -199,10 +199,11 @@ else
   fail "/tmp not writable — workflow.md /tmp/cmd.sh pattern broken"
 fi
 
-if grep -q "alias r='bash /tmp/cmd.sh'" "$SHELL_RC" 2>/dev/null; then
-  ok "'r' alias set in $RC_SHORT"
+# Match by the command, not the name — the alias is renameable (CC_RUN_ALIAS).
+if grep -qE "^alias [A-Za-z_][A-Za-z0-9_]*='bash /tmp/cmd.sh'" "$SHELL_RC" 2>/dev/null; then
+  ok "run-alias for /tmp/cmd.sh set in $RC_SHORT"
 else
-  miss "'r' alias missing — workflow.md tells Claude to suggest \`r\`, fallback is manual \`bash /tmp/cmd.sh\`"
+  miss "no run-alias for 'bash /tmp/cmd.sh' — workflow.md fallback is running it manually"
 fi
 
 if grep -q '^# macrift:claude-code env' "$SHELL_RC" 2>/dev/null; then

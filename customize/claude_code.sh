@@ -15,6 +15,10 @@ CC_TG_PATH_MARKER="# macrift:claude-code local-bin-path"
 CC_CCSTATUSLINE_SPEC="${CC_CCSTATUSLINE_SPEC:-ccstatusline@latest}"
 CC_PLAYWRIGHT_MCP_SPEC="${CC_PLAYWRIGHT_MCP_SPEC:-@playwright/mcp@latest}"
 
+# Name of the run-alias for workflow.md's /tmp/cmd.sh pattern. Default 'r'
+# shadows zsh's built-in r (repeat); override to rename: export CC_RUN_ALIAS=rr
+CC_RUN_ALIAS="${CC_RUN_ALIAS:-r}"
+
 claude_code_menu() {
   crumb_push "Claude Code"
   while true; do
@@ -118,6 +122,9 @@ _cc_custom_menu() {
       _cc_full_setup
       continue
     fi
+    # Standard header (label / → effect / ! caveat) so the menu path explains a
+    # component the same way the wizard panel does — single source, no drift.
+    _cc_show_component_info "$sel_key"
     "${handlers[$((choice - 1))]}"
     [[ "${waits[$((choice - 1))]}" == y ]] && wait_enter
   done
@@ -134,7 +141,7 @@ _cc_wizard_accept_all=false
 #   1 = no  (skip)
 #   2 = quit wizard
 _cc_wizard_ask() {
-  local section=$1 name=$2 desc=$3 use_case=$4 default=$5 idx=$6 total=$7 effect=$8
+  local section=$1 name=$2 desc=$3 use_case=$4 default=$5 idx=$6 total=$7 effect=$8 caveat=$9
 
   if $_cc_wizard_accept_all; then
     [[ "$default" == "y" ]] && return 0 || return 1
@@ -146,9 +153,11 @@ _cc_wizard_ask() {
   # Box width — fit longest line + 4 padding, min 64
   local uc_str="use case: $use_case"
   local eff_str="→ $effect"
+  local cav_str="! $caveat"
   local max_len=${#name}
   [[ ${#desc} -gt $max_len ]] && max_len=${#desc}
   [[ ${#eff_str} -gt $max_len ]] && max_len=${#eff_str}
+  [[ -n "$caveat" && ${#cav_str} -gt $max_len ]] && max_len=${#cav_str}
   [[ ${#uc_str} -gt $max_len ]] && max_len=${#uc_str}
   local inner_w=$((max_len + 4))
   [[ $inner_w -lt 64 ]] && inner_w=64
@@ -178,6 +187,14 @@ _cc_wizard_ask() {
       local eff_content
       eff_content=$(printf '%b→ %s%b' "$DIM" "$effect" "$RESET")
       _box_row "$inner_w" "$eff_content" $((inner_w - 2 - ${#eff_str}))
+      _box_empty "$inner_w"
+    fi
+
+    # Caveat (yellow) — the gotcha to know before answering
+    if [[ -n "$caveat" ]]; then
+      local cav_content
+      cav_content=$(printf '%b! %s%b' "$YELLOW" "$caveat" "$RESET")
+      _box_row "$inner_w" "$cav_content" $((inner_w - 2 - ${#cav_str}))
       _box_empty "$inner_w"
     fi
 
@@ -223,10 +240,45 @@ _cc_effect_for() {
     hooks) printf 'writes ~/.claude/hooks/*.sh (3 files, .bak on overwrite)' ;;
     env) printf 'adds a marker block to your shell rc (~/.zshrc / bash / fish)' ;;
     claude_md) printf 'syncs @-import lines in ~/.claude/CLAUDE.md' ;;
-    ralias) printf "adds alias r to your shell rc (reversible; shadows zsh's r)" ;;
+    ralias) printf "adds alias %s='bash /tmp/cmd.sh' to your shell rc (reversible)" "$CC_RUN_ALIAS" ;;
+    mcp) printf 'runs: claude mcp add for the servers you pick (user scope)' ;;
     mcp_context7) printf 'runs: claude mcp add context7 (user scope)' ;;
     mcp_playwright) printf 'runs: claude mcp add playwright (user scope; needs npx)' ;;
   esac
+}
+
+# One-line caveat / gotcha per component (empty = none), shown at the decision
+# point so tradeoffs aren't buried in the README. Single source for both the
+# wizard panel and the interactive (menu) installers.
+_cc_caveat_for() {
+  case "$1" in
+    settings) printf 'macrift wins scalar conflicts; your allow/deny + statusLine are kept' ;;
+    statusline) printf 'needs bun or npx; your own statusline is kept if set' ;;
+    agents) printf 'all run on $CLAUDE_CODE_SUBAGENT_MODEL when that env var is set' ;;
+    rules) printf 'install CLAUDE.md sync too, or they will not load into sessions' ;;
+    hooks) printf 'need Settings to wire them; formatters optional (missing = skipped)' ;;
+    env) printf 'restart the shell to apply' ;;
+    claude_md) printf 'install Rules too, or there is nothing to import' ;;
+    ralias) [[ "$CC_RUN_ALIAS" == r ]] && printf "'r' shadows zsh's built-in r (repeat) — set CC_RUN_ALIAS to rename" ;;
+    mcp | mcp_context7 | mcp_playwright) printf 'needs the claude CLI installed first' ;;
+  esac
+}
+
+# Print the standard component header (label — desc / → effect / ⚠ caveat) so
+# the menu path explains a component the same way the wizard panel does.
+_cc_show_component_info() {
+  local want="$1" key section menu wiz mwait wdefault mlabel wlabel handler desc usecase
+  while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
+    [[ "$key" == "$want" ]] || continue
+    printf '\n'
+    log_info "$wlabel — $desc"
+    local eff cav
+    eff=$(_cc_effect_for "$key")
+    [[ -n "$eff" ]] && log_info "→ $eff"
+    cav=$(_cc_caveat_for "$key")
+    [[ -n "$cav" ]] && log_warn "$cav"
+    return
+  done < <(_cc_registry)
 }
 
 _cc_full_setup() {
@@ -259,11 +311,12 @@ _cc_full_setup() {
   while ((i < total)); do
     # `|| rc=$?` is required: _cc_wizard_ask returns 1 (skip) / 2 (quit), and
     # under `set -e` a bare non-zero call would abort the whole script.
-    local rc=0 eff
+    local rc=0 eff cav
     eff=$(_cc_effect_for "${r_keys[$i]}")
+    cav=$(_cc_caveat_for "${r_keys[$i]}")
     _cc_wizard_ask \
       "${r_sections[$i]}" "${r_names[$i]}" "${r_descs[$i]}" \
-      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total" "$eff" || rc=$?
+      "${r_usecases[$i]}" "${r_defaults[$i]}" "$((i + 1))" "$total" "$eff" "$cav" || rc=$?
     case $rc in
       0) sel+=("${r_keys[$i]}") ;;
       1) ;; # skip
@@ -1076,13 +1129,23 @@ _cc_install_r_alias() {
   local rc
   rc=$(_cc_target_rc)
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Dry run — would add 'r' alias to $rc"
+    log_info "Dry run — would add '$CC_RUN_ALIAS' alias to $rc"
     return
   fi
 
-  log_info "Adds: alias r='bash /tmp/cmd.sh'  (used by workflow rule)"
+  # Let the user rename it here (default 'r' shadows zsh's built-in r).
+  local name=""
+  printf '  %bAlias name%b [%s]: ' "$BOLD" "$RESET" "$CC_RUN_ALIAS" >&2
+  read -r name </dev/tty || true
+  if [[ -n "$name" ]]; then
+    if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      CC_RUN_ALIAS="$name"
+    else
+      log_warn "invalid alias name — keeping '$CC_RUN_ALIAS'"
+    fi
+  fi
   printf '\n'
-  if ! confirm "Add 'r' alias to $rc?"; then return; fi
+  if ! confirm "Add alias $CC_RUN_ALIAS='bash /tmp/cmd.sh' to $rc?"; then return; fi
 
   _cc_install_r_alias_copy
   log_info "Restart shell to apply"
@@ -1092,13 +1155,13 @@ _cc_install_r_alias_copy() {
   local rc
   rc=$(_cc_target_rc)
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Would add 'r' alias to $rc"
+    log_info "Would add '$CC_RUN_ALIAS' alias to $rc"
     return
   fi
-  # `alias r='bash /tmp/cmd.sh'` is valid in zsh, bash, and fish alike.
-  printf "alias r='bash /tmp/cmd.sh'\n" |
+  # `alias <name>='bash /tmp/cmd.sh'` is valid in zsh, bash, and fish alike.
+  printf "alias %s='bash /tmp/cmd.sh'\n" "$CC_RUN_ALIAS" |
     _cc_replace_marked_block "$rc" "$CC_RALIAS_MARKER"
-  log_ok "'r' alias added to $rc"
+  log_ok "'$CC_RUN_ALIAS' alias added to $rc"
 }
 
 # MCP servers
