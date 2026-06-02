@@ -47,10 +47,12 @@ save_dock_layout() {
     if command -v dockutil &>/dev/null; then
         dockutil --list > "$layout_file" 2>/dev/null
     else
-        # Fallback: extract app paths from defaults
+        # Fallback: extract app paths from defaults. Guard set -e+pipefail: a
+        # missing key or a grep no-match returns non-zero and would abort macrift
+        # mid-menu; the empty file is handled fine by the wc -l below.
         defaults read com.apple.dock persistent-apps 2>/dev/null \
             | grep '"file-label"' \
-            | sed 's/.*= "\(.*\)";/\1/' > "$layout_file"
+            | sed 's/.*= "\(.*\)";/\1/' > "$layout_file" || true
     fi
 
     local count
