@@ -2048,12 +2048,32 @@ else
 fi
 MACRIFT_UPDATE=""
 
+# true if $1 is a strictly newer dotted calver (YY.MM.N) than $2.
+# Component-wise numeric compare; 10# forces base-10 so "05" isn't read as octal.
+_macrift_version_gt() {
+    [[ "$1" == "$2" ]] && return 1
+    local IFS=. i x y
+    # shellcheck disable=SC2206  # intentional split on IFS='.' into version components
+    local -a a=($1) b=($2)
+    for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+        x=${a[i]:-0}
+        y=${b[i]:-0}
+        x=${x//[^0-9]/}
+        y=${y//[^0-9]/}
+        ((10#${x:-0} > 10#${y:-0})) && return 0
+        ((10#${x:-0} < 10#${y:-0})) && return 1
+    done
+    return 1
+}
+
 # Check for updates (2s timeout, silent on failure)
 check_update() {
     [[ "${MACRIFT_NO_UPDATE:-}" == true ]] && return 0
     local remote
     remote=$(curl -fsSL --connect-timeout 2 --max-time 2 "$MACRIFT_VERSION_URL" 2>/dev/null) || return 0
-    if [[ -n "$remote" && "$remote" != "$MACRIFT_VERSION" ]]; then
+    # Only offer an update when remote is strictly NEWER — never a downgrade
+    # (during development the local VERSION is ahead of main's).
+    if [[ -n "$remote" ]] && _macrift_version_gt "$remote" "$MACRIFT_VERSION"; then
         MACRIFT_UPDATE="$remote"
     fi
 }
