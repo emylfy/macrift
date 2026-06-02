@@ -23,8 +23,11 @@ deny() {
   exit 0
 }
 
-# Piped remote execution: curl/wget … | sh|bash|zsh|python|ruby|perl
-echo "$cmd" | grep -qE '(curl|wget)[^|]*\|[[:space:]]*(sh|bash|zsh|python|ruby|perl)\b' \
+# Piped remote execution: curl/wget … | [sudo/env/…] sh|bash|python3|node|…
+# Allow optional privilege/wrapper words after the pipe (closes `| sudo bash`),
+# and match versioned interpreters (`python3`, `python3.11` — bare `python\b`
+# missed them under BSD grep's word boundary).
+echo "$cmd" | grep -qE '(curl|wget)[^|]*\|[[:space:]]*((sudo|command|exec|env|nohup|setsid|time)[[:space:]]+)*(sh|bash|zsh|dash|ksh|fish|python[0-9.]*|ruby|perl|node|php)([[:space:]]|$)' \
   && deny "Piped remote execution (curl|wget … | sh) blocked by hook"
 
 # eval/exec with command substitution
