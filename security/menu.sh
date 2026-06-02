@@ -66,7 +66,9 @@ privacy_shortcuts_menu() {
             log_info "Would open: $url"
             wait_enter
         else
-            open "$url"
+            # Guard set -e: a stale/renamed System Settings pane id makes `open`
+            # exit non-zero, which would otherwise abort the whole menu.
+            open "$url" || { log_warn "Could not open: $url"; wait_enter; }
         fi
     done
     crumb_pop
