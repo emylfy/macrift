@@ -84,39 +84,39 @@ _cc_ccgram_menu() {
 
     case "$choice" in
       1)
-        _cc_install_ccgram_full
+        _cc_install_ccgram_full || true
         wait_enter
         ;;
       2)
-        _cc_install_ccgram_deps
+        _cc_install_ccgram_deps || true
         wait_enter
         ;;
       3)
-        _cc_install_ccgram_install
+        _cc_install_ccgram_install || true
         wait_enter
         ;;
       4)
-        _cc_install_ccgram_env
+        _cc_install_ccgram_env || true
         wait_enter
         ;;
       5)
-        _cc_install_ccgram_hook
+        _cc_install_ccgram_hook || true
         wait_enter
         ;;
       6)
-        _cc_install_ccgram_pairing_help
+        _cc_install_ccgram_pairing_help || true
         wait_enter
         ;;
       7)
-        _cc_install_ccgram_launchagent
+        _cc_install_ccgram_launchagent || true
         wait_enter
         ;;
       8)
-        _cc_migrate_supercharged_to_ccgram
+        _cc_migrate_supercharged_to_ccgram || true
         wait_enter
         ;;
       9)
-        _cc_remove_ccgram
+        _cc_remove_ccgram || true
         wait_enter
         ;;
       0) break ;;
@@ -641,43 +641,43 @@ _cc_supercharged_menu() {
 
     case "$choice" in
       1)
-        _cc_install_supercharged_full
+        _cc_install_supercharged_full || true
         wait_enter
         ;;
       2)
-        _cc_install_supercharged_plugin
+        _cc_install_supercharged_plugin || true
         wait_enter
         ;;
       3)
-        _cc_install_supercharged_apply
+        _cc_install_supercharged_apply || true
         wait_enter
         ;;
       4)
-        _cc_install_supercharged_dirs
+        _cc_install_supercharged_dirs || true
         wait_enter
         ;;
       5)
-        _cc_install_supercharged_token
+        _cc_install_supercharged_token || true
         wait_enter
         ;;
       6)
-        _cc_install_supercharged_pairing_help
+        _cc_install_supercharged_pairing_help || true
         wait_enter
         ;;
       7)
-        _cc_install_supercharged_launchagent
+        _cc_install_supercharged_launchagent || true
         wait_enter
         ;;
       8)
-        _cc_install_supercharged_reapply
+        _cc_install_supercharged_reapply || true
         wait_enter
         ;;
       9)
-        _cc_uninstall_legacy_plugin
+        _cc_uninstall_legacy_plugin || true
         wait_enter
         ;;
       10)
-        _cc_remove_supercharged
+        _cc_remove_supercharged || true
         wait_enter
         ;;
       0) break ;;
