@@ -62,13 +62,13 @@ claude_code_menu() {
 #     desc/usecase : wizard panel copy (wizard rows only)
 _cc_registry() {
   cat <<'REG'
-settings|Core|y|y|y|y|Settings|Settings|_cc_install_settings_user|permission allow/deny + plugin enable + hooks wiring|safe defaults, no per-command prompts
+settings|Core|y|y|n|y|Settings|Settings|_cc_install_settings_user|permission allow/deny + plugin enable + hooks wiring|safe defaults, no per-command prompts
 statusline|Core|y|y|y|y|Statusline|Statusline|_cc_install_statusline|cwd · branch · model · ctx% · rate% with color escalation|see context burn before /compact bites
 doctor|Core|n|y|n|y||Doctor + /doctor command||/doctor (health) + /macrift (toolkit catalog) scripts in ~/.claude — verifies hooks/deps/MCP/imports, lists what's installed|first-run health check / 'what did macrift give me'
 agents|AI extensions|y|y|n|y|Agents|Agents (4 subagents)|_cc_install_agents|debugger, explorer, reviewer, simplifier — each in fresh context|delegate to specialist without polluting main thread
 commands|AI extensions|y|y|n|y|Slash Commands|Slash commands (10)|_cc_install_commands|/canpush /debug /doctor /explore /macrift /mcp-context7 /refine /reflect /review /simplify|explicit one-line triggers
 rules|AI extensions|y|y|n|y|Rules|Rules (5 behavior files)|_cc_install_rules|code-style, communication, git, security, workflow — @-imported via CLAUDE.md|enforced behavior every session
-hooks|AI extensions|y|y|y|y|Hooks|Hooks (format + security-gate + session-start)|_cc_install_hooks|format-on-edit, security gate (blocks force-push), SessionStart git context inject|auto-format, block force-push, save tokens on session start
+hooks|AI extensions|y|y|n|y|Hooks|Hooks (format + security-gate + session-start)|_cc_install_hooks|format-on-edit, security gate (blocks force-push), SessionStart git context inject|auto-format, block force-push, save tokens on session start
 env|Shell integration|y|y|y|y|Environment (.zshrc env vars)|Env vars (.zshrc)|_cc_install_env|SUBAGENT_MODEL=sonnet-4-6 + CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=99|cheap subagents + manual /compact discipline (Dex's <30% rule)
 claude_md|Shell integration|y|y|y|y|CLAUDE.md (rule imports)|CLAUDE.md sync|_cc_install_claude_md|auto-add @~/.claude/rules/<name>.md imports; remove stale ones|leave checked unless skipping rules
 ralias|Shell integration|y|y|y|y|'r' alias|'r' alias|_cc_install_r_alias|alias r='bash /tmp/cmd.sh' in ~/.zshrc|workflow.md 'claude writes script, you type r' pattern
@@ -119,13 +119,20 @@ _cc_custom_menu() {
 
     local sel_key="${keys[$((choice - 1))]}"
     if [[ "$sel_key" == "__wizard__" ]]; then
-      _cc_full_setup
+      _cc_full_setup || true
       continue
     fi
+    # Clear the (tall) Setup menu first: left on screen above the header it
+    # pushes an installer's own show_menu down, so that menu's in-place redraw
+    # overflows and the frame climbs on ↑↓. Fresh screen → header + installer fit.
+    clear
     # Standard header (label / → effect / ! caveat) so the menu path explains a
     # component the same way the wizard panel does — single source, no drift.
     _cc_show_component_info "$sel_key"
-    "${handlers[$((choice - 1))]}"
+    # `|| true`: an installer returning non-zero (e.g. a cancelled multiselect)
+    # must not trip `set -e` and kill the whole menu. It also suspends `set -e`
+    # inside the installer, so it always runs to completion.
+    "${handlers[$((choice - 1))]}" || true
     [[ "${waits[$((choice - 1))]}" == y ]] && wait_enter
   done
   crumb_pop
@@ -148,6 +155,7 @@ _cc_wizard_ask() {
   fi
 
   # Box helpers (_box_top etc) use dynamically-scoped BP/R — define them here.
+  # shellcheck disable=SC2034  # consumed by box helpers via dynamic scope
   local BP="${BOLD}${GRAY}" R="${RESET}"
 
   # Box width — fit longest line + 4 padding, min 64
@@ -278,7 +286,7 @@ _cc_show_component_info() {
     [[ -n "$eff" ]] && log_info "→ $eff"
     cav=$(_cc_caveat_for "$key")
     [[ -n "$cav" ]] && log_warn "$cav"
-    return
+    return 0 # explicit: a no-caveat component must not propagate the failed test
   done < <(_cc_registry)
 }
 
@@ -468,7 +476,22 @@ _cc_full_setup() {
 # Settings
 
 # --full: skip the back-prompt, default mode = merge (no extra menu in Full Setup)
+# Menu handler: runs the apply and owns its own wait_enter, so backing out of
+# the Merge/Overwrite/Skip menu (← → sentinel rc 10) returns cleanly with no
+# trailing "press enter". --full (batch) never waits here. Mirrors how the
+# multiselect installers (agents/commands/rules/hooks) skip the wait on back.
 _cc_install_settings_user() {
+  local full_setup=false
+  [[ "${1:-}" == "--full" ]] && full_setup=true
+  local rc=0
+  _cc_settings_apply "$@" || rc=$?
+  if ! $full_setup && ((rc != 10)); then
+    wait_enter
+  fi
+  return 0
+}
+
+_cc_settings_apply() {
   local source="$CC_CONFIG/settings/user.json"
   local target="$CLAUDE_DIR/settings.json"
   local full_setup=false
@@ -476,7 +499,6 @@ _cc_install_settings_user() {
 
   if [[ ! -f "$source" ]]; then
     log_err "No user settings found in config/claude-code/settings/"
-    $full_setup || wait_enter
     return
   fi
 
@@ -487,13 +509,7 @@ _cc_install_settings_user() {
     return
   fi
 
-  if ! $full_setup; then
-    printf '\n'
-    log_info "Source: $source"
-    log_info "Target: $target"
-    log_info "Contains: permissions allow/deny, plugins, model"
-    printf '\n'
-  fi
+  # (The menu dispatch already printed the label/effect/caveat header.)
 
   local mode="merge"
   if [[ -f "$target" ]]; then
@@ -510,7 +526,7 @@ _cc_install_settings_user() {
         1) mode="merge" ;;
         2) mode="overwrite" ;;
         3) mode="skip" ;;
-        *) return ;;
+        *) return 10 ;; # Back — wrapper skips wait_enter on this sentinel
       esac
     fi
   fi
@@ -717,51 +733,11 @@ _cc_install_doctor_copy() {
 
 # Hooks
 
+# Same multiselect/copy/wait pattern as agents/commands/rules — reuse it so
+# back (← / empty selection) returns cleanly without a trailing "press enter".
 _cc_install_hooks() {
-  local source_dir="$CC_CONFIG/hooks"
-  local target_dir="$CLAUDE_DIR/hooks"
-
-  if [[ ! -d "$source_dir" ]]; then
-    log_err "No hooks dir at $source_dir"
-    return
-  fi
-
-  local items=()
-  for f in "$source_dir"/*.sh; do
-    [[ -f "$f" ]] || continue
-    items+=("$(basename "$f")")
-  done
-
-  if [[ ${#items[@]} -eq 0 ]]; then
-    log_info "No hooks found"
-    return
-  fi
-
-  printf '\n'
-  log_info "Lifecycle hooks invoked by settings.json (PostToolUse, PreToolUse)"
-  log_info "Will be copied to ~/.claude/hooks/"
-  printf '\n'
-
-  local selected
-  selected=$(show_multiselect "Hooks" "${items[@]}")
-  [[ -z "$selected" ]] && return
-
-  if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-    log_info "Dry run — would install selected hooks"
-    return
-  fi
-
-  _cc_ensure_dir
-  mkdir -p "$target_dir"
-
-  local count=0
-  while IFS= read -r item; do
-    copy_config "$source_dir/$item" "$target_dir/$item"
-    count=$((count + 1))
-  done <<<"$selected"
-
-  printf '\n'
-  log_ok "$count hook(s) installed to ~/.claude/hooks/"
+  _cc_install_component "hooks" "Hooks" "sh" \
+    "Lifecycle hooks invoked by settings.json (PostToolUse, PreToolUse)"
 }
 
 _cc_install_hooks_copy() {
@@ -831,8 +807,8 @@ _cc_install_component() {
   fi
 
   local selected
-  selected=$(show_multiselect "$label" "${items[@]}")
-  [[ -z "$selected" ]] && return
+  selected=$(show_multiselect "$label" "${items[@]}") || true
+  if [[ -z "$selected" ]]; then return; fi
 
   if [[ "$MACRIFT_DRY_RUN" == true ]]; then
     log_info "Dry run — would install selected $label"
