@@ -608,7 +608,7 @@ _cc_remove_ccgram() {
   fi
   launchctl bootout "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
   rm -f "$CC_CCGRAM_LAUNCH_AGENT" "$CC_CCGRAM_LAUNCHER"
-  pkill -9 -f "/ccgram$\| ccgram$" 2>/dev/null || true
+  pkill -9 -f "(/| )ccgram$" 2>/dev/null || true # ERE: '|' is the alternator, not '\|'
   log_ok "ccgram launcher and LaunchAgent removed"
 }
 

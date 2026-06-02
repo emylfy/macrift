@@ -1320,14 +1320,14 @@ _cc_reset() {
     printf '\n'
     if confirm "Also wipe Telegram ccgram?" "n"; then
       launchctl bootout "gui/$UID/$CC_CCGRAM_LAUNCH_AGENT_LABEL" 2>/dev/null || true
-      pkill -9 -f "/ccgram$\| ccgram$" 2>/dev/null || true
+      pkill -9 -f "(/| )ccgram$" 2>/dev/null || true # ERE: '|' is the alternator, not '\|'
       rm -f "$CC_CCGRAM_LAUNCH_AGENT" "$CC_CCGRAM_LAUNCHER"
       if confirm "Also delete config dir $CC_CCGRAM_CONFIG_DIR (loses .env token + session_map)?" "n"; then
         rm -rf "$CC_CCGRAM_CONFIG_DIR"
       fi
       if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^ccgram'; then
         if confirm "Also uninstall ccgram via 'uv tool uninstall ccgram'?" "n"; then
-          uv tool uninstall ccgram 2>&1 | tail -3
+          uv tool uninstall ccgram 2>&1 | tail -3 || log_warn "uv tool uninstall ccgram failed"
         fi
       fi
       log_ok "ccgram wiped"
