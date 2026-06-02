@@ -289,7 +289,6 @@ fzf_search_packages() {
     tmp=$(mktemp /tmp/macrift_fzf_XXXXXX)
 
     while IFS= read -r pick; do
-        local pick_name="${pick%%  \[*}"
         for ((i=0; i<${#fzf_lines[@]}; i++)); do
             if [[ "${fzf_lines[$i]}" == "$pick" ]]; then
                 echo "${brew_lines[$i]}" >> "$tmp"
@@ -321,6 +320,7 @@ fzf_search_packages() {
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
+        log_hint "re-run, or 'brew doctor' to diagnose; logs in ~/Library/Logs/Homebrew"
     fi
     rm -f "$tmp"
     wait_enter
@@ -407,6 +407,7 @@ _fix_broken_casks() {
                 log_ok "$cask reinstalled"
             else
                 log_warn "Failed to reinstall $cask"
+                log_hint "try: brew reinstall --cask $cask"
             fi
         done
     fi
@@ -599,6 +600,7 @@ install_bundle() {
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
+        log_hint "re-run, or 'brew doctor' to diagnose; logs in ~/Library/Logs/Homebrew"
     fi
     wait_enter
 }
@@ -738,6 +740,7 @@ install_all_bundles() {
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
+        log_hint "re-run, or 'brew doctor' to diagnose; logs in ~/Library/Logs/Homebrew"
     fi
     rm -f "$tmp"
     wait_enter
@@ -849,6 +852,7 @@ import_brewbak() {
         log_ok "Import complete"
     else
         log_warn "Some packages failed to install"
+        log_hint "re-run, or 'brew doctor' to diagnose; logs in ~/Library/Logs/Homebrew"
     fi
     rm -f "$tmp"
     wait_enter
@@ -874,6 +878,7 @@ export_brewbak() {
         log_ok "Exported to $filepath"
     else
         log_err "Export failed"
+        log_hint "check the path is writable: $filepath"
     fi
     wait_enter
 }

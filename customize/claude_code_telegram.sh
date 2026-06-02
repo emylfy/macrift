@@ -437,8 +437,11 @@ _cc_install_ccgram_launchagent() {
 }
 
 _cc_install_ccgram_launchagent_copy() {
-  local ccgram_bin
-  ccgram_bin=$(command -v ccgram)
+  if ! command -v ccgram >/dev/null 2>&1; then
+    log_err "ccgram not found on PATH"
+    log_hint "install ccgram first, then re-run this step"
+    return 1
+  fi
 
   local with_vpn=false
   if confirm "Add VPN-wait gate to launcher? (opens your VPN app: $CC_VPN_APPS, waits until anthropic returns NOT 403)" "n"; then
