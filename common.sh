@@ -2171,7 +2171,10 @@ macrift_update() {
     local tmp
     tmp="$(mktemp -d)"
     if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp" && [[ -d "$tmp/macrift-main" ]]; then
-        # Atomic swap: backup old → move new → remove backup
+        # Atomic swap: backup old → move new → remove backup.
+        # Clear any stale .bak from a prior interrupted run first, or the backup
+        # mv would nest the install inside it and the restore path would be wrong.
+        rm -rf "$MACRIFT_DIR.bak"
         mv "$MACRIFT_DIR" "$MACRIFT_DIR.bak"
         if mv "$tmp/macrift-main" "$MACRIFT_DIR"; then
             chmod +x "$MACRIFT_DIR/macrift.sh"
@@ -2185,7 +2188,11 @@ macrift_update() {
             return 1
         fi
     else
+        # Don't fall through to `return 0` — the caller treats success as "update
+        # applied" and re-execs, so a failed download must report failure.
         log_err "Download failed"
+        rm -rf "$tmp"
+        return 1
     fi
     rm -rf "$tmp"
     return 0
