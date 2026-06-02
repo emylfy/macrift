@@ -72,8 +72,13 @@ install_spotx() {
 
     if confirm "Install SpotX?"; then
         log_info "Running SpotX..."
-        bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty
-        log_ok "SpotX applied"
+        # Guard set -e: SpotX exits non-zero on network failure / unsupported
+        # Spotify version, which would otherwise abort the whole menu.
+        if bash <(curl -fsSL "$SPOTX_URL") --installmac -f < /dev/tty; then
+            log_ok "SpotX applied"
+        else
+            log_warn "SpotX exited with an error"
+        fi
     fi
     wait_enter
 }
