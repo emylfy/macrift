@@ -383,44 +383,245 @@ setup_fastfetch() {
         if ! brew_install "fastfetch"; then return; fi
     fi
 
-    apply_fastfetch_config
+    fastfetch_gallery
+}
+
+# Path to a brew-installed fastfetch preset (e.g. "neofetch", "examples/13").
+# We copy this file to persist a preset — `--gen-config` ignores `-c` and only
+# dumps defaults, so it can't capture a preset's settings.
+_fastfetch_preset_file() {
+    printf '%s/share/fastfetch/presets/%s.jsonc' "$(brew --prefix 2>/dev/null)" "$1"
+}
+
+# Render one variant straight to the terminal. fastfetch uses absolute cursor
+# moves that break when captured, so this must never be piped. A non-zero exit
+# (e.g. a bad config) must not abort the run under `set -e`.
+#   logo "-"     → use the config's own logo
+#   logo <path>  → override with a logo file
+# Builtin-logo overrides go through a materialized config (see below), not a
+# --logo flag, because the base config's own logo block (width/color/type)
+# would otherwise leak in and corrupt the override.
+_fastfetch_render() {
+    local config="$1" logo="$2"
+    local -a a=(--config "$config")
+    [[ "$logo" != "-" && -f "$logo" ]] && a+=(--logo-type file --logo "$logo")
+    fastfetch ${a[@]+"${a[@]}"} || true
+}
+
+# Strip // comments (full-line and trailing) from a JSONC config to stdout so
+# jq can edit it. Trailing strip requires whitespace before // and no quote
+# after, leaving "https://…" URLs (no preceding space) and string values intact.
+_jsonc_strip() {
+    sed -E -e 's@^[[:space:]]*//.*$@@' -e 's@[[:space:]]+//[^"]*$@@' "$1"
+}
+
+# Rewrite a config's "logo" block to a builtin logo (or "none"), in place.
+# Strips comments first, so it works on the commented example presets too.
+_fastfetch_set_logo() {
+    local file="$1" logo="$2" tmp; tmp=$(mktemp)
+    local filter='.logo = {"type":"builtin","source":$s}'
+    [[ "$logo" == "none" ]] && filter='.logo = {"type":"none"}'
+    if _jsonc_strip "$file" | jq --arg s "$logo" "$filter" > "$tmp" 2>/dev/null \
+        && [[ -s "$tmp" ]]; then
+        mv "$tmp" "$file"
+    else
+        rm -f "$tmp"; return 1
+    fi
+}
+
+# Build a throwaway config (caller removes it) = base with its logo set to a
+# builtin/none, so the live preview matches exactly what apply will persist.
+# Needs a .jsonc suffix — fastfetch refuses to load an extensionless config.
+_fastfetch_logo_config() {
+    local base="$1" logo="$2" out
+    out=$(mktemp -t macrift-ff); mv "$out" "$out.jsonc"; out="$out.jsonc"
+    cp "$base" "$out"
+    _fastfetch_set_logo "$out" "$logo" || { rm -f "$out"; return 1; }
+    printf '%s' "$out"
+}
+
+# Collapse a hardcoded host "format" back to dynamic {name} in a COPIED config,
+# so it shows the real model instead of whatever machine it was authored on.
+# Operates on the target copy only — never mutates the tracked repo source.
+_fastfetch_normalize_host() {
+    local file="$1" fmt esc
+    grep -q '"type": "host"' "$file" 2>/dev/null || return 0
+    fmt=$(grep -A2 '"type": "host"' "$file" | grep '"format"' | sed 's/.*"format": *"\(.*\)".*/\1/')
+    [[ -z "$fmt" || "$fmt" == "{name}" ]] && return 0
+    esc=$(printf '%s' "$fmt" | sed 's/[&/\.*^$[\]]/\\&/g')
+    sed -i '' "s|\"format\": \"${esc}\"|\"format\": \"{name}\"|" "$file"
+    log_ok "Host normalized to dynamic {name}"
+}
+
+# Stacked comparison of the installed config (top) against a candidate (bottom).
+# Side-by-side columns would fight fastfetch's absolute cursor moves, so stack.
+_fastfetch_compare() {
+    local cur_config="$1" cand_config="$2" cand_logo="$3" cand_label="$4"
+    clear
+    if [[ ! -f "$cur_config" ]]; then
+        printf '\n  %b!%b  No installed config to compare against.\n' "$YELLOW" "$RESET"
+        wait_enter; return
+    fi
+    printf '\n  %bCompare%b\n\n' "${BOLD}${ICE}" "$RESET"
+    printf '  %b▾ Current (installed)%b\n' "$BOLD" "$RESET"
+    _fastfetch_render "$cur_config" "-"
+    printf '\n  %b▾ %s%b\n' "$BOLD" "$cand_label" "$RESET"
+    _fastfetch_render "$cand_config" "$cand_logo"
     wait_enter
 }
 
-apply_fastfetch_config() {
+# Persist the selected variant: materialize its config to a temp file, then
+# copy_config it so backup + journal happen uniformly. Returns 0 once applied.
+_fastfetch_apply() {
+    local kind="$1" config_source="$2" logo_source="$3"
+    local config_target="$4" logo_target="$5" label="$6" logo_choice="${7:-own}"
+
+    clear
+    if [[ "$kind" == "current" ]]; then
+        log_info "'$label' is already active — nothing to apply"
+        wait_enter; return 1
+    fi
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply '$label'"
+        wait_enter; return 0
+    fi
+    confirm "Apply '$label'? (current config is backed up)" || return 1
+
+    # Resolve the base config file for this card.
+    local base
+    case "$kind" in
+        macrift)  base="$config_source" ;;
+        preset:*) base=$(_fastfetch_preset_file "${kind#preset:}")
+                  if [[ ! -f "$base" ]]; then
+                      log_err "Preset file not found: $base"; wait_enter; return 1
+                  fi ;;
+    esac
+
+    local tmp; tmp=$(mktemp)
+    cp "$base" "$tmp"
+    [[ "$kind" == "macrift" ]] && _fastfetch_normalize_host "$tmp"
+
+    # logo_choice "own" keeps the config's authored logo (cat for macrift, the
+    # OS logo for presets); anything else rewrites the logo block.
+    local copy_logo=false
+    if [[ "$logo_choice" == "own" ]]; then
+        [[ "$kind" == "macrift" ]] && copy_logo=true
+    elif ! _fastfetch_set_logo "$tmp" "$logo_choice"; then
+        log_err "Could not set logo '$logo_choice'"; rm -f "$tmp"; wait_enter; return 1
+    fi
+
+    copy_config "$tmp" "$config_target"
+    rm -f "$tmp"
+    if [[ "$copy_logo" == true && -f "$logo_source" ]]; then
+        copy_config "$logo_source" "$logo_target"
+    fi
+    log_ok "'$label' applied — restart shell to see it"
+    wait_enter
+    return 0
+}
+
+# Live gallery: browse FastFetch variants (our cat config, a few built-in
+# presets, and the installed config) with a real fastfetch render under each.
+# Arrows browse (← prev, → next) · c compares with the installed config ·
+# ↵ applies · q backs out. Here ← is "previous", not the global "back".
+fastfetch_gallery() {
     local config_source="$MACRIFT_DIR/config/shell/config.jsonc"
+    local logo_source="$MACRIFT_DIR/config/shell/cat.txt"
     local config_target="$HOME/.config/fastfetch/config.jsonc"
+    local logo_target="$HOME/.config/fastfetch/cat.txt"
 
     if [[ ! -f "$config_source" ]]; then
         log_err "No config found at config/shell/config.jsonc"
-        return
+        wait_enter; return
     fi
 
-    # Warn if host format is hardcoded to a specific model
-    if grep -q '"format"' "$config_source" && grep -A1 '"type": "host"' "$config_source" | grep -q '"format"'; then
-        local host_format
-        host_format=$(grep -A2 '"type": "host"' "$config_source" | grep '"format"' | sed 's/.*"format": *"\(.*\)".*/\1/')
-        if [[ "$host_format" != "{name}" && -n "$host_format" ]]; then
-            log_warn "Host is hardcoded to: $host_format"
-            if confirm "Replace with dynamic {name}?"; then
-                # Escape regex metacharacters in the value before sed substitution
-                local escaped_format
-                escaped_format=$(printf '%s' "$host_format" | sed 's/[&/\.*^$[\]]/\\&/g')
-                sed -i '' "s|\"format\": \"${escaped_format}\"|\"format\": \"{name}\"|" "$config_source"
-                log_ok "Fixed — will now show actual model name"
+    # Variant cards — label | kind. kind drives both render and apply:
+    #   current        → the config already in ~/.config (compare / no-op)
+    #   macrift        → our cat config + cat logo
+    #   preset:<name>  → a brew-installed fastfetch preset (copied to persist)
+    local -a labels kinds
+    if [[ -f "$config_target" ]]; then
+        labels+=("Current (installed)"); kinds+=("current")
+    fi
+    labels+=("macrift · cat");  kinds+=("macrift")
+    labels+=("Neofetch");       kinds+=("preset:neofetch")
+    labels+=("Compact");        kinds+=("preset:examples/13")
+    labels+=("Arrows");         kinds+=("preset:examples/7")
+    local total=${#labels[@]}
+
+    # Start on the first card (1/N) — "Current (installed)" when one exists, so
+    # you begin from what you have now and browse → to the alternatives.
+    local sel=0
+
+    # Logo cycle, available on every card except "Current". Index 0 ("own") keeps
+    # the card's authored logo — the cat on macrift, the OS logo on presets; the
+    # rest are visually-distinct macOS-family builtins baked in via jq. (fastfetch's
+    # "macOS"/"macOS_small" are byte-identical to "Apple"/"Apple_small", so they're
+    # omitted; macOS2/macOS3 are the genuinely different renderings.)
+    local -a ff_logos=(own Apple Apple_small macOS2 macOS2_small macOS3 none)
+    local logo_idx=0
+
+    # kind → base render config/logo (_rc / _rl). Nested to see the locals above.
+    _resolve() {
+        case "$1" in
+            current)  _rc="$config_target"; _rl="-" ;;
+            macrift)  _rc="$config_source"; _rl="$logo_source" ;;
+            preset:*) _rc=$(_fastfetch_preset_file "${1#preset:}"); _rl="-" ;;
+        esac
+    }
+
+    local rule="────────────────────────────────────────"
+    # Hide cursor + disable echo (like show_menu) so keys pressed mid-render
+    # don't spray escape bytes on screen. _ui_end restores on the single exit.
+    _ui_start
+    local quit=false
+    while true; do
+        clear
+        local kind="${kinds[$sel]}" label="${labels[$sel]}"
+        local _rc _rl; _resolve "$kind"
+
+        # Logo swap on everything but the installed config.
+        local logo_editable=false logo_tmp="" logo_name="${ff_logos[$logo_idx]}"
+        if [[ "$kind" != "current" ]]; then
+            logo_editable=true
+            local logo_disp="$logo_name"
+            if [[ "$logo_name" == "own" ]]; then
+                [[ "$kind" == "macrift" ]] && logo_disp="cat" || logo_disp="default"
+            else
+                # Materialize a clean config so the preview matches apply exactly.
+                logo_tmp=$(_fastfetch_logo_config "$_rc" "$logo_name") \
+                    && { _rc="$logo_tmp"; _rl="-"; }
             fi
+            label="$label · logo: $logo_disp"
         fi
-    fi
 
-    if confirm "Copy FastFetch config?"; then
-        copy_config "$config_source" "$config_target"
-        # Copy logo file if present
-        local logo_source="$MACRIFT_DIR/config/shell/cat.txt"
-        local logo_target="$HOME/.config/fastfetch/cat.txt"
-        if [[ -f "$logo_source" ]]; then
-            copy_config "$logo_source" "$logo_target"
+        printf '\n  %bFastFetch%b  %b%d/%d · %s%b\n' \
+            "${BOLD}${ICE}" "$RESET" "$DIM" "$((sel + 1))" "$total" "$label" "$RESET"
+        printf '  %b%s%b\n' "$GRAY" "$rule" "$RESET"
+        if [[ -f "$_rc" ]]; then
+            _fastfetch_render "$_rc" "$_rl"
+        else
+            printf '\n  %b!%b  preset file not found — %s\n' "$YELLOW" "$RESET" "$_rc"
         fi
-    fi
+        printf '\n  %b%s%b\n' "$GRAY" "$rule" "$RESET"
+        local lhint=""
+        $logo_editable && lhint=$(printf '   %bl%b logo' "$BOLD" "$RESET")
+        printf '  %b←→%b browse%s   %bc%b compare   %b↵%b apply   %bq%b back\n' \
+            "$BOLD" "$RESET" "$lhint" "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
+
+        case "$(_read_key)" in
+            up|left)      sel=$(( (sel - 1 + total) % total )) ;;
+            down|right)   sel=$(( (sel + 1) % total )) ;;
+            l|L)          $logo_editable && logo_idx=$(( (logo_idx + 1) % ${#ff_logos[@]} )) ;;
+            q|Q|esc)      quit=true ;;
+            c|C)          _fastfetch_compare "$config_target" "$_rc" "$_rl" "$label" ;;
+            enter)        _fastfetch_apply "$kind" "$config_source" "$logo_source" \
+                              "$config_target" "$logo_target" "$label" "$logo_name" && quit=true ;;
+        esac
+        [[ -n "$logo_tmp" ]] && rm -f "$logo_tmp"
+        $quit && break
+    done
+    _ui_end
 }
 
 install_zshrc() {
