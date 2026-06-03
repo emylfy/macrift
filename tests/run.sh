@@ -138,5 +138,76 @@ eq "ralias caveat warns at default 'r'" "$(CC_RUN_ALIAS=r _cc_caveat_for ralias 
 eq "ralias caveat silent when renamed" "$(CC_RUN_ALIAS=rr _cc_caveat_for ralias)" ""
 eq "rules caveat present" "$([ -n "$(_cc_caveat_for rules)" ] && echo yes)" "yes"
 
+# == plugin loader (plugins.sh) ==
+# Hermetic unit tests — mock common.sh helpers so we don't drag in its set -e
+# + log-file side effects. _macrift_version_gt copied verbatim from common.sh.
+printf '== plugin loader (plugins.sh) ==\n'
+log_warn() { :; }
+log_err()  { :; }
+log_info() { :; }
+log_ok()   { :; }
+MACRIFT_VERSION="26.05.3"
+MACRIFT_OS_VER="14.0"
+_macrift_version_gt() {
+  [[ "$1" == "$2" ]] && return 1
+  local IFS=. i x y
+  # shellcheck disable=SC2206
+  local -a a=($1) b=($2)
+  for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+    x=${a[i]:-0}; y=${b[i]:-0}
+    x=${x//[^0-9]/}; y=${y//[^0-9]/}
+    ((10#${x:-0} > 10#${y:-0})) && return 0
+    ((10#${x:-0} < 10#${y:-0})) && return 1
+  done
+  return 1
+}
+# shellcheck disable=SC1091
+source "$ROOT/plugins.sh"
+
+PT="$(mktemp -d)"
+trap 'rm -rf "$PT"' EXIT
+MACRIFT_PLUGINS_DIR="$PT"
+
+# Helper to (re)write a plugin manifest
+write_manifest() {
+  local dir="$1"; shift
+  mkdir -p "$dir"
+  cat > "$dir/plugin.json" <<<"$*"
+}
+
+eq "discover empty when no plugin dirs" "$(_plugin_discover | wc -l | tr -d ' ')" "0"
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Test","entry":"Alpha","function":"alpha_menu"}}'
+write_manifest "$PT/beta"  '{"name":"beta","version":"0.1.0","description":"b","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Test","entry":"Beta","function":"beta_menu"}}'
+mkdir -p "$PT/orphan"  # no plugin.json → should be skipped
+
+eq "discover finds 2 plugins, skips orphan dir" "$(_plugin_discover | wc -l | tr -d ' ')" "2"
+eq "field .name reads correctly"  "$(_plugin_field "$PT/alpha" .name)"  "alpha"
+eq "field .compat.macrift_api"    "$(_plugin_field "$PT/alpha" .compat.macrift_api)" "1"
+if _plugin_field "$PT/alpha" .nope >/dev/null 2>&1; then no "missing field returns 1"; else ok "missing field returns 1"; fi
+
+if _plugin_compat_ok "$PT/alpha"; then ok "valid plugin passes compat"; else no "valid plugin passes compat"; fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":99},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects future API";    else ok "rejects future API";    fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":0},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects older API";     else ok "rejects older API";     fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":"abc"},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects non-integer API"; else ok "rejects non-integer API"; fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"99.99","macrift_api":1},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects too-new macrift_min"; else ok "rejects too-new macrift_min"; fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":1,"macos_min":"99.0"},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects too-new macos_min"; else ok "rejects too-new macos_min"; fi
+
+write_manifest "$PT/alpha" '{"version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects missing .name"; else ok "rejects missing .name"; fi
+
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_api":1},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+if _plugin_compat_ok "$PT/alpha"; then no "rejects missing compat.macrift_min"; else ok "rejects missing compat.macrift_min"; fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]
