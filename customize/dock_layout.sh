@@ -91,7 +91,7 @@ restore_dock_layout() {
 
         # Restore each app from saved layout
         local added=0 failed=0
-        while IFS=$'\t' read -r label _ path; do
+        while IFS=$'\t' read -r _label _ path; do
             # dockutil --list format: "Label\ttype\tpath"
             [[ -z "$path" ]] && continue
             # Strip file:// prefix if present
