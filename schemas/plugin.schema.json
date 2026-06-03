@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/emylfy/macrift/main/schemas/plugin.schema.json",
+  "title": "macrift plugin manifest",
+  "description": "Schema for plugin.json — see PLUGINS.md for the full author contract.",
+  "type": "object",
+  "required": ["name", "version", "description", "compat", "menu"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Pointer to this schema for editor auto-completion."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
+      "minLength": 2,
+      "maxLength": 64,
+      "description": "Lowercase kebab-case identifier. Must be unique on the user's machine."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?$",
+      "description": "Semver (MAJOR.MINOR.PATCH, optional pre-release suffix)."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "One-line summary shown in `macrift plugin list`."
+    },
+    "author": {
+      "type": "string",
+      "description": "Single name or GitHub handle."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX identifier (MIT, Apache-2.0, GPL-3.0-only, …)."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL shown in `macrift plugin info`."
+    },
+
+    "compat": {
+      "type": "object",
+      "required": ["macrift_min", "macrift_api"],
+      "additionalProperties": false,
+      "properties": {
+        "macrift_min": {
+          "type": "string",
+          "pattern": "^[0-9]{2}\\.[0-9]{2}(?:\\.[0-9]+)?$",
+          "description": "Minimum macrift calver (YY.MM or YY.MM.N)."
+        },
+        "macrift_api": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Public-API major version the plugin targets. Currently 1."
+        },
+        "macos_min": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$",
+          "description": "Minimum macOS release (13.0, 14.0, 15.0, …)."
+        }
+      }
+    },
+
+    "menu": {
+      "type": "object",
+      "required": ["section", "entry", "function"],
+      "additionalProperties": false,
+      "properties": {
+        "section": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Main-menu section the entry appears under. Reuse an existing section or create a new one."
+        },
+        "entry": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The menu label. Append ' ›' if the entry opens a submenu."
+        },
+        "function": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+          "description": "Bash function defined in menu.sh — macrift calls this when the user selects the entry."
+        }
+      }
+    },
+
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "on_install": {
+          "type": "string",
+          "description": "Path (relative to the plugin root) to a script run once at `macrift plugin add`."
+        },
+        "on_remove": {
+          "type": "string",
+          "description": "Path (relative to the plugin root) to a script run once at `macrift plugin remove`, before journal undo."
+        }
+      }
+    }
+  }
+}
