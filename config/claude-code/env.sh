@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Claude Code environment variables.
 
 # Subagent model. Without this, each agent runs on its frontmatter `model:` —

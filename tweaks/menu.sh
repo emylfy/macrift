@@ -372,6 +372,7 @@ select_tweaks() {
         fi
 
         if [[ ${#TWEAK_RESETS[@]} -gt 0 ]]; then
+            # shellcheck disable=SC2034  # read by apply_reset_defaults (common.sh)
             RESET_ENTRIES=("${TWEAK_RESETS[@]}")
             apply_reset_defaults
         fi
