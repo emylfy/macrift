@@ -53,6 +53,7 @@ _print_help() {
     echo "  undo [<session>|list]        Revert a journaled session (default: last)"
     echo "  apply [<file.json>]          Apply a declarative manifest (defaults family)"
     echo "  save [<file.json>]           Snapshot current tweaks to a manifest"
+    echo "  plugin <subcommand>          Manage plugins (see 'macrift plugin help')"
     echo "  help                         Show this help"
     echo ""
     echo "Flags:"
@@ -114,6 +115,8 @@ while [[ -L "$MACRIFT_ENTRY" ]]; do
     MACRIFT_ENTRY="$(readlink "$MACRIFT_ENTRY")"
 done
 source "$(cd "$(dirname "$MACRIFT_ENTRY")" && pwd)/common.sh"
+# shellcheck source=plugins.sh
+source "$MACRIFT_DIR/plugins.sh"
 
 # Init log file
 if [[ -n "$MACRIFT_LOG" ]]; then
@@ -164,6 +167,11 @@ case "${MACRIFT_SUBCMD:-}" in
     save)
         check_macos
         manifest_save_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
+        exit $?
+        ;;
+    plugin)
+        check_macos
+        _plugin_cli "${MACRIFT_SUBCMD_ARGS[@]+"${MACRIFT_SUBCMD_ARGS[@]}"}"
         exit $?
         ;;
     *)

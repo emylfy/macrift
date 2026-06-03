@@ -142,11 +142,15 @@ eq "rules caveat present" "$([ -n "$(_cc_caveat_for rules)" ] && echo yes)" "yes
 # Hermetic unit tests — mock common.sh helpers so we don't drag in its set -e
 # + log-file side effects. _macrift_version_gt copied verbatim from common.sh.
 printf '== plugin loader (plugins.sh) ==\n'
-log_warn() { :; }
-log_err()  { :; }
-log_info() { :; }
-log_ok()   { :; }
+# Stubs emit just the message text (no styling) — tests grep stdout/stderr for it.
+log_warn() { printf '%s\n' "${1:-}" >&2; }
+log_err()  { printf '%s\n' "${1:-}" >&2; }
+log_info() { printf '%s\n' "${1:-}"; }
+log_ok()   { printf '%s\n' "${1:-}"; }
+log_hint() { printf '%s\n' "${1:-}"; }
+# shellcheck disable=SC2034  # read by plugins.sh after source
 MACRIFT_VERSION="26.05.3"
+# shellcheck disable=SC2034  # read by plugins.sh after source
 MACRIFT_OS_VER="14.0"
 _macrift_version_gt() {
   [[ "$1" == "$2" ]] && return 1
@@ -166,6 +170,7 @@ source "$ROOT/plugins.sh"
 
 PT="$(mktemp -d)"
 trap 'rm -rf "$PT"' EXIT
+# shellcheck disable=SC2034  # read by plugins.sh after source
 MACRIFT_PLUGINS_DIR="$PT"
 
 # Helper to (re)write a plugin manifest
@@ -208,6 +213,41 @@ if _plugin_compat_ok "$PT/alpha"; then no "rejects missing .name"; else ok "reje
 
 write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_api":1},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
 if _plugin_compat_ok "$PT/alpha"; then no "rejects missing compat.macrift_min"; else ok "rejects missing compat.macrift_min"; fi
+
+# == macrift plugin CLI ==
+printf '== macrift plugin CLI ==\n'
+
+# Reset to two valid plugins for list-rendering tests
+write_manifest "$PT/alpha" '{"name":"alpha","version":"1.0.0","description":"alpha plugin","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"T","entry":"A","function":"a_menu"}}'
+write_manifest "$PT/beta"  '{"name":"beta","version":"0.1.0","description":"beta plugin","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"T","entry":"B","function":"b_menu"}}'
+
+# list — populated
+out=$(_plugin_cli_list 2>&1)
+echo "$out" | grep -q "^  NAME"        && ok "list shows NAME header"        || no "list shows NAME header"
+echo "$out" | grep -q "alpha"          && ok "list shows alpha"               || no "list shows alpha"
+echo "$out" | grep -q "beta"           && ok "list shows beta"                || no "list shows beta"
+echo "$out" | grep -q "alpha plugin"   && ok "list shows description"         || no "list shows description"
+
+# list — empty
+rm -rf "${PT:?}"/*
+out=$(_plugin_cli_list 2>&1)
+echo "$out" | grep -q "No plugins installed" && ok "empty list says No plugins installed" || no "empty list message"
+
+# dispatcher: default arg is list
+out=$(_plugin_cli 2>&1)
+echo "$out" | grep -q "No plugins installed" && ok "bare _plugin_cli defaults to list" || no "bare _plugin_cli defaults to list"
+
+# dispatcher: help
+out=$(_plugin_cli help 2>&1)
+echo "$out" | grep -q "Usage: macrift plugin" && ok "help renders usage" || no "help renders usage"
+
+# dispatcher: stubbed subcommands return 1
+if _plugin_cli add foo  2>/dev/null; then no "add stub returns 1";    else ok "add stub returns 1";    fi
+if _plugin_cli remove x 2>/dev/null; then no "remove stub returns 1"; else ok "remove stub returns 1"; fi
+if _plugin_cli update   2>/dev/null; then no "update stub returns 1"; else ok "update stub returns 1"; fi
+
+# dispatcher: unknown subcommand
+if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else ok "unknown subcommand returns 1"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

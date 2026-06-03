@@ -97,3 +97,77 @@ _plugin_compat_ok() {
 
     return 0
 }
+
+# CLI dispatch for `macrift plugin …` — sourced and called from macrift.sh.
+# Only `list` is implemented in this slice; the rest stub-fail with a clear
+# message so users see the surface that's coming.
+_plugin_cli() {
+    local sub="${1:-list}"
+    [[ $# -gt 0 ]] && shift
+    case "$sub" in
+        list)              _plugin_cli_list "$@" ;;
+        add|remove|update|info|lint)
+            log_err "macrift plugin $sub: not yet implemented (next slice)"
+            return 1
+            ;;
+        help|--help|-h)    _plugin_cli_help ;;
+        *)
+            log_err "Unknown plugin subcommand: $sub"
+            _plugin_cli_help >&2
+            return 1
+            ;;
+    esac
+}
+
+_plugin_cli_help() {
+    cat <<'HELP'
+Usage: macrift plugin <subcommand>
+
+Subcommands:
+  list      List installed plugins
+  add       (coming soon) install a plugin from a git URL
+  remove    (coming soon) uninstall a plugin + undo via journal
+  update    (coming soon) pull latest and re-validate
+  info      (coming soon) README + journaled changes for a plugin
+  lint      (coming soon) check a plugin against the do-not-do rules
+
+See PLUGINS.md for how to write one.
+HELP
+}
+
+# `macrift plugin list` — render a tab-aligned table of installed plugins.
+# Friendly empty-case message uses log_info / log_hint so the styling matches
+# the rest of macrift's output.
+_plugin_cli_list() {
+    local rows=() d name version description
+    while IFS= read -r d; do
+        [[ -z "$d" ]] && continue
+        name=$(_plugin_field "$d" .name) || continue
+        version=$(_plugin_field "$d" .version) || version="?"
+        description=$(_plugin_field "$d" .description) || description=""
+        rows+=("$name"$'\t'"$version"$'\t'"$description")
+    done < <(_plugin_discover)
+
+    if [[ ${#rows[@]} -eq 0 ]]; then
+        printf '\n'
+        log_info "No plugins installed."
+        log_hint "see PLUGINS.md for how to write one, or browse known plugins at https://github.com/emylfy/awesome-macrift-plugins"
+        printf '\n'
+        return 0
+    fi
+
+    # Render — widest NAME/VERSION column drives padding (min widths for headers).
+    local max_name=4 max_ver=7 r n v _desc
+    for r in "${rows[@]}"; do
+        IFS=$'\t' read -r n v _desc <<<"$r"
+        (( ${#n} > max_name )) && max_name=${#n}
+        (( ${#v} > max_ver )) && max_ver=${#v}
+    done
+    printf '\n'
+    printf '  %-*s  %-*s  %s\n' "$max_name" "NAME" "$max_ver" "VERSION" "DESCRIPTION"
+    for r in "${rows[@]}"; do
+        IFS=$'\t' read -r n v _desc <<<"$r"
+        printf '  %-*s  %-*s  %s\n' "$max_name" "$n" "$max_ver" "$v" "$_desc"
+    done
+    printf '\n'
+}
