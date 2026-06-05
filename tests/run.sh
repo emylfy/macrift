@@ -6,6 +6,18 @@
 # from it can never silently drift from the intended set (the casing bug that
 # started this work lived in the old hand-synced parallel arrays).
 
+# macrift requires bash 4+ (namerefs, associative arrays) and re-execs into it
+# at runtime; the suite exercises that code, so it must run under bash 4+ too.
+# macOS ships bash 3.2 as /bin/bash — re-exec into Homebrew bash when invoked
+# under an older one (mirrors macrift.sh's guard).
+if [[ "${BASH_VERSION%%.*}" -lt 4 ]]; then
+    for _newer in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        [[ -x "$_newer" ]] && exec "$_newer" "$0" "$@"
+    done
+    printf 'tests/run.sh requires bash 4+ (found %s) — run: brew install bash\n' "$BASH_VERSION" >&2
+    exit 1
+fi
+
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
