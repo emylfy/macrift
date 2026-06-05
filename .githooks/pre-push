@@ -30,6 +30,24 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # off here so we don't also shove every reachable tag and collide with the
     # outer push. Guarded against re-entering this hook.
     MACRIFT_TAG_PUSH=1 git -c push.followTags=false push "$remote" "refs/tags/v$v" >&2
+
+    # Optional: create a GitHub Release with a cliff-rendered body. Both gh and
+    # git-cliff are optional — if either is missing, the tag still gets pushed
+    # (above) and the release can be created by hand. Failures are non-fatal.
+    if command -v gh >/dev/null 2>&1; then
+        notes=""
+        if command -v git-cliff >/dev/null 2>&1; then
+            notes=$(git-cliff --latest --strip header --tag "v$v" 2>/dev/null || true)
+        fi
+        [[ -z "$notes" ]] && notes="Release v$v"
+        if gh release view "v$v" >/dev/null 2>&1; then
+            printf '[pre-push] gh release v%s already exists — skipping create\n' "$v" >&2
+        elif printf '%s\n' "$notes" | gh release create "v$v" --notes-file - --title "v$v" 2>/dev/null; then
+            printf '[pre-push] created gh release v%s\n' "$v" >&2
+        else
+            printf '[pre-push] gh release create v%s failed (auth? rate limit?) — tag still pushed\n' "$v" >&2
+        fi
+    fi
 done
 
 exit 0

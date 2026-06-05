@@ -18,6 +18,15 @@ Plain **`git push`** ships code **without** a release — no bump, no new tag (t
 
 The in-app changelog uses GitHub's compare API (`v<installed>...main`); since every release is tagged, the compare always resolves. pre-push force-disables `push.followTags` on its own tag push so it sends only the new tag (no collision with the outer push).
 
+## optional release-pipeline integrations
+
+Two extras kick in if the tools are on `PATH`; both fail silently otherwise so the hooks stay usable on stock systems.
+
+- **[git-cliff](https://github.com/orhun/git-cliff)** — `publish` regenerates `CHANGELOG.md` from conventional commits (config in `cliff.toml`) and adds it to the release commit. Install: `brew install git-cliff`.
+- **[gh](https://cli.github.com/)** — `pre-push`, after the `v<VERSION>` tag push, creates a GitHub Release with `git-cliff --latest` (if available) as the body. Install: `brew install gh && gh auth login`.
+
+If both are installed, `./.githooks/publish` produces: a release commit with bumped `VERSION` + updated `CHANGELOG.md`, an annotated `v<VERSION>` tag, *and* a GitHub Release page with human-readable notes — in one command.
+
 ## flagging manual actions
 
 If an update needs the user to do something by hand, add a `Manual-Action:` trailer in the commit body:
