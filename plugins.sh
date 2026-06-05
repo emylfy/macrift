@@ -565,6 +565,58 @@ _plugin_cli_lint() {
     return 1
 }
 
+# `macrift plugin restore` — re-install every lockfile entry that isn't
+# currently present. The reproducibility play: move plugins.lock.json to a
+# fresh machine, run `macrift plugin restore`, get the same plugin set back
+# at the same refs (and the same commit if the source still resolves to it).
+_plugin_cli_restore() {
+    if [[ ! -f "$MACRIFT_PLUGINS_LOCK" ]]; then
+        log_err "No lockfile at $MACRIFT_PLUGINS_LOCK"
+        log_hint "install at least one plugin first to seed the lockfile"
+        return 1
+    fi
+    local entries
+    entries=$(jq -r '.plugins | keys[]' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+    if [[ -z "$entries" ]]; then
+        log_info "Lockfile is empty — nothing to restore"
+        return 0
+    fi
+
+    local installed=0 skipped=0 failed=0
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        if [[ -d "$MACRIFT_PLUGINS_DIR/$name" ]]; then
+            log_skip "$name: already installed"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        local source ref add_arg
+        source=$(jq -r --arg n "$name" '.plugins[$n].source // empty' "$MACRIFT_PLUGINS_LOCK")
+        ref=$(jq -r --arg n "$name" '.plugins[$n].ref // empty'    "$MACRIFT_PLUGINS_LOCK")
+        if [[ -z "$source" || "$source" == "null" ]]; then
+            log_warn "$name: lockfile has no source — cannot restore (was the install a symlink?)"
+            failed=$((failed + 1))
+            continue
+        fi
+        add_arg="$source"
+        [[ -n "$ref" && "$ref" != "null" ]] && add_arg="$source@$ref"
+
+        log_info "Restoring $name from $add_arg"
+        if _plugin_cli_add "$add_arg"; then
+            installed=$((installed + 1))
+        else
+            log_warn "$name: restore failed"
+            failed=$((failed + 1))
+        fi
+    done <<<"$entries"
+
+    printf '\n'
+    log_info "Restore: $installed installed, $skipped already-present, $failed failed"
+    [[ $failed -gt 0 ]] && return 1
+    return 0
+}
+
 # CLI dispatch for `macrift plugin ...` — sourced and called from macrift.sh.
 _plugin_cli() {
     local sub="${1:-list}"
@@ -576,6 +628,7 @@ _plugin_cli() {
         update|upgrade)    _plugin_cli_update "$@" ;;
         info|show)         _plugin_cli_info "$@" ;;
         lint|check)        _plugin_cli_lint "$@" ;;
+        restore)           _plugin_cli_restore "$@" ;;
         help|--help|-h)    _plugin_cli_help ;;
         *)
             log_err "Unknown plugin subcommand: $sub"
@@ -597,6 +650,8 @@ Subcommands:
   update [<name>]               git pull every plugin (or just the named one)
   info <name>                   manifest fields + compat status + lockfile entry
   lint <path-or-name>           static checks against PLUGINS.md do-not-do rules
+  restore                       re-install every lockfile entry not currently present
+                                (reproducibility — bring plugins.lock.json to a new machine)
   help                          this message
 
 Aliases: rm=remove, upgrade=update, show=info, check=lint.

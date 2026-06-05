@@ -553,7 +553,31 @@ SH
     eq "lockfile records ref when @ref given" \
        "$(jq -r '.plugins."wallpaper-links".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" \
        "v1.0.0"
+
+    # --- restore: rm the plugin dir, keep lockfile, restore should reinstall ---
+    rm -rf "$MACRIFT_PLUGINS_DIR/wallpaper-links"
+    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then no "test setup: removed dir"; fi
+    _plugin_cli_restore >/dev/null 2>&1
+    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+        ok "restore: reinstalls from lockfile"
+    else
+        no "restore: reinstalls from lockfile"
+    fi
+
+    # --- restore: already-installed plugin is left alone ---
+    _plugin_cli_restore >/dev/null 2>&1 && ok "restore: idempotent when already installed" || no "restore: idempotent"
+
+    # --- restore: empty lockfile is a no-op ---
     _plugin_cli_remove wallpaper-links >/dev/null 2>&1
+    eq "lockfile fully empty before restore-empty test" \
+       "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "0"
+    _plugin_cli_restore >/dev/null 2>&1 && ok "restore: empty lockfile no-op" || no "restore: empty lockfile no-op"
+
+    # --- restore: missing lockfile is an error ---
+    saved_lock="$MACRIFT_PLUGINS_LOCK"
+    MACRIFT_PLUGINS_LOCK="$CLI_SBX/nonexistent.json"
+    if _plugin_cli_restore >/dev/null 2>&1; then no "restore: missing lockfile errors"; else ok "restore: missing lockfile errors"; fi
+    MACRIFT_PLUGINS_LOCK="$saved_lock"
 
     # Cleanup
     rm -rf "$CLI_SBX" "$(dirname "$FX_REPO")"
