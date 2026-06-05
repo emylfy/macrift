@@ -336,6 +336,51 @@ _plugin_load_all
 eq "idempotent reload (no doubling)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
 
 
+# == wallpaper-links sample plugin (end-to-end against the real vendor tree) ==
+# The minimal-viable plugin — single show_menu + open. Used as the template
+# example in PLUGINS.md / README.
+if [[ -d "$ROOT/vendor/wallpaper-links" ]]; then
+    printf '== wallpaper-links (vendor/) ==\n'
+    if jq . "$ROOT/vendor/wallpaper-links/plugin.json" >/dev/null 2>&1; then
+        ok "wallpaper-links plugin.json valid"
+    else
+        no "wallpaper-links plugin.json valid"
+    fi
+    SBX2="$(mktemp -d)"
+    ln -sf "$ROOT/vendor/wallpaper-links" "$SBX2/wallpaper-links"
+    saved_dir2="$MACRIFT_PLUGINS_DIR"
+    MACRIFT_PLUGINS_DIR="$SBX2"
+    _plugin_load_all 2>/dev/null
+    eq "wallpaper-links registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+    if declare -F wallpaper_links_menu >/dev/null; then
+        ok "wallpaper_links_menu function defined"
+    else
+        no "wallpaper_links_menu function defined"
+    fi
+    eq "wallpaper-links section is Customize" \
+       "$(IFS=$'\t'; read -r s _ _ <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$s")" \
+       "Customize"
+    rm -rf "$SBX2"
+    MACRIFT_PLUGINS_DIR="$saved_dir2"
+fi
+
+# == multi-plugin scenario (both seed plugins load together) ==
+if [[ -d "$ROOT/vendor/claudemac" && -d "$ROOT/vendor/wallpaper-links" ]]; then
+    printf '== multi-plugin (vendor/ as plugins dir) ==\n'
+    saved_dir3="$MACRIFT_PLUGINS_DIR"
+    MACRIFT_PLUGINS_DIR="$ROOT/vendor"
+    _plugin_load_all 2>/dev/null
+    eq "both plugins register" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
+    # Order is filesystem-alphabetical: claudemac < wallpaper-links
+    eq "first registered is claudemac" \
+       "$(IFS=$'\t'; read -r _ _ f <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$f")" \
+       "claudemac_menu"
+    eq "second registered is wallpaper-links" \
+       "$(IFS=$'\t'; read -r _ _ f <<<"${MACRIFT_PLUGIN_REGISTRY[1]}"; printf '%s' "$f")" \
+       "wallpaper_links_menu"
+    MACRIFT_PLUGINS_DIR="$saved_dir3"
+fi
+
 # == claudemac flagship plugin (end-to-end against the real vendor tree) ==
 if [[ -d "$ROOT/vendor/claudemac" ]]; then
     printf '== claudemac (vendor/) ==\n'

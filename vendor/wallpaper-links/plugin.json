@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/emylfy/macrift/main/schemas/plugin.schema.json",
+  "name": "wallpaper-links",
+  "version": "1.0.0",
+  "description": "Quick-open wallpaper sources — Wallhaven, Catppuccin, Gruvbox, curated collection",
+  "author": "emylfy",
+  "license": "MIT",
+  "homepage": "https://github.com/emylfy/wallpaper-links",
+
+  "compat": {
+    "macrift_min": "26.05",
+    "macrift_api": 1
+  },
+
+  "menu": {
+    "section": "Customize",
+    "entry": "Wallpaper links",
+    "function": "wallpaper_links_menu"
+  }
+}
