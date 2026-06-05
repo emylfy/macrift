@@ -238,14 +238,15 @@ _plugin_cli_add() {
     tmp=$(mktemp -d) || { log_err "mktemp failed"; return 1; }
 
     log_info "Cloning $src${ref:+ @ $ref}..."
-    local clone_status=0
+    local clone_status=0 clone_err
     if [[ -n "$ref" ]]; then
-        git clone --depth=1 --branch "$ref" "$src" "$tmp/clone" 2>&1 | tail -5 || clone_status=1
+        clone_err=$(git clone -q --depth=1 --branch "$ref" "$src" "$tmp/clone" 2>&1) || clone_status=1
     else
-        git clone --depth=1 "$src" "$tmp/clone" 2>&1 | tail -5 || clone_status=1
+        clone_err=$(git clone -q --depth=1 "$src" "$tmp/clone" 2>&1) || clone_status=1
     fi
     if [[ $clone_status -ne 0 || ! -d "$tmp/clone" ]]; then
         log_err "git clone failed"
+        [[ -n "$clone_err" ]] && printf '%s\n' "$clone_err" | tail -5 | sed 's/^/    /'
         rm -rf "$tmp"
         return 1
     fi
@@ -308,9 +309,11 @@ _plugin_cli_add() {
     printf '\n'
 
     if [[ -f "$clone_dir/README.md" ]]; then
-        log_info "README preview (first 20 lines):"
+        log_info "README preview:"
         printf '    ────────\n'
-        head -n 20 "$clone_dir/README.md" | sed 's/^/    /'
+        # Wrap long paragraph lines at word boundaries, then cap the row count
+        # so a README with 600-char lines can't flood the screen.
+        fold -s -w 76 "$clone_dir/README.md" | head -n 12 | sed 's/^/    /'
         printf '    ────────\n\n'
     fi
 
@@ -347,7 +350,9 @@ _plugin_cli_add() {
 
     printf '\n'
     log_ok "Installed $name $version → $target"
-    log_hint "restart macrift to see '$name' in the main menu"
+    # In the TUI the registry is refreshed on exit (see plugins_menu), so the
+    # restart hint only applies to the bare `macrift plugin add` CLI path.
+    [[ "${MACRIFT_IN_TUI:-}" == 1 ]] || log_hint "restart macrift to see '$name' in the main menu"
 }
 
 # `macrift plugin remove <name>` — run on_remove hook if any, delete dir,
@@ -390,7 +395,7 @@ _plugin_cli_remove() {
     _plugin_lock_remove "$name"
 
     log_ok "Removed $name"
-    log_hint "restart macrift to drop the entry from the main menu"
+    [[ "${MACRIFT_IN_TUI:-}" == 1 ]] || log_hint "restart macrift to drop the entry from the main menu"
 }
 
 # `macrift plugin update [<name>]` — git pull each git-checkout plugin (or
@@ -705,4 +710,239 @@ _plugin_cli_list() {
         printf '  %-*s  %-*s  %-*s  %s\n' "$max_name" "$n" "$max_ver" "$v" "$max_status" "$s" "$_desc"
     done
     printf '\n'
+}
+
+# TUI
+
+# Read catalog entries as TSV (name<TAB>source<TAB>tier<TAB>description).
+# Optional $1 filters by tier (official|community). Empty / missing file → no rows.
+_plugin_catalog_entries() {
+    local tier="${1:-}" cf="$MACRIFT_DIR/catalog.json"
+    [[ -f "$cf" ]] || return 0
+    local q='.plugins[]'
+    [[ -n "$tier" ]] && q=".plugins[] | select(.tier == \"$tier\")"
+    jq -r "$q | [.name, .source, .tier, .description] | @tsv" "$cf" 2>/dev/null
+}
+
+# Set of installed plugin names → assoc array via name-ref ($1).
+_plugin_installed_set() {
+    local -n _out="$1"
+    _out=()
+    local d nm
+    while IFS= read -r d; do
+        [[ -n "$d" ]] || continue
+        nm=$(_plugin_field "$d" '.name' 2>/dev/null) || nm="$(basename "$d")"
+        _out["$nm"]=1
+    done < <(_plugin_discover)
+}
+
+# Free-text source prompt → hand off to _plugin_cli_add (preview + confirms live there).
+_plugin_add_manual() {
+    clear
+    printf '  %bAdd from URL or path%b\n' "$BOLD" "$RESET"
+    printf '  %bgithub.com/user/repo  ·  https://...  ·  /local/path   (optional @ref)%b\n\n' "$DIM" "$RESET"
+    printf '  %bsource:%b ' "$CYAN" "$RESET"
+    local src
+    if ! IFS= read -r src || [[ -z "$src" ]]; then
+        log_info "Cancelled"
+        return 0
+    fi
+    _plugin_cli_add "$src"
+}
+
+# Community-tier catalog browse screen (drill-down from Add plugin).
+# Returns 0 if it installed something (caller exits the Add screen too), else 1.
+_plugin_catalog_browse() {
+    crumb_push "Catalog"
+    local rc=1
+    while true; do
+        clear
+        local -A installed=()
+        _plugin_installed_set installed
+
+        local -a items=("## Community") actions=()
+        local name src tier desc
+        while IFS=$'\t' read -r name src tier desc; do
+            [[ -n "$name" ]] || continue
+            [[ -n "${installed[$name]+x}" ]] && continue
+            items+=("$name")
+            actions+=("install:$src")
+        done < <(_plugin_catalog_entries community)
+        (( ${#actions[@]} == 0 )) && items+=("## (nothing new in catalog)")
+        items+=("Back")
+
+        local choice
+        choice=$(show_menu "Catalog" "${items[@]}")
+        [[ "$choice" == "0" ]] && break
+        local action="${actions[$((choice - 1))]:-}"
+        case "$action" in
+            install:*)
+                clear
+                local n0 n1
+                n0=$(_plugin_discover | wc -l | tr -d ' ')
+                _plugin_cli_add "${action#install:}" || true
+                wait_enter
+                n1=$(_plugin_discover | wc -l | tr -d ' ')
+                if (( n1 > n0 )); then rc=0; break; fi
+                ;;
+            "") ;;
+        esac
+    done
+    crumb_pop
+    return $rc
+}
+
+# Add-plugin screen: official entries install directly, community behind a
+# browse sub-screen, manual URL/path as the escape hatch. Already-installed
+# plugins are filtered out (they live under Manage Plugins).
+_plugin_add_menu() {
+    crumb_push "Add plugin"
+    while true; do
+        clear
+        local -A installed=()
+        _plugin_installed_set installed
+
+        local -a items=() actions=()
+
+        # Official tier — direct install rows (collect first, emit header only if any).
+        local -a off_names=() off_srcs=()
+        local name src tier desc
+        while IFS=$'\t' read -r name src tier desc; do
+            [[ -n "$name" ]] || continue
+            [[ -n "${installed[$name]+x}" ]] && continue
+            off_names+=("$name"); off_srcs+=("$src")
+        done < <(_plugin_catalog_entries official)
+        if (( ${#off_names[@]} > 0 )); then
+            items+=("## Official")
+            local k
+            for k in "${!off_names[@]}"; do
+                items+=("${off_names[$k]}")
+                actions+=("install:${off_srcs[$k]}")
+            done
+        fi
+
+        # Community tier — only surface the browse entry if the catalog lists any.
+        if [[ -n "$(_plugin_catalog_entries community)" ]]; then
+            (( ${#items[@]} > 0 )) && items+=("---")
+            items+=("## Community" "Browse catalog ›")
+            actions+=(community)
+        fi
+
+        # Leading `---` only when a section already sits above it, else it renders
+        # as a dangling blank row at the top of the box.
+        (( ${#items[@]} > 0 )) && items+=("---")
+        items+=("## Manual" "From URL or path...")
+        actions+=(manual)
+        items+=("Back")
+
+        local choice
+        choice=$(show_menu "Add plugin" "${items[@]}")
+        [[ "$choice" == "0" ]] && break
+        local action="${actions[$((choice - 1))]:-}"
+        # On a successful install, leave the Add screen so the user lands back on
+        # Manage Plugins with the new entry under Installed (rather than sitting on
+        # a now-emptied Add screen). Install success = installed count grew, since
+        # _plugin_cli_add returns 0 on both success and a declined confirm.
+        local n0 n1
+        case "$action" in
+            install:*)
+                clear
+                n0=$(_plugin_discover | wc -l | tr -d ' ')
+                _plugin_cli_add "${action#install:}" || true
+                wait_enter
+                n1=$(_plugin_discover | wc -l | tr -d ' ')
+                (( n1 > n0 )) && break
+                ;;
+            community) _plugin_catalog_browse && break ;;
+            manual)
+                n0=$(_plugin_discover | wc -l | tr -d ' ')
+                _plugin_add_manual || true
+                wait_enter
+                n1=$(_plugin_discover | wc -l | tr -d ' ')
+                (( n1 > n0 )) && break
+                ;;
+            "") ;;
+        esac
+    done
+    crumb_pop
+}
+
+# Per-plugin screen: Info / Update / Lint / Remove.
+_plugin_one_menu() {
+    local name="$1"
+    crumb_push "$name"
+    while true; do
+        clear
+        local ver
+        ver=$(_plugin_field "$MACRIFT_PLUGINS_DIR/$name" '.version' 2>/dev/null) || ver="?"
+        local -a items=(
+            "## $name $ver"
+            "Info"
+            "Update"
+            "Lint"
+            "Remove"
+            "Back"
+        )
+        local choice
+        choice=$(show_menu "$name" "${items[@]}")
+        case "$choice" in
+            1) clear; _plugin_cli_info "$name"   || true; wait_enter ;;
+            2) clear; _plugin_cli_update "$name" || true; wait_enter ;;
+            3) clear; _plugin_cli_lint "$name"   || true; wait_enter ;;
+            4) clear; _plugin_cli_remove "$name" || true; wait_enter; break ;;
+            0) break ;;
+            *) ;;
+        esac
+    done
+    crumb_pop
+}
+
+# Plugin management screen — drill-down list of installed plugins + manage actions.
+plugins_menu() {
+    crumb_push "Manage Plugins"
+    # Marks every install/remove reached from here as TUI-driven (dynamic scope
+    # reaches _plugin_cli_add/remove) so they skip the CLI-only restart hint.
+    local MACRIFT_IN_TUI=1
+    while true; do
+        clear
+
+        # Discover installed plugins for the drill-down list.
+        local -a names=()
+        local d nm
+        while IFS= read -r d; do
+            [[ -n "$d" ]] || continue
+            nm=$(_plugin_field "$d" '.name' 2>/dev/null) || nm="$(basename "$d")"
+            names+=("$nm")
+        done < <(_plugin_discover)
+
+        local -a items=() actions=()
+        if (( ${#names[@]} > 0 )); then
+            items+=("## Installed")
+            for nm in "${names[@]}"; do
+                items+=("$nm ›")
+                actions+=("one:$nm")
+            done
+            items+=("---")
+        fi
+        items+=("## Manage" "Add plugin" "Update all" "Restore from lockfile" "Browse template ↗")
+        actions+=(add updateall restore browse)
+        items+=("Back")
+
+        local choice
+        choice=$(show_menu "Manage Plugins" "${items[@]}")
+        [[ "$choice" == "0" ]] && break
+
+        local action="${actions[$((choice - 1))]:-}"
+        case "$action" in
+            one:*)     _plugin_one_menu "${action#one:}" || true ;;
+            add)       _plugin_add_menu || true ;;
+            updateall) clear; _plugin_cli_update  || true; wait_enter ;;
+            restore)   clear; _plugin_cli_restore || true; wait_enter ;;
+            browse)    open "https://github.com/emylfy/macrift-plugin-template" || true ;;
+            "") ;;
+        esac
+    done
+    # Refresh the registry so the root menu reflects adds/removes without a restart.
+    _plugin_load_all || true
+    crumb_pop
 }

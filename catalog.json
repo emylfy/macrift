@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "claudemac",
+      "source": "github.com/emylfy/claudemac",
+      "tier": "official",
+      "description": "Opinionated Claude Code setup for macOS — agents, hooks, rules, statusline, MCP, and a Telegram bridge"
+    }
+  ]
+}

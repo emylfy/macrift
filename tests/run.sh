@@ -258,6 +258,38 @@ echo "$out" | grep -q "Usage: macrift plugin" && ok "help renders usage" || no "
 # dispatcher: unknown subcommand
 if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else ok "unknown subcommand returns 1"; fi
 
+# == plugin TUI (management screen) ==
+printf '== plugin TUI ==\n'
+for _fn in plugins_menu _plugin_one_menu _plugin_add_menu _plugin_catalog_browse _plugin_add_manual _plugin_catalog_entries; do
+    if declare -F "$_fn" >/dev/null; then ok "TUI fn defined: $_fn"; else no "TUI fn defined: $_fn"; fi
+done
+
+# _plugin_catalog_entries parses a catalog scoped to a temp MACRIFT_DIR.
+_cat_dir=$(mktemp -d)
+cat > "$_cat_dir/catalog.json" <<'JSON'
+{"version":1,"plugins":[
+  {"name":"claudemac","source":"github.com/x/claudemac","tier":"official","description":"d"},
+  {"name":"foo","source":"github.com/x/foo","tier":"community","description":"e"}
+]}
+JSON
+( MACRIFT_DIR="$_cat_dir"
+  off=$(_plugin_catalog_entries official)
+  com=$(_plugin_catalog_entries community)
+  all=$(_plugin_catalog_entries | wc -l | tr -d ' ')
+  [[ "$off" == $'claudemac\tgithub.com/x/claudemac\tofficial\td' ]] && ok "catalog: official tier filter" || no "catalog: official tier filter" "got [$off]"
+  [[ "$com" == foo* ]] && ok "catalog: community tier filter" || no "catalog: community tier filter" "got [$com]"
+  [[ "$all" == "2" ]] && ok "catalog: no-filter returns all" || no "catalog: no-filter returns all" "got [$all]"
+)
+( MACRIFT_DIR="$_cat_dir-missing"; out=$(_plugin_catalog_entries official); [[ -z "$out" ]] && ok "catalog: missing file → empty" || no "catalog: missing file → empty" )
+rm -rf "$_cat_dir"
+
+# Shipped catalog.json is valid JSON and lists claudemac as official.
+if jq -e '.plugins[] | select(.name=="claudemac" and .tier=="official")' "$ROOT/catalog.json" >/dev/null 2>&1; then
+    ok "shipped catalog: claudemac is official"
+else
+    no "shipped catalog: claudemac is official"
+fi
+
 # == _plugin_load_all (auto-source + registry) ==
 printf '== _plugin_load_all ==\n'
 

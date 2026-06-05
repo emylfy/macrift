@@ -233,8 +233,8 @@ main_menu() {
             done
         fi
 
-        items+=("---" "$update_label" "Exit")
-        actions+=(update)
+        items+=("---" "Manage Plugins ›" "$update_label" "Exit")
+        actions+=(plugins update)
         # No action for trailing "Exit" — show_menu returns 0 for it.
 
         local choice
@@ -261,6 +261,7 @@ main_menu() {
                     wait_enter
                 fi
                 ;;
+            plugins)   plugins_menu || true ;;
             plugin:*)
                 # Guard with `|| true`: a plugin handler returning non-zero
                 # must not abort the main menu (set -e is live here).

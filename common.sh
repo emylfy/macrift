@@ -406,17 +406,12 @@ show_menu() {
     fi
     local sel_total=${#sel_nums[@]}
 
-    # Box dimensions. Items under a section header render indented by one space,
-    # so count that extra column toward the width.
-    local max_len=0 has_header=false
+    # Box dimensions — widest label wins. Section headers (`## `) are flush with
+    # their items, so only the marker is stripped; no extra indent column.
+    local max_len=0
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
-        local _wtext="${items[$i]}"
-        if [[ "$_wtext" == "## "* ]]; then
-            _wtext="${_wtext#\#\# }"; has_header=true
-        elif $has_header; then
-            _wtext=" $_wtext"
-        fi
+        local _wtext="${items[$i]#\#\# }"   # strip the heading marker for width
         [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
     [[ -n "$subtitle" && ${#subtitle} -gt $max_len ]] && max_len=${#subtitle}
@@ -513,11 +508,10 @@ show_menu() {
         fi
 
         # Items
-        local sel_idx=0 rendered=0 seen_header=false
+        local sel_idx=0 rendered=0
         for ((i=0; i<last_idx; i++)); do
             if $need_scroll; then
                 if [[ $i -lt $vp_top || $rendered -ge $visible_count ]]; then
-                    [[ "${items[$i]}" == "## "* ]] && seen_header=true
                     if [[ "${items[$i]}" != "---" && "${items[$i]}" != "## "* ]]; then
                         sel_idx=$((sel_idx + 1))
                     fi
@@ -532,8 +526,8 @@ show_menu() {
             fi
 
             if [[ "${items[$i]}" == "## "* ]]; then
-                # Section heading: dim, sentence-case as written (not uppercased)
-                seen_header=true
+                # Section heading: dim, sentence-case as written (not uppercased),
+                # flush with its items (no extra indent).
                 local htext="${items[$i]#\#\# }"; htext=$(_fit "$htext")
                 local hpad=$((inner_w - 2 - ${#htext})); [[ $hpad -lt 0 ]] && hpad=0
                 _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$htext" "$R")" "$hpad"
@@ -542,8 +536,7 @@ show_menu() {
             fi
 
             local is_sel=false; [[ $sel_idx -eq $sel ]] && is_sel=true
-            local _ind=""; $seen_header && _ind=" "    # indent items beneath a heading
-            _menu_row "${items[$i]}" "$is_sel" false "$_ind"
+            _menu_row "${items[$i]}" "$is_sel" false
             sel_idx=$((sel_idx + 1))
             rendered=$((rendered + 1))
         done
