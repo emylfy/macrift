@@ -147,18 +147,435 @@ _plugin_load_all() {
     done < <(_plugin_discover)
 }
 
-# CLI dispatch for `macrift plugin …` — sourced and called from macrift.sh.
-# Only `list` is implemented in this slice; the rest stub-fail with a clear
-# message so users see the surface that's coming.
+# Reproducibility lockfile — records the exact source / ref / commit / install
+# time for every plugin so `plugin restore` (future) can rehydrate on another
+# machine. Lives at $HOME/.macrift/plugins.lock.json.
+MACRIFT_PLUGINS_LOCK="${MACRIFT_PLUGINS_LOCK:-$HOME/.macrift/plugins.lock.json}"
+
+_plugin_lock_init() {
+    [[ -f "$MACRIFT_PLUGINS_LOCK" ]] && return 0
+    mkdir -p "$(dirname "$MACRIFT_PLUGINS_LOCK")"
+    printf '{ "version": 1, "plugins": {} }\n' >"$MACRIFT_PLUGINS_LOCK"
+}
+
+_plugin_lock_add() {
+    local name="$1" version="$2" src="$3" ref="$4" install_dir="$5"
+    _plugin_lock_init
+    local commit=""
+    if [[ -d "$install_dir/.git" ]]; then
+        commit=$(git -C "$install_dir" rev-parse HEAD 2>/dev/null || true)
+    fi
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local merged
+    merged=$(jq --arg n "$name" --arg v "$version" --arg s "$src" --arg r "$ref" \
+                --arg c "$commit" --arg t "$now" '
+        .plugins[$n] = {
+            version: $v,
+            source: $s,
+            ref:    (if $r == "" then null else $r end),
+            commit: (if $c == "" then null else $c end),
+            installed_at: $t
+        }
+    ' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null) || {
+        log_warn "could not update $MACRIFT_PLUGINS_LOCK (jq error)"
+        return 0
+    }
+    printf '%s\n' "$merged" >"$MACRIFT_PLUGINS_LOCK"
+}
+
+_plugin_lock_remove() {
+    local name="$1"
+    [[ -f "$MACRIFT_PLUGINS_LOCK" ]] || return 0
+    local merged
+    merged=$(jq --arg n "$name" 'del(.plugins[$n])' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null) || return 0
+    printf '%s\n' "$merged" >"$MACRIFT_PLUGINS_LOCK"
+}
+
+# Normalize a user-provided source string to a git-clonable URL/path.
+# Supported forms:
+#   github.com/user/repo   → https://github.com/user/repo.git
+#   https://... / http://...   → as-is
+#   git@host:...             → as-is (SSH)
+#   ssh://... / file://...     → as-is
+#   /abs/path  or  ./relative  → as-is (local clone)
+_plugin_normalize_source() {
+    local src="$1"
+    case "$src" in
+        file://*|https://*|http://*|ssh://*|git@*) printf '%s' "$src" ;;
+        github.com/*)       printf 'https://%s' "$src" ;;
+        /*|./*|../*)        printf '%s' "$src" ;;
+        *)
+            log_err "Unrecognized source: $src"
+            log_hint "expected one of: github.com/user/repo, https://..., file://..., /local/path"
+            return 1
+            ;;
+    esac
+}
+
+# `macrift plugin add <source>[@<ref>]` — clone, validate, prompt, install.
+_plugin_cli_add() {
+    if [[ $# -lt 1 ]]; then
+        log_err "Usage: macrift plugin add <source>[@<ref>]"
+        log_hint "examples: 'github.com/emylfy/claudemac', 'github.com/emylfy/claudemac@v1.0.0', 'file:///abs/path'"
+        return 1
+    fi
+
+    # Split optional @<ref>. To avoid catching the @ inside SSH URLs
+    # (git@host:...), only treat @ as a separator when it appears AFTER any path
+    # separator, i.e. there is a / between the last @ and EOL.
+    local raw="$1" ref=""
+    if [[ "$raw" == *@* && "${raw##*@}" != *"/"* && "${raw%@*}" == */* ]]; then
+        ref="${raw##*@}"
+        raw="${raw%@*}"
+    fi
+
+    local src
+    src=$(_plugin_normalize_source "$raw") || return 1
+
+    local tmp
+    tmp=$(mktemp -d) || { log_err "mktemp failed"; return 1; }
+
+    log_info "Cloning $src${ref:+ @ $ref}..."
+    local clone_status=0
+    if [[ -n "$ref" ]]; then
+        git clone --depth=1 --branch "$ref" "$src" "$tmp/clone" 2>&1 | tail -5 || clone_status=1
+    else
+        git clone --depth=1 "$src" "$tmp/clone" 2>&1 | tail -5 || clone_status=1
+    fi
+    if [[ $clone_status -ne 0 || ! -d "$tmp/clone" ]]; then
+        log_err "git clone failed"
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    local clone_dir="$tmp/clone"
+
+    if [[ ! -f "$clone_dir/plugin.json" ]]; then
+        log_err "No plugin.json at the source — not a macrift plugin"
+        log_hint "see PLUGINS.md for the expected layout"
+        rm -rf "$tmp"
+        return 1
+    fi
+    if ! jq . "$clone_dir/plugin.json" >/dev/null 2>&1; then
+        log_err "plugin.json is not valid JSON"
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    local name version desc
+    name=$(_plugin_field "$clone_dir" .name) || {
+        log_err "plugin.json: missing or invalid .name"
+        rm -rf "$tmp"
+        return 1
+    }
+    version=$(_plugin_field "$clone_dir" .version 2>/dev/null) || version="?"
+    desc=$(_plugin_field "$clone_dir" .description 2>/dev/null) || desc=""
+
+    if ! _plugin_compat_ok "$clone_dir"; then
+        log_err "Plugin $name is incompatible — see warnings above; not installing"
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    # Collision check + optional overwrite
+    mkdir -p "$MACRIFT_PLUGINS_DIR"
+    local target="$MACRIFT_PLUGINS_DIR/$name"
+    if [[ -e "$target" ]]; then
+        log_warn "Plugin $name is already installed at $target"
+        if ! confirm "Overwrite existing installation?" "n"; then
+            log_skip "kept existing $name"
+            rm -rf "$tmp"
+            return 0
+        fi
+        local ts backup
+        ts=$(date +%s)
+        backup="$target.bak.$ts"
+        mv "$target" "$backup"
+        log_info "Old version backed up to $backup"
+    fi
+
+    # Pre-install summary
+    printf '\n'
+    log_info "About to install:"
+    printf '    Name:    %s\n' "$name"
+    printf '    Version: %s\n' "$version"
+    printf '    Source:  %s\n' "$src"
+    [[ -n "$ref" ]] && printf '    Ref:     %s\n' "$ref"
+    printf '    Target:  %s\n' "$target"
+    [[ -n "$desc" ]] && printf '    Desc:    %s\n' "$desc"
+    printf '\n'
+
+    if [[ -f "$clone_dir/README.md" ]]; then
+        log_info "README preview (first 20 lines):"
+        printf '    ────────\n'
+        head -n 20 "$clone_dir/README.md" | sed 's/^/    /'
+        printf '    ────────\n\n'
+    fi
+
+    if [[ -d "$clone_dir/.git" ]]; then
+        log_info "Recent commits:"
+        git -C "$clone_dir" log --oneline -5 2>/dev/null | sed 's/^/    /'
+        printf '\n'
+    fi
+
+    if ! confirm "Install $name?" "y"; then
+        log_skip "cancelled"
+        rm -rf "$tmp"
+        return 0
+    fi
+
+    if ! mv "$clone_dir" "$target"; then
+        log_err "Failed to move plugin into $target"
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+
+    # Run on_install hook if defined
+    local on_install
+    on_install=$(_plugin_field "$target" .lifecycle.on_install 2>/dev/null || true)
+    if [[ -n "${on_install:-}" && -f "$target/$on_install" ]]; then
+        log_info "Running on_install hook: $on_install"
+        if ! bash "$target/$on_install"; then
+            log_warn "on_install returned non-zero (plugin installed but hook may not have completed)"
+        fi
+    fi
+
+    _plugin_lock_add "$name" "$version" "$src" "$ref" "$target"
+
+    printf '\n'
+    log_ok "Installed $name $version → $target"
+    log_hint "restart macrift to see '$name' in the main menu"
+}
+
+# `macrift plugin remove <name>` — run on_remove hook if any, delete dir,
+# update lockfile. State changes the plugin made (defaults / launchd / rc-file
+# markers) need `macrift undo` separately — full per-plugin journal-undo is
+# future work (the journal currently tags by session, not plugin).
+_plugin_cli_remove() {
+    if [[ $# -lt 1 ]]; then
+        log_err "Usage: macrift plugin remove <name>"
+        return 1
+    fi
+    local name="$1"
+    local target="$MACRIFT_PLUGINS_DIR/$name"
+
+    if [[ ! -d "$target" ]]; then
+        log_err "Plugin $name is not installed"
+        log_hint "list installed plugins with: macrift plugin list"
+        return 1
+    fi
+
+    local version
+    version=$(_plugin_field "$target" .version 2>/dev/null) || version="?"
+
+    printf '\n'
+    log_warn "About to remove plugin $name ($version) from $target"
+    log_hint "this deletes the plugin's files; to revert any state it changed (defaults, rc-file, launchd) run 'macrift undo' afterward"
+    if ! confirm "Continue?" "n"; then
+        log_skip "kept $name"
+        return 0
+    fi
+
+    local on_remove
+    on_remove=$(_plugin_field "$target" .lifecycle.on_remove 2>/dev/null || true)
+    if [[ -n "${on_remove:-}" && -f "$target/$on_remove" ]]; then
+        log_info "Running on_remove hook: $on_remove"
+        bash "$target/$on_remove" || log_warn "on_remove returned non-zero (continuing)"
+    fi
+
+    rm -rf "$target"
+    _plugin_lock_remove "$name"
+
+    log_ok "Removed $name"
+    log_hint "restart macrift to drop the entry from the main menu"
+}
+
+# `macrift plugin update [<name>]` — git pull each git-checkout plugin (or
+# just the named one). Re-validates compat after pull and bumps the lockfile.
+_plugin_cli_update() {
+    local target_name="${1:-}"
+    local updated=0 skipped=0 failed=0
+    if [[ -n "$target_name" ]]; then
+        local target="$MACRIFT_PLUGINS_DIR/$target_name"
+        [[ -d "$target" ]] || { log_err "Plugin $target_name is not installed"; return 1; }
+        if _plugin_update_one "$target"; then updated=$((updated + 1)); else
+            local rc=$?; [[ $rc -eq 2 ]] && skipped=$((skipped + 1)) || failed=$((failed + 1))
+        fi
+    else
+        local d
+        while IFS= read -r d; do
+            [[ -z "$d" ]] && continue
+            if _plugin_update_one "$d"; then updated=$((updated + 1)); else
+                local rc=$?; [[ $rc -eq 2 ]] && skipped=$((skipped + 1)) || failed=$((failed + 1))
+            fi
+        done < <(_plugin_discover)
+    fi
+    printf '\n'
+    log_info "Updated: $updated  Skipped: $skipped  Failed: $failed"
+}
+
+# Return codes: 0 updated, 2 skipped (no-op / not-a-git-checkout / already current), 1 failed.
+_plugin_update_one() {
+    local dir="$1" name before after
+    name=$(_plugin_field "$dir" .name) || { log_warn "$(basename "$dir"): missing .name"; return 1; }
+    if [[ ! -d "$dir/.git" ]]; then
+        log_skip "$name: not a git checkout (likely symlinked), skipping"
+        return 2
+    fi
+    log_info "Updating $name..."
+    before=$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)
+    if ! git -C "$dir" pull --ff-only 2>&1 | tail -3; then
+        log_warn "$name: git pull failed"
+        return 1
+    fi
+    after=$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)
+    if [[ "$before" == "$after" ]]; then
+        log_skip "$name: already at latest"
+        return 2
+    fi
+    if ! _plugin_compat_ok "$dir"; then
+        log_warn "$name: post-update compat check failed — plugin won't load until fixed"
+        return 1
+    fi
+    local version src ref
+    version=$(_plugin_field "$dir" .version 2>/dev/null) || version="?"
+    src=$(jq -r --arg n "$name" '.plugins[$n].source // empty' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+    ref=$(jq -r --arg n "$name" '.plugins[$n].ref // empty'    "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+    [[ "$ref" == "null" ]] && ref=""
+    _plugin_lock_add "$name" "$version" "$src" "$ref" "$dir"
+    log_ok "$name updated to $version"
+}
+
+# `macrift plugin info <name>` — manifest fields + compat status + lockfile
+# entry + README pointer. Read-only.
+_plugin_cli_info() {
+    if [[ $# -lt 1 ]]; then
+        log_err "Usage: macrift plugin info <name>"
+        return 1
+    fi
+    local name="$1"
+    local dir="$MACRIFT_PLUGINS_DIR/$name"
+    [[ -d "$dir" ]] || { log_err "Plugin $name is not installed"; return 1; }
+
+    local version desc author license homepage
+    version=$(_plugin_field "$dir" .version 2>/dev/null)     || version="?"
+    desc=$(_plugin_field "$dir" .description 2>/dev/null)    || desc=""
+    author=$(_plugin_field "$dir" .author 2>/dev/null)       || author=""
+    license=$(_plugin_field "$dir" .license 2>/dev/null)     || license=""
+    homepage=$(_plugin_field "$dir" .homepage 2>/dev/null)   || homepage=""
+
+    printf '\n  %s %s\n' "$name" "$version"
+    [[ -n "$desc" ]] && printf '  %s\n' "$desc"
+    printf '\n'
+    [[ -n "$author"   ]] && printf '  Author:    %s\n' "$author"
+    [[ -n "$license"  ]] && printf '  License:   %s\n' "$license"
+    [[ -n "$homepage" ]] && printf '  Homepage:  %s\n' "$homepage"
+    printf '  Path:      %s\n' "$dir"
+
+    if _plugin_compat_ok "$dir" >/dev/null 2>&1; then
+        printf '  Status:    ok\n'
+    else
+        printf '  Status:    incompatible (re-run with verbose flag for the reason)\n'
+    fi
+
+    if [[ -f "$MACRIFT_PLUGINS_LOCK" ]]; then
+        local src ref commit installed
+        src=$(jq -r --arg n "$name" '.plugins[$n].source // empty'       "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+        ref=$(jq -r --arg n "$name" '.plugins[$n].ref // empty'          "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+        commit=$(jq -r --arg n "$name" '.plugins[$n].commit // empty'    "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+        installed=$(jq -r --arg n "$name" '.plugins[$n].installed_at // empty' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null || true)
+        [[ -n "$src"       && "$src"       != "null" ]] && printf '  Source:    %s\n' "$src"
+        [[ -n "$ref"       && "$ref"       != "null" ]] && printf '  Ref:       %s\n' "$ref"
+        [[ -n "$commit"    && "$commit"    != "null" ]] && printf '  Commit:    %s\n' "${commit:0:12}"
+        [[ -n "$installed" && "$installed" != "null" ]] && printf '  Installed: %s\n' "$installed"
+    fi
+
+    [[ -f "$dir/README.md" ]] && printf '\n  README:    %s\n' "$dir/README.md"
+    printf '\n'
+}
+
+# `macrift plugin lint <path-or-name>` — static checks against the
+# do-not-do rules documented in PLUGINS.md. Exit 0 if clean, 1 if findings.
+_plugin_cli_lint() {
+    if [[ $# -lt 1 ]]; then
+        log_err "Usage: macrift plugin lint <path-or-name>"
+        return 1
+    fi
+    local target="$1"
+    # Accept path-to-plugin, path-to-plugin.json, or installed-plugin name
+    if [[ -d "$target" && -f "$target/plugin.json" ]]; then
+        :
+    elif [[ -f "$target" && "${target##*/}" == "plugin.json" ]]; then
+        target="$(dirname "$target")"
+    elif [[ -d "$MACRIFT_PLUGINS_DIR/$target" ]]; then
+        target="$MACRIFT_PLUGINS_DIR/$target"
+    else
+        log_err "Could not locate plugin at: $1"
+        return 1
+    fi
+
+    local issues=0
+
+    if [[ ! -f "$target/plugin.json" ]]; then
+        log_err "No plugin.json in $target"
+        return 1
+    fi
+    if ! jq . "$target/plugin.json" >/dev/null 2>&1; then
+        log_err "plugin.json is not valid JSON"
+        issues=$((issues + 1))
+    fi
+    if [[ ! -f "$target/menu.sh" ]]; then
+        log_warn "menu.sh missing — plugin won't expose any menu entry"
+        issues=$((issues + 1))
+    fi
+
+    local hits
+    # 1. Raw `defaults write` outside audit_default
+    hits=$(grep -rnE '^[[:space:]]*defaults[[:space:]]+write' "$target" --include='*.sh' 2>/dev/null | grep -v 'audit_default' || true)
+    if [[ -n "$hits" ]]; then
+        log_warn "Raw 'defaults write' (use audit_default → journal can undo it):"
+        printf '%s\n' "$hits" | sed 's|^|    |'
+        issues=$((issues + 1))
+    fi
+
+    # 2. Raw `launchctl bootstrap`
+    hits=$(grep -rnE '^[[:space:]]*launchctl[[:space:]]+bootstrap' "$target" --include='*.sh' 2>/dev/null || true)
+    if [[ -n "$hits" ]]; then
+        log_warn "Raw 'launchctl bootstrap' (use _journal_append_launchd for undo):"
+        printf '%s\n' "$hits" | sed 's|^|    |'
+        issues=$((issues + 1))
+    fi
+
+    # 3. curl | bash patterns
+    hits=$(grep -rnE 'curl[^|]*\|[[:space:]]*((sudo|env|command)[[:space:]]+)?(sh|bash|zsh|python[0-9.]*)' "$target" --include='*.sh' 2>/dev/null || true)
+    if [[ -n "$hits" ]]; then
+        log_warn "'curl | bash' pattern (fetch + verify + execute instead):"
+        printf '%s\n' "$hits" | sed 's|^|    |'
+        issues=$((issues + 1))
+    fi
+
+    printf '\n'
+    if (( issues == 0 )); then
+        log_ok "lint clean — $target"
+        return 0
+    fi
+    log_warn "lint found $issues issue(s) — see PLUGINS.md"
+    return 1
+}
+
+# CLI dispatch for `macrift plugin ...` — sourced and called from macrift.sh.
 _plugin_cli() {
     local sub="${1:-list}"
     [[ $# -gt 0 ]] && shift
     case "$sub" in
         list)              _plugin_cli_list "$@" ;;
-        add|remove|update|info|lint)
-            log_err "macrift plugin $sub: not yet implemented (next slice)"
-            return 1
-            ;;
+        add)               _plugin_cli_add "$@" ;;
+        remove|rm)         _plugin_cli_remove "$@" ;;
+        update|upgrade)    _plugin_cli_update "$@" ;;
+        info|show)         _plugin_cli_info "$@" ;;
+        lint|check)        _plugin_cli_lint "$@" ;;
         help|--help|-h)    _plugin_cli_help ;;
         *)
             log_err "Unknown plugin subcommand: $sub"
@@ -170,17 +587,21 @@ _plugin_cli() {
 
 _plugin_cli_help() {
     cat <<'HELP'
-Usage: macrift plugin <subcommand>
+Usage: macrift plugin <subcommand> [args]
 
 Subcommands:
-  list      List installed plugins
-  add       (coming soon) install a plugin from a git URL
-  remove    (coming soon) uninstall a plugin + undo via journal
-  update    (coming soon) pull latest and re-validate
-  info      (coming soon) README + journaled changes for a plugin
-  lint      (coming soon) check a plugin against the do-not-do rules
+  list                          list installed plugins (name / version / status / desc)
+  add <source>[@<ref>]          clone, validate, prompt, install
+                                source: github.com/user/repo, https://..., file://..., /path
+  remove <name>                 delete a plugin + lockfile entry (state undo via 'macrift undo')
+  update [<name>]               git pull every plugin (or just the named one)
+  info <name>                   manifest fields + compat status + lockfile entry
+  lint <path-or-name>           static checks against PLUGINS.md do-not-do rules
+  help                          this message
 
-See PLUGINS.md for how to write one.
+Aliases: rm=remove, upgrade=update, show=info, check=lint.
+
+See PLUGINS.md for the plugin author contract and SECURITY.md for the trust model.
 HELP
 }
 
