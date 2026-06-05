@@ -18,8 +18,9 @@ MACRIFT_PLUGINS_DIR="${MACRIFT_PLUGINS_DIR:-$HOME/.macrift/plugins}"
 # Public-API version. Bump only on breaking changes to the helpers documented
 # in PLUGINS.md (show_menu / log_* / audit_default / copy_config / journal).
 # Plugins declare the API version they target in compat.macrift_api; a
-# mismatch is a load-time error, not a runtime crash.
-MACRIFT_API_VERSION=1
+# mismatch is a load-time error, not a runtime crash. Exported so plugin
+# code can branch on it if a backward-compatible feature is added mid-major.
+export MACRIFT_API_VERSION=1
 
 # Print one plugin directory per line for every entry in $MACRIFT_PLUGINS_DIR
 # that has a plugin.json. Silent (no error) on a fresh install where the dir
