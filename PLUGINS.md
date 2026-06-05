@@ -79,9 +79,16 @@ but enables editor auto-completion in VS Code / Zed / IntelliJ.
 | `compat.macrift_min` | yes | Minimum macrift calver (`YY.MM`). |
 | `compat.macrift_api` | yes | Public-API major version (currently `1`). |
 | `compat.macos_min` | optional | Minimum macOS release (`13.0`, `14.0`, …). |
-| `menu.section` | yes | Where in the main menu the entry appears. Reuse an existing section or create a new one. |
+| `menu.section` | one of section/parent | Creates (or reuses) a **top-level** main-menu section the entry appears under. |
+| `menu.parent` | one of section/parent | Injects the entry **into** a built-in submenu instead: one of `tweaks`, `apps`, `customize`, `security`, `cleanup`. Requires `macrift_min ≥ 26.06`. |
 | `menu.entry` | yes | The label as shown. Append ` ›` if it opens a submenu. |
 | `menu.function` | yes | Bash function defined in `menu.sh` — macrift calls this when the user selects the entry. |
+
+Set **exactly one** of `menu.section` or `menu.parent`. Use `section` to add your
+own top-level entry to the main menu; use `parent` to land inside an existing
+built-in submenu (e.g. `parent: "customize"` puts your entry at the bottom of the
+**Customize** menu). Plugins using `parent` must set `compat.macrift_min` to `26.06`
+or later — older macrift builds don't understand it and will skip the plugin.
 | `lifecycle.on_install` | optional | Script run once when the plugin is installed. |
 | `lifecycle.on_remove` | optional | Script run once when the plugin is removed (before journal undo). |
 

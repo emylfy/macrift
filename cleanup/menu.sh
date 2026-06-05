@@ -10,12 +10,24 @@ cleanup_menu() {
         clear
 
 
-        local choice
-        choice=$(show_menu "Cleanup" \
-            "Homebrew Cleanup" \
-            "Deep Clean (Mole)" \
-            "Back")
+        local -a items=(
+            "Homebrew Cleanup"
+            "Deep Clean (Mole)"
+        )
 
+        # Plugins targeting menu.parent=cleanup append below the built-ins.
+        local _nb; _nb=$(_menu_selectable_count items)
+        local -a _pf=()
+        _plugin_attach_builtin cleanup items _pf
+        items+=("Back")
+
+        local choice
+        choice=$(show_menu "Cleanup" "${items[@]}")
+
+        if (( choice > _nb )); then
+            "${_pf[$((choice - _nb - 1))]}" || true
+            continue
+        fi
         case "$choice" in
             1) run_brew_cleanup ;;
             2) run_mole_cleanup || true ;; # guard set -e: interactive mole may exit non-zero

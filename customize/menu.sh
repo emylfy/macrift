@@ -31,11 +31,20 @@ customize_menu() {
             "Dock Layout ›"
         )
         $is_tahoe || items+=("Launchpad ›")
+
+        # Plugins targeting menu.parent=customize append below the built-ins.
+        local _nb; _nb=$(_menu_selectable_count items)
+        local -a _pf=()
+        _plugin_attach_builtin customize items _pf
         items+=("Back")
 
         local choice
         choice=$(show_menu "Customize" "${items[@]}")
 
+        if (( choice > _nb )); then
+            "${_pf[$((choice - _nb - 1))]}" || true
+            continue
+        fi
         case "$choice" in
             1) source "$MACRIFT_DIR/customize/profile.sh"     && profile_menu ;;
             2) source "$MACRIFT_DIR/customize/terminal.sh"    && terminal_menu ;;

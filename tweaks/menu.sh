@@ -407,16 +407,28 @@ tweaks_menu() {
     while true; do
         clear
 
-        local choice
-        choice=$(show_menu "System Tweaks" \
-            "Browse & Apply ›" \
-            "Hot Corners… ↗" \
-            "Spotlight Hotkey… ↗" \
-            "---" \
-            "Dithering ›" \
-            "Space Switcher ›" \
-            "Back")
+        local -a items=(
+            "Browse & Apply ›"
+            "Hot Corners… ↗"
+            "Spotlight Hotkey… ↗"
+            "---"
+            "Dithering ›"
+            "Space Switcher ›"
+        )
 
+        # Plugins targeting menu.parent=tweaks append below the built-ins.
+        local _nb; _nb=$(_menu_selectable_count items)
+        local -a _pf=()
+        _plugin_attach_builtin tweaks items _pf
+        items+=("Back")
+
+        local choice
+        choice=$(show_menu "System Tweaks" "${items[@]}")
+
+        if (( choice > _nb )); then
+            "${_pf[$((choice - _nb - 1))]}" || true
+            continue
+        fi
         case "$choice" in
             1) select_tweaks ;;
             2) if open "x-apple.systempreferences:com.apple.Desktop-Settings.extension?HotCorners" 2>/dev/null; then

@@ -46,11 +46,20 @@ apps_menu() {
         if ! xcode-select -p &>/dev/null; then
             items+=("---" "Xcode Command Line Tools")
         fi
+
+        # Plugins targeting menu.parent=apps append below the built-ins.
+        local _nb; _nb=$(_menu_selectable_count items)
+        local -a _pf=()
+        _plugin_attach_builtin apps items _pf
         items+=("Back")
 
         local choice
         choice=$(show_menu "Apps & Packages" "${items[@]}")
 
+        if (( choice > _nb )); then
+            "${_pf[$((choice - _nb - 1))]}" || true
+            continue
+        fi
         case "$choice" in
             1) source "$MACRIFT_DIR/apps/brew.sh" && brew_menu ;;
             2) source "$MACRIFT_DIR/apps/appstore.sh" && appstore_menu ;;

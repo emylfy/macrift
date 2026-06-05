@@ -156,7 +156,7 @@ confirm() {
     return 0
 }
 # shellcheck disable=SC2034  # read by plugins.sh after source
-MACRIFT_VERSION="26.05.3"
+MACRIFT_VERSION="26.06"
 # shellcheck disable=SC2034  # read by plugins.sh after source
 MACRIFT_OS_VER="14.0"
 _macrift_version_gt() {
@@ -309,7 +309,7 @@ SH
 
 _plugin_load_all
 eq "valid plugin: registry size"   "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
-eq "valid plugin: registry value"  "${MACRIFT_PLUGIN_REGISTRY[0]}"  $'Test\tAlpha\talpha_menu'
+eq "valid plugin: registry value"  "${MACRIFT_PLUGIN_REGISTRY[0]}"  $'s:Test\tAlpha\talpha_menu'
 if declare -F alpha_menu >/dev/null; then ok "valid plugin: menu.sh sourced"; else no "valid plugin: menu.sh sourced"; fi
 
 # Incompatible plugin → skipped
@@ -370,6 +370,86 @@ _plugin_load_all
 eq "idempotent reload (no doubling)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
 
 
+# == menu.parent (inject into built-in submenus) ==
+printf '== menu.parent ==\n'
+
+# parent-only manifest (valid enum) registers with parent set, section empty
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/par"
+cat > "$PT/par/plugin.json" <<'JSON'
+{"name":"par","version":"1.0.0","description":"","compat":{"macrift_min":"26.06","macrift_api":1},"menu":{"parent":"customize","entry":"Par ›","function":"par_menu"}}
+JSON
+cat > "$PT/par/menu.sh" <<'SH'
+par_menu() { :; }
+SH
+_plugin_load_all
+eq "parent plugin: registry size" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+eq "parent plugin: registry value" "${MACRIFT_PLUGIN_REGISTRY[0]}" $'p:customize\tPar ›\tpar_menu'
+
+# both parent and section → mutually exclusive → skipped
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/both"
+cat > "$PT/both/plugin.json" <<'JSON'
+{"name":"both","version":"1.0.0","description":"","compat":{"macrift_min":"26.06","macrift_api":1},"menu":{"parent":"customize","section":"X","entry":"B","function":"both_menu"}}
+JSON
+cat > "$PT/both/menu.sh" <<'SH'
+both_menu() { :; }
+SH
+_plugin_load_all 2>/dev/null
+eq "parent+section both set: skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# neither parent nor section → skipped
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/none"
+cat > "$PT/none/plugin.json" <<'JSON'
+{"name":"none","version":"1.0.0","description":"","compat":{"macrift_min":"26.06","macrift_api":1},"menu":{"entry":"N","function":"none_menu"}}
+JSON
+cat > "$PT/none/menu.sh" <<'SH'
+none_menu() { :; }
+SH
+_plugin_load_all 2>/dev/null
+eq "neither parent nor section: skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# invalid parent enum value → skipped
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/bad"
+cat > "$PT/bad/plugin.json" <<'JSON'
+{"name":"bad","version":"1.0.0","description":"","compat":{"macrift_min":"26.06","macrift_api":1},"menu":{"parent":"nosuch","entry":"B","function":"bad_menu"}}
+JSON
+cat > "$PT/bad/menu.sh" <<'SH'
+bad_menu() { :; }
+SH
+_plugin_load_all 2>/dev/null
+eq "invalid parent enum: skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# _menu_selectable_count — skips separators and headers
+_msc_arr=("## Head" "One" "---" "Two" "## Other" "Three")
+eq "_menu_selectable_count skips ---/## " "$(_menu_selectable_count _msc_arr)" "3"
+
+# _plugin_attach_builtin — appends matching entries + a leading divider, populates funcs
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/ax"
+cat > "$PT/ax/plugin.json" <<'JSON'
+{"name":"ax","version":"1.0.0","description":"","compat":{"macrift_min":"26.06","macrift_api":1},"menu":{"parent":"cleanup","entry":"AxEntry","function":"ax_menu"}}
+JSON
+cat > "$PT/ax/menu.sh" <<'SH'
+ax_menu() { :; }
+SH
+_plugin_load_all
+_ab_items=("Built-in One" "Built-in Two")
+_ab_funcs=()
+_plugin_attach_builtin cleanup _ab_items _ab_funcs
+eq "_plugin_attach_builtin: divider prepended" "${_ab_items[2]}" "---"
+eq "_plugin_attach_builtin: entry appended"    "${_ab_items[3]}" "AxEntry"
+eq "_plugin_attach_builtin: func recorded"     "${_ab_funcs[0]}" "ax_menu"
+# no match for a different slug → no-op, funcs empty
+_ab_items2=("Only")
+_ab_funcs2=(stale)
+_plugin_attach_builtin tweaks _ab_items2 _ab_funcs2
+eq "_plugin_attach_builtin: no match → items untouched" "${#_ab_items2[@]}" "1"
+eq "_plugin_attach_builtin: no match → funcs empty" "${#_ab_funcs2[@]}" "0"
+
+
 # == wallpaper-links sample plugin (end-to-end against the real vendor tree) ==
 # The minimal-viable plugin — single show_menu + open. Used as the template
 # example in PLUGINS.md / README.
@@ -391,9 +471,9 @@ if [[ -d "$ROOT/vendor/wallpaper-links" ]]; then
     else
         no "wallpaper_links_menu function defined"
     fi
-    eq "wallpaper-links section is Customize" \
-       "$(IFS=$'\t'; read -r s _ _ <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$s")" \
-       "Customize"
+    eq "wallpaper-links targets parent=customize" \
+       "$(IFS=$'\t'; read -r t _ _ <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$t")" \
+       "p:customize"
     rm -rf "$SBX2"
     MACRIFT_PLUGINS_DIR="$saved_dir2"
 fi

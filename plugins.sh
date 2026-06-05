@@ -100,8 +100,13 @@ _plugin_compat_ok() {
 }
 
 # Plugin registry — populated by _plugin_load_all at startup. Each entry is
-# tab-separated:  section \t entry \t function
-# Read by macrift.sh's main_menu to inject plugin items.
+# tab-separated:  target \t entry \t function
+# `target` carries a one-char discriminator prefix: `p:<slug>` injects INTO a
+# built-in submenu (tweaks/apps/customize/security/cleanup); `s:<name>` is a
+# top-level section. (A single non-empty field, rather than separate parent/
+# section columns, avoids `read` collapsing an empty tab-delimited field — tab
+# is IFS-whitespace.) Read by macrift.sh's main_menu (s:) and the submenu
+# functions via _plugin_attach_builtin (p:).
 MACRIFT_PLUGIN_REGISTRY=()
 
 # Discover, compat-check, source, and register every plugin under
@@ -110,17 +115,31 @@ MACRIFT_PLUGIN_REGISTRY=()
 # Plugin failures emit log_warn but never abort the startup of macrift itself.
 _plugin_load_all() {
     MACRIFT_PLUGIN_REGISTRY=()
-    local dir name section entry func
+    local dir name parent section entry func target
     while IFS= read -r dir; do
         [[ -z "$dir" ]] && continue
         _plugin_compat_ok "$dir" || continue
 
         # name is already validated by _plugin_compat_ok; safe to read.
         name=$(_plugin_field "$dir" .name)
-        section=$(_plugin_field "$dir" .menu.section) || {
-            log_warn "Plugin $name: missing menu.section — skipping"
+
+        # menu.parent (inject into a built-in submenu) and menu.section (new
+        # top-level grouping) are optional but mutually exclusive — exactly one.
+        parent=$(_plugin_field "$dir" .menu.parent || true)
+        section=$(_plugin_field "$dir" .menu.section || true)
+        if [[ -n "$parent" && -n "$section" ]]; then
+            log_warn "Plugin $name: menu.parent and menu.section are mutually exclusive — skipping"
             continue
-        }
+        fi
+        if [[ -n "$parent" ]]; then
+            case "$parent" in
+                tweaks|apps|customize|security|cleanup) ;;
+                *) log_warn "Plugin $name: menu.parent '$parent' is not a built-in submenu — skipping"; continue ;;
+            esac
+        elif [[ -z "$section" ]]; then
+            log_warn "Plugin $name: needs menu.parent or menu.section — skipping"
+            continue
+        fi
         entry=$(_plugin_field "$dir" .menu.entry) || {
             log_warn "Plugin $name: missing menu.entry — skipping"
             continue
@@ -144,8 +163,42 @@ _plugin_load_all() {
             continue
         fi
 
-        MACRIFT_PLUGIN_REGISTRY+=("$section"$'\t'"$entry"$'\t'"$func")
+        if [[ -n "$parent" ]]; then target="p:$parent"; else target="s:$section"; fi
+        MACRIFT_PLUGIN_REGISTRY+=("$target"$'\t'"$entry"$'\t'"$func")
     done < <(_plugin_discover)
+}
+
+# Count selectable (non-`---`, non-`## `) entries in a menu items array (nameref).
+# Used by built-in submenus to know how many of their own rows precede any
+# injected plugin entries, so the plugin dispatch index is correct.
+_menu_selectable_count() {
+    local -n _arr="$1"
+    local n=0 it
+    for it in "${_arr[@]}"; do
+        [[ "$it" == "---" || "$it" == "## "* ]] && continue
+        n=$((n + 1))
+    done
+    printf '%s' "$n"
+}
+
+# Append plugin entries targeting built-in submenu <slug> to an items array
+# (nameref $2), recording their handler functions in a parallel funcs array
+# (nameref $3). Prepends one `---` divider when at least one entry is added.
+# No-op (funcs left empty) when no plugin targets <slug>.
+_plugin_attach_builtin() {
+    local slug="$1"
+    local -n _items="$2"
+    local -n _funcs="$3"
+    _funcs=()
+    local rec target entry func added=0
+    for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
+        IFS=$'\t' read -r target entry func <<<"$rec"
+        [[ "$target" == "p:$slug" ]] || continue
+        (( added == 0 )) && _items+=("---")
+        _items+=("$entry")
+        _funcs+=("$func")
+        added=1
+    done
 }
 
 # Reproducibility lockfile — records the exact source / ref / commit / install

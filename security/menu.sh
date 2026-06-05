@@ -11,11 +11,20 @@ privacy_menu() {
 
         local items=("Security Status" "Privacy Shortcuts ›" "Hostname" "DNS ›" "Update Control ›" "Unquarantine App")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
+
+        # Plugins targeting menu.parent=security append below the built-ins.
+        local _nb; _nb=$(_menu_selectable_count items)
+        local -a _pf=()
+        _plugin_attach_builtin security items _pf
         items+=("Back")
 
         local choice
         choice=$(show_menu "Privacy & Security" "${items[@]}")
 
+        if (( choice > _nb )); then
+            "${_pf[$((choice - _nb - 1))]}" || true
+            continue
+        fi
         case "$choice" in
             1) show_security_status ;;
             2) privacy_shortcuts_menu ;;

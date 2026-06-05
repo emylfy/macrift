@@ -210,27 +210,34 @@ main_menu() {
         local -a actions=(tweaks apps customize security cleanup)
 
         if (( ${#MACRIFT_PLUGIN_REGISTRY[@]} > 0 )); then
-            # Group plugin entries by section preserving first-seen order.
+            # Group top-level plugin entries by section (first-seen order).
+            # Records with a non-empty parent inject into a built-in submenu
+            # instead (handled by the submenu functions), so skip them here.
             local -A _seen=()
             local -a _sections=()
-            local rec _s _e _f
+            local rec _target _s _e _f
             for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
-                IFS=$'\t' read -r _s _e _f <<<"$rec"
+                IFS=$'\t' read -r _target _e _f <<<"$rec"
+                [[ "$_target" == p:* ]] && continue   # injected into a submenu, not root
+                _s="${_target#s:}"
                 if [[ -z "${_seen[$_s]+x}" ]]; then
                     _sections+=("$_s")
                     _seen[$_s]=1
                 fi
             done
-            items+=("---")
-            for _s in "${_sections[@]}"; do
-                items+=("## $_s")
-                for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
-                    IFS=$'\t' read -r section entry func <<<"$rec"
-                    [[ "$section" == "$_s" ]] || continue
-                    items+=("$entry")
-                    actions+=("plugin:$func")
+            if (( ${#_sections[@]} > 0 )); then
+                items+=("---")
+                for _s in "${_sections[@]}"; do
+                    items+=("## $_s")
+                    for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
+                        IFS=$'\t' read -r _target entry func <<<"$rec"
+                        [[ "$_target" == p:* ]] && continue
+                        [[ "${_target#s:}" == "$_s" ]] || continue
+                        items+=("$entry")
+                        actions+=("plugin:$func")
+                    done
                 done
-            done
+            fi
         fi
 
         items+=("---" "Manage Plugins ›" "$update_label" "Exit")

@@ -69,13 +69,22 @@
 
     "menu": {
       "type": "object",
-      "required": ["section", "entry", "function"],
+      "required": ["entry", "function"],
       "additionalProperties": false,
+      "oneOf": [
+        { "required": ["section"] },
+        { "required": ["parent"] }
+      ],
       "properties": {
         "section": {
           "type": "string",
           "minLength": 1,
-          "description": "Main-menu section the entry appears under. Reuse an existing section or create a new one."
+          "description": "Top-level main-menu section the entry appears under. Reuse an existing section or create a new one. Mutually exclusive with 'parent'."
+        },
+        "parent": {
+          "type": "string",
+          "enum": ["tweaks", "apps", "customize", "security", "cleanup"],
+          "description": "Inject the entry INTO a built-in submenu instead of creating a top-level section. Mutually exclusive with 'section'. Requires macrift ≥ 26.06."
         },
         "entry": {
           "type": "string",
