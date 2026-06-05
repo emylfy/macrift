@@ -1,0 +1,212 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bun x ccstatusline@latest",
+    "padding": 0,
+    "refreshInterval": 10
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          { "type": "command", "command": "bash $HOME/.claude/hooks/format.sh" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/security-gate.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $HOME/.claude/hooks/session-start.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "telegram@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git stash *)",
+      "Bash(git pull *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git show *)",
+      "Bash(git blame *)",
+      "Bash(git tag *)",
+      "Bash(git remote *)",
+      "Bash(git rev-parse *)",
+      "Bash(git config --get *)",
+      "Bash(git ls-files *)",
+      "Bash(gh *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(wc *)",
+      "Bash(find *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(which *)",
+      "Bash(whereis *)",
+      "Bash(file *)",
+      "Bash(stat *)",
+      "Bash(du *)",
+      "Bash(df *)",
+      "Bash(env)",
+      "Bash(printenv *)",
+      "Bash(echo *)",
+      "Bash(printf *)",
+      "Bash(date *)",
+      "Bash(uname *)",
+      "Bash(sw_vers *)",
+      "Bash(whoami)",
+      "Bash(id)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(yarn *)",
+      "Bash(pnpm *)",
+      "Bash(bun *)",
+      "Bash(node *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(cargo *)",
+      "Bash(go *)",
+      "Bash(make *)",
+      "Bash(cmake *)",
+      "Bash(dotnet *)",
+      "Bash(pwsh *)",
+      "Bash(powershell *)",
+      "Bash(powershell.exe *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(kubectl *)",
+      "Bash(brew *)",
+      "Bash(jq *)",
+      "Bash(yq *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(cut *)",
+      "Bash(tr *)",
+      "Bash(xargs *)",
+      "Bash(tee *)",
+      "Bash(diff *)",
+      "Bash(comm *)",
+      "Bash(basename *)",
+      "Bash(dirname *)",
+      "Bash(realpath *)",
+      "Bash(readlink *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(mv *)",
+      "Bash(sudo *)",
+      "Bash(su *)",
+      "Bash(chmod *)",
+      "Bash(chown *)",
+      "Bash(chgrp *)",
+      "Bash(chflags *)",
+      "Bash(git push *)",
+      "Bash(git push)",
+      "Bash(git reset --hard *)",
+      "Bash(git reset --hard)",
+      "Bash(git clean *)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore *)",
+      "Bash(git branch -D *)",
+      "Bash(git branch -d *)",
+      "Bash(git stash drop *)",
+      "Bash(git stash clear)",
+      "Bash(git rebase -i *)",
+      "Bash(git update-ref *)",
+      "Bash(git reflog expire *)",
+      "Bash(brew uninstall *)",
+      "Bash(brew cleanup *)",
+      "Bash(brew autoremove *)",
+      "Bash(docker rm *)",
+      "Bash(docker rmi *)",
+      "Bash(docker system prune *)",
+      "Bash(docker volume prune *)",
+      "Bash(docker network prune *)",
+      "Bash(docker-compose down *)",
+      "Bash(kubectl delete *)",
+      "Bash(kubectl drain *)",
+      "Bash(kubectl cordon *)",
+      "Bash(npm publish *)",
+      "Bash(npm publish)",
+      "Bash(npm unpublish *)",
+      "Bash(yarn publish *)",
+      "Bash(pnpm publish *)",
+      "Bash(pip uninstall *)",
+      "Bash(pip3 uninstall *)",
+      "Bash(cargo publish *)",
+      "Bash(cargo yank *)",
+      "Bash(go clean *)",
+      "Bash(kill *)",
+      "Bash(killall *)",
+      "Bash(pkill *)",
+      "Bash(dd *)",
+      "Bash(shred *)",
+      "Bash(mkfs *)",
+      "Bash(diskutil *)",
+      "Bash(launchctl *)",
+      "Bash(defaults write *)",
+      "Bash(eval *)",
+      "Bash(exec *)",
+      "Bash(xattr *)"
+    ]
+  }
+}
