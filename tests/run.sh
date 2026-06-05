@@ -28,7 +28,7 @@ eq() { # name actual expected
 
 # Function defs only — claude_code.sh has no top-level side effects.
 # shellcheck disable=SC1091
-source "$ROOT/customize/claude_code.sh"
+source "$ROOT/vendor/claudemac/handlers/claude-code.sh"
 
 rows="$(_cc_registry)"
 
@@ -83,6 +83,7 @@ eq "menu render (headers + labels)" "${menu_render%$'\n'}" "$golden_menu_render"
 
 printf '== wizard derivation (golden) ==\n'
 wiz_keys="" wiz_sections="" wiz_defaults=""
+# shellcheck disable=SC2034  # registry has 11 fields; not all are used in this loop body
 while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
   [[ "$wiz" == y ]] || continue
   wiz_keys+="$key "
