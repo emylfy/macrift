@@ -230,30 +230,30 @@ write_manifest "$PT/beta"  '{"name":"beta","version":"0.1.0","description":"beta
 
 # list — populated
 out=$(_plugin_cli_list 2>&1)
-echo "$out" | grep -q "NAME.*VERSION.*STATUS.*DESCRIPTION" && ok "list header has NAME/VERSION/STATUS/DESCRIPTION" || no "list header"
-echo "$out" | grep -q "alpha"          && ok "list shows alpha"               || no "list shows alpha"
-echo "$out" | grep -q "beta"           && ok "list shows beta"                || no "list shows beta"
-echo "$out" | grep -q "alpha plugin"   && ok "list shows description"         || no "list shows description"
-echo "$out" | grep -q "^  alpha .* ok " && ok "list marks compatible alpha as ok" || no "compat status missing"
+if echo "$out" | grep -q "NAME.*VERSION.*STATUS.*DESCRIPTION"; then ok "list header has NAME/VERSION/STATUS/DESCRIPTION"; else no "list header"; fi
+if echo "$out" | grep -q "alpha"; then ok "list shows alpha"; else no "list shows alpha"; fi
+if echo "$out" | grep -q "beta"; then ok "list shows beta"; else no "list shows beta"; fi
+if echo "$out" | grep -q "alpha plugin"; then ok "list shows description"; else no "list shows description"; fi
+if echo "$out" | grep -q "^  alpha .* ok "; then ok "list marks compatible alpha as ok"; else no "compat status missing"; fi
 
 # list — incompatible plugin shows as 'incompatible', not filtered out
 write_manifest "$PT/future" '{"name":"future","version":"1.0.0","description":"f","compat":{"macrift_min":"26.05","macrift_api":99},"menu":{"section":"T","entry":"F","function":"f_menu"}}'
 out=$(_plugin_cli_list 2>&1)
-echo "$out" | grep -qE "^  future .* incompatible " && ok "incompatible plugin shown with status" || no "incompatible plugin missing status"
+if echo "$out" | grep -qE "^  future .* incompatible "; then ok "incompatible plugin shown with status"; else no "incompatible plugin missing status"; fi
 rm -rf "${PT:?}"/future
 
 # list — empty
 rm -rf "${PT:?}"/*
 out=$(_plugin_cli_list 2>&1)
-echo "$out" | grep -q "No plugins installed" && ok "empty list says No plugins installed" || no "empty list message"
+if echo "$out" | grep -q "No plugins installed"; then ok "empty list says No plugins installed"; else no "empty list message"; fi
 
 # dispatcher: default arg is list
 out=$(_plugin_cli 2>&1)
-echo "$out" | grep -q "No plugins installed" && ok "bare _plugin_cli defaults to list" || no "bare _plugin_cli defaults to list"
+if echo "$out" | grep -q "No plugins installed"; then ok "bare _plugin_cli defaults to list"; else no "bare _plugin_cli defaults to list"; fi
 
 # dispatcher: help
 out=$(_plugin_cli help 2>&1)
-echo "$out" | grep -q "Usage: macrift plugin" && ok "help renders usage" || no "help renders usage"
+if echo "$out" | grep -q "Usage: macrift plugin"; then ok "help renders usage"; else no "help renders usage"; fi
 
 # dispatcher: unknown subcommand
 if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else ok "unknown subcommand returns 1"; fi
@@ -276,11 +276,11 @@ JSON
   off=$(_plugin_catalog_entries official)
   com=$(_plugin_catalog_entries community)
   all=$(_plugin_catalog_entries | wc -l | tr -d ' ')
-  [[ "$off" == $'claudemac\tgithub.com/x/claudemac\tofficial\td' ]] && ok "catalog: official tier filter" || no "catalog: official tier filter" "got [$off]"
-  [[ "$com" == foo* ]] && ok "catalog: community tier filter" || no "catalog: community tier filter" "got [$com]"
-  [[ "$all" == "2" ]] && ok "catalog: no-filter returns all" || no "catalog: no-filter returns all" "got [$all]"
+  if [[ "$off" == $'claudemac\tgithub.com/x/claudemac\tofficial\td' ]]; then ok "catalog: official tier filter"; else no "catalog: official tier filter" "got [$off]"; fi
+  if [[ "$com" == foo* ]]; then ok "catalog: community tier filter"; else no "catalog: community tier filter" "got [$com]"; fi
+  if [[ "$all" == "2" ]]; then ok "catalog: no-filter returns all"; else no "catalog: no-filter returns all" "got [$all]"; fi
 )
-( MACRIFT_DIR="$_cat_dir-missing"; out=$(_plugin_catalog_entries official); [[ -z "$out" ]] && ok "catalog: missing file → empty" || no "catalog: missing file → empty" )
+( MACRIFT_DIR="$_cat_dir-missing"; out=$(_plugin_catalog_entries official); if [[ -z "$out" ]]; then ok "catalog: missing file → empty"; else no "catalog: missing file → empty"; fi )
 rm -rf "$_cat_dir"
 
 # Shipped catalog.json is valid JSON and lists claudemac as official.
@@ -584,10 +584,10 @@ if command -v git >/dev/null 2>&1; then
 
     # --- info ---
     info_out=$(_plugin_cli_info wallpaper-links 2>&1)
-    echo "$info_out" | grep -q "wallpaper-links 1.0.0" && ok "info: name + version" || no "info: name + version"
-    echo "$info_out" | grep -q "Status:    ok"          && ok "info: status ok"      || no "info: status ok"
-    echo "$info_out" | grep -q "Source:"                && ok "info: source line"    || no "info: source line"
-    echo "$info_out" | grep -q "Commit:"                && ok "info: commit line"    || no "info: commit line"
+    if echo "$info_out" | grep -q "wallpaper-links 1.0.0"; then ok "info: name + version"; else no "info: name + version"; fi
+    if echo "$info_out" | grep -q "Status:    ok"; then ok "info: status ok"; else no "info: status ok"; fi
+    if echo "$info_out" | grep -q "Source:"; then ok "info: source line"; else no "info: source line"; fi
+    if echo "$info_out" | grep -q "Commit:"; then ok "info: commit line"; else no "info: commit line"; fi
 
     if _plugin_cli_info no-such-plugin >/dev/null 2>&1; then
         no "info on nonexistent plugin should return 1"
@@ -615,12 +615,12 @@ b_menu() {
 }
 SH
     lint_out=$(_plugin_cli_lint "$BAD_DIR" 2>&1)
-    echo "$lint_out" | grep -q "defaults write"    && ok "lint flags raw 'defaults write'"  || no "lint flags raw 'defaults write'"
-    echo "$lint_out" | grep -q "curl"              && ok "lint flags 'curl | bash'"          || no "lint flags 'curl | bash'"
+    if echo "$lint_out" | grep -q "defaults write"; then ok "lint flags raw 'defaults write'"; else no "lint flags raw 'defaults write'"; fi
+    if echo "$lint_out" | grep -q "curl"; then ok "lint flags 'curl | bash'"; else no "lint flags 'curl | bash'"; fi
 
     # --- update (idempotent — nothing changed upstream) ---
     pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
-    _plugin_cli_update wallpaper-links >/dev/null 2>&1 && ok "update: idempotent returns 0" || no "update: idempotent returns 0"
+    if _plugin_cli_update wallpaper-links >/dev/null 2>&1; then ok "update: idempotent returns 0"; else no "update: idempotent returns 0"; fi
     post_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
     eq "update: idempotent leaves HEAD unchanged" "$pre_head" "$post_head"
 
@@ -678,13 +678,13 @@ SH
     fi
 
     # --- restore: already-installed plugin is left alone ---
-    _plugin_cli_restore >/dev/null 2>&1 && ok "restore: idempotent when already installed" || no "restore: idempotent"
+    if _plugin_cli_restore >/dev/null 2>&1; then ok "restore: idempotent when already installed"; else no "restore: idempotent"; fi
 
     # --- restore: empty lockfile is a no-op ---
     _plugin_cli_remove wallpaper-links >/dev/null 2>&1
     eq "lockfile fully empty before restore-empty test" \
        "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "0"
-    _plugin_cli_restore >/dev/null 2>&1 && ok "restore: empty lockfile no-op" || no "restore: empty lockfile no-op"
+    if _plugin_cli_restore >/dev/null 2>&1; then ok "restore: empty lockfile no-op"; else no "restore: empty lockfile no-op"; fi
 
     # --- restore: missing lockfile is an error ---
     saved_lock="$MACRIFT_PLUGINS_LOCK"
