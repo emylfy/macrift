@@ -4,6 +4,8 @@
 
 **Preview every macOS change before it happens — then apply with one key**
 
+<sub>Extensible via plugins · journaled undo · zero state writes until you say go</sub>
+
 <img src="media/demo.gif" alt="macrift main menus" width="90%">
 
 <a href="https://github.com/emylfy/macrift/stargazers"><img src="https://img.shields.io/github/stars/emylfy/macrift?style=for-the-badge&logo=starship&color=C9CBFF&logoColor=C9CBFF&labelColor=302D41" alt="GitHub Stars"></a>&nbsp;&nbsp;
@@ -159,6 +161,52 @@ Export/import your packages with `.brewbak` backup files.
 
 ---
 
+<a id="plugins"></a>
+
+## 🔌 Plugins
+
+macrift is **extensible**. Any git repo with a `plugin.json` and a `menu.sh` becomes a new menu entry, inheriting macrift's TUI, dry-run, and journal-backed undo for free. The plugin's manifest declares which section of the main menu the entry lives under — built-in or new.
+
+```bash
+macrift plugin add github.com/emylfy/claudemac@v1.0.0   # install (pinned)
+macrift plugin list                                     # what's installed
+macrift plugin info  claudemac                          # manifest + lockfile
+macrift plugin lint  ~/my-plugin                        # check against do-not-do rules
+macrift plugin update                                   # git pull every plugin
+macrift plugin remove claudemac                         # delete + lockfile drop
+```
+
+Reproducible across machines via `~/.macrift/plugins.lock.json` (name · version · source · ref · commit · install time).
+
+### Live plugins
+
+| Plugin                                                      | Section     | What it does                                                                                                        |
+| :---------------------------------------------------------- | :---------- | :------------------------------------------------------------------------------------------------------------------ |
+| **[claudemac](https://github.com/emylfy/claudemac)**        | AI tooling  | Opinionated Claude Code setup — agents, hooks, rules, statusline, MCP, plus a Telegram bridge (supercharged/ccgram) |
+| **[wallpaper-links](https://github.com/emylfy/wallpaper-links)** | Customize   | Quick-open wallpaper sources (Wallhaven, Catppuccin, Gruvbox, curated). ~30-line minimum-viable example.            |
+
+Writing your own? See **[PLUGINS.md](PLUGINS.md)** for the author contract (manifest schema, public API, lifecycle, do-not-do rules) and **[SECURITY.md](SECURITY.md)** for the trust model (plugins run with user privileges — same surface as Homebrew taps / oh-my-zsh).
+
+---
+
+<a id="comparison"></a>
+
+## How macrift compares
+
+|                                                          | Stars  | UI            | Dry-run     | Undo                |  Plugin system   |
+| :------------------------------------------------------- | :----- | :------------ | :---------- | :------------------ | :--------------: |
+| **macrift**                                              | …      | visual TUI    | yes         | journal / manifest  | **yes**          |
+| [bkuhlmann/mac_os](https://github.com/bkuhlmann/mac_os)  | 509    | letter-keyed  | no          | restore from backup | —                |
+| [thoughtbot/laptop](https://github.com/thoughtbot/laptop) | ~8.5k  | flat script   | no          | —                   | —                |
+| [mathiasbynens/dotfiles](https://github.com/mathiasbynens/dotfiles) | ~31k   | flat script   | no          | —                   | —                |
+| [MikeMcQuaid/strap](https://github.com/MikeMcQuaid/strap) | ~3.3k  | flat script   | no          | —                   | —                |
+| [privacy.sexy](https://github.com/undergroundwires/privacy.sexy) | ~3k    | GUI / web     | preview     | per-toggle          | —                |
+| [nix-darwin](https://github.com/nix-darwin/nix-darwin)   | ~3k    | declarative   | (n/a)       | generations         | (Nix flakes)     |
+
+macrift's slot: visual TUI + dry-run on every action + journaled undo + an opt-in plugin system. The other tools are either flat scripts you read top-to-bottom and hope, or declarative engines with steep learning curves.
+
+---
+
 <a id="customize"></a>
 
 ## Customize
@@ -205,6 +253,8 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 **Extensions** — multi-select installer from `config/vscode/extensions.txt`; auto-detects `code`/`cursor`/`codium` CLI.
 
 ### 🤖 Claude Code
+
+> Available as the **[claudemac](https://github.com/emylfy/claudemac)** plugin — `macrift plugin add github.com/emylfy/claudemac`. The bullets below describe what that plugin installs.
 
 Per-component installer for `~/.claude/` — pick what you want, skip the rest:
 
