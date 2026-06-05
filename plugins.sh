@@ -98,6 +98,55 @@ _plugin_compat_ok() {
     return 0
 }
 
+# Plugin registry — populated by _plugin_load_all at startup. Each entry is
+# tab-separated:  section \t entry \t function
+# Read by macrift.sh's main_menu to inject plugin items.
+MACRIFT_PLUGIN_REGISTRY=()
+
+# Discover, compat-check, source, and register every plugin under
+# $MACRIFT_PLUGINS_DIR. Idempotent: clears the registry first. Skips plugins
+# whose menu.sh fails to source or doesn't define the declared function.
+# Plugin failures emit log_warn but never abort the startup of macrift itself.
+_plugin_load_all() {
+    MACRIFT_PLUGIN_REGISTRY=()
+    local dir name section entry func
+    while IFS= read -r dir; do
+        [[ -z "$dir" ]] && continue
+        _plugin_compat_ok "$dir" || continue
+
+        # name is already validated by _plugin_compat_ok; safe to read.
+        name=$(_plugin_field "$dir" .name)
+        section=$(_plugin_field "$dir" .menu.section) || {
+            log_warn "Plugin $name: missing menu.section — skipping"
+            continue
+        }
+        entry=$(_plugin_field "$dir" .menu.entry) || {
+            log_warn "Plugin $name: missing menu.entry — skipping"
+            continue
+        }
+        func=$(_plugin_field "$dir" .menu.function) || {
+            log_warn "Plugin $name: missing menu.function — skipping"
+            continue
+        }
+
+        # `if !` suspends set -e inside the source so a broken plugin can't
+        # take macrift down; the function-defined check below catches partial
+        # sources (syntax error mid-file leaves the function undefined). We
+        # log_warn ourselves on failure, so silence the bash-level error too.
+        # shellcheck source=/dev/null
+        if ! source "$dir/menu.sh" 2>/dev/null; then
+            log_warn "Plugin $name: failed to source menu.sh — skipping (run 'bash -n $dir/menu.sh' to diagnose)"
+            continue
+        fi
+        if ! declare -F "$func" >/dev/null 2>&1; then
+            log_warn "Plugin $name: menu.sh did not define '$func' — skipping"
+            continue
+        fi
+
+        MACRIFT_PLUGIN_REGISTRY+=("$section"$'\t'"$entry"$'\t'"$func")
+    done < <(_plugin_discover)
+}
+
 # CLI dispatch for `macrift plugin …` — sourced and called from macrift.sh.
 # Only `list` is implemented in this slice; the rest stub-fail with a clear
 # message so users see the surface that's coming.

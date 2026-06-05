@@ -249,5 +249,84 @@ if _plugin_cli update   2>/dev/null; then no "update stub returns 1"; else ok "u
 # dispatcher: unknown subcommand
 if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else ok "unknown subcommand returns 1"; fi
 
+# == _plugin_load_all (auto-source + registry) ==
+printf '== _plugin_load_all ==\n'
+
+# Empty registry on a fresh dir
+rm -rf "${PT:?}"/*
+_plugin_load_all
+eq "empty plugins dir → empty registry" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# One valid plugin → registry populated, function sourced
+mkdir -p "$PT/alpha"
+cat > "$PT/alpha/plugin.json" <<'JSON'
+{"name":"alpha","version":"1.0.0","description":"a","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Test","entry":"Alpha","function":"alpha_menu"}}
+JSON
+cat > "$PT/alpha/menu.sh" <<'SH'
+alpha_menu() { echo "alpha called"; }
+SH
+
+_plugin_load_all
+eq "valid plugin: registry size"   "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+eq "valid plugin: registry value"  "${MACRIFT_PLUGIN_REGISTRY[0]}"  $'Test\tAlpha\talpha_menu'
+if declare -F alpha_menu >/dev/null; then ok "valid plugin: menu.sh sourced"; else no "valid plugin: menu.sh sourced"; fi
+
+# Incompatible plugin → skipped
+mkdir -p "$PT/future"
+cat > "$PT/future/plugin.json" <<'JSON'
+{"name":"future","version":"1.0.0","description":"f","compat":{"macrift_min":"26.05","macrift_api":99},"menu":{"section":"Test","entry":"Future","function":"future_menu"}}
+JSON
+cat > "$PT/future/menu.sh" <<'SH'
+future_menu() { :; }
+SH
+
+_plugin_load_all
+# Registry should still be 1 (alpha only); 'future' filtered out
+eq "incompatible plugin skipped (registry stays at 1)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+
+# Missing menu.sh → skipped
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/nomenu"
+cat > "$PT/nomenu/plugin.json" <<'JSON'
+{"name":"nomenu","version":"1.0.0","description":"n","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Test","entry":"N","function":"nomenu_menu"}}
+JSON
+# (no menu.sh)
+_plugin_load_all
+eq "missing menu.sh: plugin skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# menu.sh present but doesn't define the declared function → skipped
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/badfn"
+cat > "$PT/badfn/plugin.json" <<'JSON'
+{"name":"badfn","version":"1.0.0","description":"b","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Test","entry":"BadFn","function":"declared_but_missing"}}
+JSON
+cat > "$PT/badfn/menu.sh" <<'SH'
+some_other_function() { :; }
+SH
+_plugin_load_all
+eq "menu.sh missing declared function: plugin skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
+
+# Two plugins, same section — both in registry (grouping is render-time)
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/p1" "$PT/p2"
+cat > "$PT/p1/plugin.json" <<'JSON'
+{"name":"p1","version":"1.0.0","description":"","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Same","entry":"P1","function":"p1_menu"}}
+JSON
+cat > "$PT/p1/menu.sh" <<'SH'
+p1_menu() { :; }
+SH
+cat > "$PT/p2/plugin.json" <<'JSON'
+{"name":"p2","version":"1.0.0","description":"","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"Same","entry":"P2","function":"p2_menu"}}
+JSON
+cat > "$PT/p2/menu.sh" <<'SH'
+p2_menu() { :; }
+SH
+_plugin_load_all
+eq "two plugins in same section: both registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
+
+# Idempotent re-load — calling twice should give same final state, not double
+_plugin_load_all
+eq "idempotent reload (no doubling)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

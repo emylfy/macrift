@@ -187,40 +187,72 @@ main_menu() {
     while true; do
         clear
 
-        # Build title with version, update hint, and flags
-        # Short version (YY.MM) in title — full version (YY.MM.N) lives in footer
+        # Title: version + optional "→ <newer>" arrow on major bump.
         local title="macrift $MACRIFT_VERSION_SHORT"
         if [[ -n "$MACRIFT_UPDATE" ]]; then
             local update_short="$MACRIFT_UPDATE"
             [[ "$MACRIFT_UPDATE" =~ ^([0-9]+\.[0-9]+) ]] && update_short="${BASH_REMATCH[1]}"
-            # Only show arrow for major bumps — patch-only updates would
-            # render as "26.05 → 26.05" since both short to YY.MM
             [[ "$update_short" != "$MACRIFT_VERSION_SHORT" ]] && title+=" → $update_short"
         fi
-        # Flags ([dry-run]/[auto]/[log]) render in the menu footer, not the title.
-
-        # Update menu label
         local update_label="Update"
         [[ -n "$MACRIFT_UPDATE" ]] && update_label="Update → $MACRIFT_UPDATE"
 
-        local choice
-        choice=$(show_menu "$title" \
-            "System Tweaks ›" \
-            "Apps & Packages ›" \
-            "Customize ›" \
-            "Security & Privacy ›" \
-            "Cleanup ›" \
-            "---" \
-            "$update_label" \
-            "Exit")
+        # Build items + a parallel actions array.
+        # When no plugins are installed this yields exactly the menu shape we
+        # had before — feature-flagged so existing users see zero change.
+        local -a items=(
+            "System Tweaks ›"
+            "Apps & Packages ›"
+            "Customize ›"
+            "Security & Privacy ›"
+            "Cleanup ›"
+        )
+        local -a actions=(tweaks apps customize security cleanup)
 
-        case "$choice" in
-            1) source "$MACRIFT_DIR/tweaks/menu.sh" && tweaks_menu ;;
-            2) source "$MACRIFT_DIR/apps/menu.sh" && apps_menu ;;
-            3) source "$MACRIFT_DIR/customize/menu.sh" && customize_menu ;;
-            4) source "$MACRIFT_DIR/security/menu.sh" && privacy_menu ;;
-            5) source "$MACRIFT_DIR/cleanup/menu.sh" && cleanup_menu ;;
-            6)
+        if (( ${#MACRIFT_PLUGIN_REGISTRY[@]} > 0 )); then
+            # Group plugin entries by section preserving first-seen order.
+            local -A _seen=()
+            local -a _sections=()
+            local rec _s _e _f
+            for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
+                IFS=$'\t' read -r _s _e _f <<<"$rec"
+                if [[ -z "${_seen[$_s]+x}" ]]; then
+                    _sections+=("$_s")
+                    _seen[$_s]=1
+                fi
+            done
+            items+=("---")
+            for _s in "${_sections[@]}"; do
+                items+=("## $_s")
+                for rec in "${MACRIFT_PLUGIN_REGISTRY[@]}"; do
+                    IFS=$'\t' read -r section entry func <<<"$rec"
+                    [[ "$section" == "$_s" ]] || continue
+                    items+=("$entry")
+                    actions+=("plugin:$func")
+                done
+            done
+        fi
+
+        items+=("---" "$update_label" "Exit")
+        actions+=(update)
+        # No action for trailing "Exit" — show_menu returns 0 for it.
+
+        local choice
+        choice=$(show_menu "$title" "${items[@]}")
+
+        if [[ "$choice" == "0" ]]; then
+            printf '\n  %bbye%b\n\n' "$DIM" "$RESET"
+            exit 0
+        fi
+
+        local action="${actions[$((choice - 1))]:-}"
+        case "$action" in
+            tweaks)    source "$MACRIFT_DIR/tweaks/menu.sh"    && tweaks_menu ;;
+            apps)      source "$MACRIFT_DIR/apps/menu.sh"      && apps_menu ;;
+            customize) source "$MACRIFT_DIR/customize/menu.sh" && customize_menu ;;
+            security)  source "$MACRIFT_DIR/security/menu.sh"  && privacy_menu ;;
+            cleanup)   source "$MACRIFT_DIR/cleanup/menu.sh"   && cleanup_menu ;;
+            update)
                 if macrift_update; then
                     log_info "Restarting..."
                     sleep 1
@@ -229,8 +261,12 @@ main_menu() {
                     wait_enter
                 fi
                 ;;
-            0) printf '\n  %bbye%b\n\n' "$DIM" "$RESET"; exit 0 ;;
-            *) ;;
+            plugin:*)
+                # Guard with `|| true`: a plugin handler returning non-zero
+                # must not abort the main menu (set -e is live here).
+                "${action#plugin:}" || true
+                ;;
+            "") ;;  # out-of-bounds — show_menu shouldn't return one, but be safe
         esac
     done
 }
@@ -238,5 +274,9 @@ main_menu() {
 #
 check_macos
 check_update
+# Discover + source any compatible plugins under ~/.macrift/plugins/ so their
+# entries can appear in the main menu. Incompatible / broken plugins are
+# skipped with a log_warn — they never abort macrift startup.
+_plugin_load_all
 
 main_menu
