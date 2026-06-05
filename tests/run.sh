@@ -223,10 +223,17 @@ write_manifest "$PT/beta"  '{"name":"beta","version":"0.1.0","description":"beta
 
 # list — populated
 out=$(_plugin_cli_list 2>&1)
-echo "$out" | grep -q "^  NAME"        && ok "list shows NAME header"        || no "list shows NAME header"
+echo "$out" | grep -q "NAME.*VERSION.*STATUS.*DESCRIPTION" && ok "list header has NAME/VERSION/STATUS/DESCRIPTION" || no "list header"
 echo "$out" | grep -q "alpha"          && ok "list shows alpha"               || no "list shows alpha"
 echo "$out" | grep -q "beta"           && ok "list shows beta"                || no "list shows beta"
 echo "$out" | grep -q "alpha plugin"   && ok "list shows description"         || no "list shows description"
+echo "$out" | grep -q "^  alpha .* ok " && ok "list marks compatible alpha as ok" || no "compat status missing"
+
+# list — incompatible plugin shows as 'incompatible', not filtered out
+write_manifest "$PT/future" '{"name":"future","version":"1.0.0","description":"f","compat":{"macrift_min":"26.05","macrift_api":99},"menu":{"section":"T","entry":"F","function":"f_menu"}}'
+out=$(_plugin_cli_list 2>&1)
+echo "$out" | grep -qE "^  future .* incompatible " && ok "incompatible plugin shown with status" || no "incompatible plugin missing status"
+rm -rf "${PT:?}"/future
 
 # list — empty
 rm -rf "${PT:?}"/*

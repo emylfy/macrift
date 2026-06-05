@@ -188,13 +188,21 @@ HELP
 # Friendly empty-case message uses log_info / log_hint so the styling matches
 # the rest of macrift's output.
 _plugin_cli_list() {
-    local rows=() d name version description
+    local rows=() d name version description status
     while IFS= read -r d; do
         [[ -z "$d" ]] && continue
         name=$(_plugin_field "$d" .name) || continue
         version=$(_plugin_field "$d" .version) || version="?"
         description=$(_plugin_field "$d" .description) || description=""
-        rows+=("$name"$'\t'"$version"$'\t'"$description")
+        # Suppress log_warn from compat_ok here — STATUS column communicates
+        # the gist; `macrift plugin info <name>` (next slice) will show the
+        # specific incompat reason.
+        if _plugin_compat_ok "$d" >/dev/null 2>&1; then
+            status="ok"
+        else
+            status="incompatible"
+        fi
+        rows+=("$name"$'\t'"$version"$'\t'"$status"$'\t'"$description")
     done < <(_plugin_discover)
 
     if [[ ${#rows[@]} -eq 0 ]]; then
@@ -205,18 +213,19 @@ _plugin_cli_list() {
         return 0
     fi
 
-    # Render — widest NAME/VERSION column drives padding (min widths for headers).
-    local max_name=4 max_ver=7 r n v _desc
+    # Render — widest NAME/VERSION/STATUS column drives padding (min widths for headers).
+    local max_name=4 max_ver=7 max_status=6 r n v s _desc
     for r in "${rows[@]}"; do
-        IFS=$'\t' read -r n v _desc <<<"$r"
-        (( ${#n} > max_name )) && max_name=${#n}
-        (( ${#v} > max_ver )) && max_ver=${#v}
+        IFS=$'\t' read -r n v s _desc <<<"$r"
+        (( ${#n} > max_name ))   && max_name=${#n}
+        (( ${#v} > max_ver ))    && max_ver=${#v}
+        (( ${#s} > max_status )) && max_status=${#s}
     done
     printf '\n'
-    printf '  %-*s  %-*s  %s\n' "$max_name" "NAME" "$max_ver" "VERSION" "DESCRIPTION"
+    printf '  %-*s  %-*s  %-*s  %s\n' "$max_name" "NAME" "$max_ver" "VERSION" "$max_status" "STATUS" "DESCRIPTION"
     for r in "${rows[@]}"; do
-        IFS=$'\t' read -r n v _desc <<<"$r"
-        printf '  %-*s  %-*s  %s\n' "$max_name" "$n" "$max_ver" "$v" "$_desc"
+        IFS=$'\t' read -r n v s _desc <<<"$r"
+        printf '  %-*s  %-*s  %-*s  %s\n' "$max_name" "$n" "$max_ver" "$v" "$max_status" "$s" "$_desc"
     done
     printf '\n'
 }
