@@ -335,5 +335,49 @@ eq "two plugins in same section: both registered" "${#MACRIFT_PLUGIN_REGISTRY[@]
 _plugin_load_all
 eq "idempotent reload (no doubling)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
 
+
+# == claudemac flagship plugin (end-to-end against the real vendor tree) ==
+if [[ -d "$ROOT/vendor/claudemac" ]]; then
+    printf '== claudemac (vendor/) ==\n'
+    if jq . "$ROOT/vendor/claudemac/plugin.json" >/dev/null 2>&1; then
+        ok "plugin.json is valid JSON"
+    else
+        no "plugin.json is valid JSON"
+    fi
+    eq "name kebab-case" \
+       "$(jq -r .name "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[a-z][a-z0-9-]*[a-z0-9]$')" "1"
+    eq "version is semver" \
+       "$(jq -r .version "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+')" "1"
+    eq "menu.function names a valid bash identifier" \
+       "$(jq -r .menu.function "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[a-zA-Z_][a-zA-Z0-9_]*$')" "1"
+
+    # Real loader against vendor/claudemac under a sandbox plugins dir.
+    SBX="$(mktemp -d)"
+    ln -sf "$ROOT/vendor/claudemac" "$SBX/claudemac"
+    saved_dir="$MACRIFT_PLUGINS_DIR"
+    MACRIFT_PLUGINS_DIR="$SBX"
+    _plugin_load_all 2>/dev/null  # silence path warnings from non-test envs
+    eq "claudemac registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+    if declare -F claudemac_menu >/dev/null; then
+        ok "claudemac_menu function defined"
+    else
+        no "claudemac_menu function defined"
+    fi
+    if declare -F claude_code_menu >/dev/null; then
+        ok "claude_code_menu (handler) defined"
+    else
+        no "claude_code_menu (handler) defined"
+    fi
+    if declare -F _cc_telegram_menu >/dev/null; then
+        ok "_cc_telegram_menu (handler) defined"
+    else
+        no "_cc_telegram_menu (handler) defined"
+    fi
+    eq "CC_CONFIG resolves into the plugin tree" \
+       "$(printf '%s' "$CC_CONFIG" | grep -c '/claudemac/config$')" "1"
+    rm -rf "$SBX"
+    MACRIFT_PLUGINS_DIR="$saved_dir"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]
