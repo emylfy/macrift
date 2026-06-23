@@ -11,6 +11,9 @@ ARCH=$(uname -m)
 # Global flags — set by macrift.sh before sourcing, defaults here for direct sourcing
 MACRIFT_DRY_RUN="${MACRIFT_DRY_RUN:-false}"
 MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
+# Opt-in: allow `kind: command` manifest units (arbitrary shell) to run under
+# --no-confirm. Off by default — auto-approving shell from a file is unsafe.
+MACRIFT_ALLOW_COMMANDS="${MACRIFT_ALLOW_COMMANDS:-false}"
 MACRIFT_LOG="${MACRIFT_LOG:-}"
 
 # Persistent applied-change journal (JSONL) — feeds undo/drift. Unlike the menu
@@ -1278,6 +1281,22 @@ _journal_append_plist() {
         >> "$MACRIFT_JOURNAL" 2>/dev/null || true
 }
 
+# Append a command unit to the journal. Stores the inverse `undo` shell (or null
+# if none) so undo can run it; the command itself has no prior state to capture.
+# Usage: _journal_append_command <id> <run> <undo>
+_journal_append_command() {
+    [[ "${MACRIFT_DRY_RUN:-false}" == true ]] && return 0
+    local cid="$1" run="$2" undo="$3"
+    mkdir -p "$MACRIFT_STATE_DIR" 2>/dev/null || return 0
+    local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local undo_json="null"
+    [[ -n "$undo" ]] && undo_json="\"$(_json_escape "$undo")\""
+    printf '{"session":"%s","ts":"%s","macos":"%s","status":"applied","kind":"command","id":"%s","run":"%s","undo":%s,"old":null}\n' \
+        "$MACRIFT_SESSION" "$ts" "$MACRIFT_OS_VER" \
+        "$(_json_escape "$cid")" "$(_json_escape "$run")" "$undo_json" \
+        >> "$MACRIFT_JOURNAL" 2>/dev/null || true
+}
+
 # Read the current live value of a journaled change, normalized to compare
 # against the stored value/old. Echoes "default" if unset, "__UNKNOWN__" if
 # the kind can't be read. Mirrors the read logic in the tweak files.
@@ -1749,8 +1768,21 @@ for pl in m.get("plist", []):
         continue
     plists.append(("__PLIST__", dom, fil))
 
-unsupported = [f"{k}:{len(m.get(k, []))}"
-               for k in ("command",) if m.get(k)]
+# command units (arbitrary shell escape hatch) — own channel. Columns reused:
+# domain=id, key=run, vtype=undo, value=label.
+commands = []
+for c in m.get("command", []):
+    if not version_ok(c):
+        skipped_version += 1
+        continue
+    run = c.get("run", "")
+    if not run:
+        continue
+    cid = c.get("id", "") or ""
+    commands.append(("__COMMAND__", cid, run, c.get("undo", "") or "", c.get("label") or cid or "command"))
+
+# Every kind is now applied; nothing is reported as unsupported.
+unsupported = []
 
 for u in units:
     print(SEP.join(u))
@@ -1760,6 +1792,8 @@ for b in brews:
     print(SEP.join(b))
 for pl in plists:
     print(SEP.join(pl))
+for c in commands:
+    print(SEP.join(c))
 print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
 PY
 ) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
@@ -1768,6 +1802,7 @@ PY
     DOTFILE_UNITS=()
     BREW_UNITS=()
     PLIST_UNITS=()
+    COMMAND_UNITS=()
     local skipped_version=0 unsupported=""
     while IFS=$'\x1f' read -r kind domain key vtype value label; do
         [[ -z "$kind" ]] && continue
@@ -1789,12 +1824,17 @@ PY
             PLIST_UNITS+=("${domain}"$'\x1f'"${key}")
             continue
         fi
+        if [[ "$kind" == "__COMMAND__" ]]; then
+            # Reader columns reused: domain=id, key=run, vtype=undo, value=label.
+            COMMAND_UNITS+=("${domain}"$'\x1f'"${key}"$'\x1f'"${vtype}"$'\x1f'"${value}")
+            continue
+        fi
         local current
         current=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         AUDIT_ENTRIES+=("${label}|${current}|${value}|${domain}|${key}|${vtype}")
     done <<< "$out"
 
-    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 && ${#BREW_UNITS[@]} -eq 0 && ${#PLIST_UNITS[@]} -eq 0 ]]; then
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 && ${#BREW_UNITS[@]} -eq 0 && ${#PLIST_UNITS[@]} -eq 0 && ${#COMMAND_UNITS[@]} -eq 0 ]]; then
         log_warn "No applicable settings in manifest"
         [[ -n "$unsupported" ]] && log_info "Not yet supported by apply: $unsupported"
         return 0
@@ -1835,6 +1875,12 @@ PY
     # backed up first so undo can re-import it. Separate preview/confirm.
     if [[ ${#PLIST_UNITS[@]} -gt 0 ]]; then
         _manifest_apply_plist "$(dirname "$manifest")"
+    fi
+
+    # Commands — arbitrary shell escape hatch. Hard-gated: previewed in full, and
+    # under --no-confirm runs only when MACRIFT_ALLOW_COMMANDS=true.
+    if [[ ${#COMMAND_UNITS[@]} -gt 0 ]]; then
+        _manifest_apply_command
     fi
 
     [[ "${skipped_version:-0}" -gt 0 ]] && log_info "$skipped_version skipped (macOS version guard)"
@@ -2025,6 +2071,52 @@ _manifest_apply_plist() {
             _journal_append_plist "$domain" "$file_abs" "$bak"
         else
             log_err "Failed: $domain"
+        fi
+    done
+}
+
+# Apply manifest command units (COMMAND_UNITS, each "id\x1frun\x1fundo\x1flabel").
+# Arbitrary shell — hard-gated: every line is shown in full before running, an
+# explicit confirm is required, and under --no-confirm it runs only when
+# MACRIFT_ALLOW_COMMANDS=true. The inverse `undo` (if any) is journaled.
+_manifest_apply_command() {
+    local cid run undo label p
+    local -a plan=("${COMMAND_UNITS[@]}")
+
+    printf '\n'
+    printf '  %b── Commands %b' "${BOLD}" "${RESET}${DIM}"
+    printf '─%.0s' {1..34}
+    printf '%b\n' "$RESET"
+    log_warn "These run arbitrary shell from the manifest — review each line"
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r cid run undo label <<< "$p"
+        local rev="irreversible"; [[ -n "$undo" ]] && rev="reversible"
+        printf '  %b%s%b %b(%s)%b\n' "$BOLD" "${label:-$cid}" "$RESET" "$DIM" "$rev" "$RESET"
+        printf '    %b$ %s%b\n' "$DIM" "$run" "$RESET"
+    done
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf '\n'; log_info "Dry run — no commands run"; return 0
+    fi
+    if [[ "$MACRIFT_NO_CONFIRM" == true && "${MACRIFT_ALLOW_COMMANDS:-false}" != true ]]; then
+        printf '\n'
+        log_warn "Skipped ${#plan[@]} command(s) — set MACRIFT_ALLOW_COMMANDS=true to run manifest shell under --no-confirm"
+        return 0
+    fi
+    printf '\n'
+    if ! confirm "Run these commands?"; then
+        log_info "No commands run"; return 0
+    fi
+
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r cid run undo label <<< "$p"
+        log_info "Running: ${label:-$cid}"
+        if bash -c "$run"; then
+            log_ok "${label:-$cid}"
+            _journal_append_command "$cid" "$run" "$undo"
+        else
+            log_err "Failed: ${label:-$cid}"
         fi
     done
 }
