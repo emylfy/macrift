@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/emylfy/macrift/main/schemas/plugin.schema.json",
+  "name": "sample-plugin",
+  "version": "1.0.0",
+  "description": "Minimal fixture plugin for the macrift test suite",
+  "author": "macrift",
+  "license": "MIT",
+  "homepage": "https://github.com/emylfy/macrift",
+
+  "compat": {
+    "macrift_min": "26.06",
+    "macrift_api": 1
+  },
+
+  "menu": {
+    "parent": "customize",
+    "entry": "Sample plugin",
+    "function": "sample_plugin_menu"
+  }
+}

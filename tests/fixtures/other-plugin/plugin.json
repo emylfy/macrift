@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/emylfy/macrift/main/schemas/plugin.schema.json",
+  "name": "other-plugin",
+  "version": "1.0.0",
+  "description": "Second fixture plugin — used to test multi-plugin registration order",
+  "author": "macrift",
+  "license": "MIT",
+  "homepage": "https://github.com/emylfy/macrift",
+
+  "compat": {
+    "macrift_min": "26.06",
+    "macrift_api": 1
+  },
+
+  "menu": {
+    "parent": "customize",
+    "entry": "Other plugin",
+    "function": "other_plugin_menu"
+  }
+}

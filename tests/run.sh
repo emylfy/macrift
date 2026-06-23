@@ -2,9 +2,10 @@
 # macrift test suite — plain bash, no external deps (no bats/shfmt needed).
 # Run: bash tests/run.sh
 #
-# Focus: lock the Claude Code component registry so the menu/wizard derived
-# from it can never silently drift from the intended set (the casing bug that
-# started this work lived in the old hand-synced parallel arrays).
+# Focus: the plugin subsystem — loader, `macrift plugin` CLI, management TUI,
+# menu.parent injection, and end-to-end install/update/remove against a local
+# git fixture. Plugins live in their own repos; the suite uses the minimal
+# fixtures under tests/fixtures/ rather than any vendored copy.
 
 # macrift requires bash 4+ (namerefs, associative arrays) and re-execs into it
 # at runtime; the suite exercises that code, so it must run under bash 4+ too.
@@ -37,119 +38,6 @@ no() {
 eq() { # name actual expected
   if [[ "$2" == "$3" ]]; then ok "$1"; else no "$1" "expected [$3] got [$2]"; fi
 }
-
-# Function defs only — claude_code.sh has no top-level side effects.
-# shellcheck disable=SC1091
-source "$ROOT/vendor/claudemac/handlers/claude-code.sh"
-
-rows="$(_cc_registry)"
-
-printf '== registry integrity ==\n'
-eq "13 component rows" "$(printf '%s\n' "$rows" | grep -c '|')" "13"
-
-bad_fields=0
-while IFS= read -r r; do
-  [[ -z "$r" ]] && continue
-  pipes="${r//[^|]/}"
-  [[ ${#pipes} -eq 10 ]] || bad_fields=$((bad_fields + 1))
-done <<<"$rows"
-eq "every row has 11 fields" "$bad_fields" "0"
-
-printf '== menu derivation (golden) ==\n'
-# Golden values captured from the pre-registry _cc_custom_menu.
-menu_keys="" menu_render="" bad_handler=0
-prev=""
-while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
-  [[ "$menu" == y ]] || continue
-  [[ -n "$handler" ]] || bad_handler=$((bad_handler + 1))
-  if [[ "$section" != "$prev" ]]; then
-    menu_render+="## $section"$'\n'
-    prev="$section"
-  fi
-  menu_render+="$mlabel"$'\n'
-  menu_keys+="$key "
-done <<<"$rows"
-menu_keys="${menu_keys% }"
-
-eq "menu keys + order" "$menu_keys" \
-  "settings statusline agents commands rules hooks env claude_md ralias mcp"
-eq "every menu row has a handler" "$bad_handler" "0"
-
-read -r -d '' golden_menu_render <<'EOF'
-## Core
-Settings
-Statusline
-## AI extensions
-Agents
-Slash Commands
-Rules
-Hooks
-## Shell integration
-Environment (.zshrc env vars)
-CLAUDE.md (rule imports)
-'r' alias
-## MCP servers
-MCP Servers (context7, playwright)
-EOF
-eq "menu render (headers + labels)" "${menu_render%$'\n'}" "$golden_menu_render"
-
-printf '== wizard derivation (golden) ==\n'
-wiz_keys="" wiz_sections="" wiz_defaults=""
-# shellcheck disable=SC2034  # registry has 11 fields; not all are used in this loop body
-while IFS='|' read -r key section menu wiz mwait wdefault mlabel wlabel handler desc usecase; do
-  [[ "$wiz" == y ]] || continue
-  wiz_keys+="$key "
-  wiz_sections+="$section|"
-  wiz_defaults+="$wdefault"
-done <<<"$rows"
-wiz_keys="${wiz_keys% }"
-
-eq "wizard keys + order" "$wiz_keys" \
-  "settings statusline doctor agents commands rules hooks env claude_md ralias mcp_context7 mcp_playwright"
-eq "wizard panel sections" "$wiz_sections" \
-  "Core|Core|Core|AI extensions|AI extensions|AI extensions|AI extensions|Shell integration|Shell integration|Shell integration|MCP servers|MCP servers|"
-eq "wizard defaults all yes" "$wiz_defaults" "yyyyyyyyyyyy"
-
-printf '== _cc_wizard_label lookup ==\n'
-eq "label: doctor" "$(_cc_wizard_label doctor)" "Doctor + /doctor command"
-eq "label: mcp_context7" "$(_cc_wizard_label mcp_context7)" "MCP context7"
-eq "label: settings" "$(_cc_wizard_label settings)" "Settings"
-
-printf '== _cc_marker_balanced ==\n'
-tmp="$(mktemp)"
-printf '# M\nfoo\n# M\n' >"$tmp"
-if _cc_marker_balanced "$tmp" "# M"; then ok "balanced pair → 0"; else no "balanced pair → 0"; fi
-printf '# M\nfoo\n' >"$tmp"
-if _cc_marker_balanced "$tmp" "# M"; then no "single marker → should be non-zero"; else ok "single marker → non-zero"; fi
-rm -f "$tmp"
-
-printf '== cross-shell resolver (_cc_target_rc / _cc_shell_kind) ==\n'
-eq "zsh → .zshrc" "$(SHELL=/bin/zsh _cc_target_rc)" "$HOME/.zshrc"
-eq "bash → .bashrc" "$(SHELL=/bin/bash _cc_target_rc)" "$HOME/.bashrc"
-eq "fish → config.fish" "$(SHELL=/usr/local/bin/fish _cc_target_rc)" "$HOME/.config/fish/config.fish"
-eq "unknown → zsh fallback" "$(SHELL=/bin/sh _cc_target_rc)" "$HOME/.zshrc"
-
-printf '== export-line translation (_cc_export_line) ==\n'
-eq "zsh keeps export" "$(_cc_export_line zsh 'export FOO=bar')" "export FOO=bar"
-eq "bash keeps export" "$(_cc_export_line bash 'export FOO=bar')" "export FOO=bar"
-eq "fish → set -gx" "$(_cc_export_line fish 'export FOO=bar')" "set -gx FOO bar"
-eq "fish real var" "$(_cc_export_line fish 'export CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-4-6')" \
-  "set -gx CLAUDE_CODE_SUBAGENT_MODEL claude-sonnet-4-6"
-
-printf '== _cc_effect_for (every wizard component has a system-effect line) ==\n'
-missing_eff=0
-while IFS='|' read -r key section menu wiz rest; do
-  [[ "$wiz" == y ]] || continue
-  [[ -n "$(_cc_effect_for "$key")" ]] || missing_eff=$((missing_eff + 1))
-done < <(_cc_registry)
-eq "all wizard keys have an effect" "$missing_eff" "0"
-eq "effect: settings mentions merge+kept" \
-  "$(_cc_effect_for settings | grep -c 'merged')" "1"
-
-printf '== _cc_caveat_for ==\n'
-eq "ralias caveat warns at default 'r'" "$(CC_RUN_ALIAS=r _cc_caveat_for ralias | grep -c shadows)" "1"
-eq "ralias caveat silent when renamed" "$(CC_RUN_ALIAS=rr _cc_caveat_for ralias)" ""
-eq "rules caveat present" "$([ -n "$(_cc_caveat_for rules)" ] && echo yes)" "yes"
 
 # == plugin loader (plugins.sh) ==
 # Hermetic unit tests — mock common.sh helpers so we don't drag in its set -e
@@ -272,34 +160,34 @@ if _plugin_cli no-such 2>/dev/null; then no "unknown subcommand returns 1"; else
 
 # == plugin TUI (management screen) ==
 printf '== plugin TUI ==\n'
-for _fn in plugins_menu _plugin_one_menu _plugin_add_menu _plugin_catalog_browse _plugin_add_manual _plugin_catalog_entries; do
+for _fn in plugins_menu _plugin_one_menu _plugin_add_menu _plugin_add_manual _plugin_catalog_entries; do
     if declare -F "$_fn" >/dev/null; then ok "TUI fn defined: $_fn"; else no "TUI fn defined: $_fn"; fi
 done
 
-# _plugin_catalog_entries parses a catalog scoped to a temp MACRIFT_DIR.
+# _plugin_catalog_entries parses a flat catalog scoped to a temp MACRIFT_DIR.
 _cat_dir=$(mktemp -d)
 cat > "$_cat_dir/catalog.json" <<'JSON'
 {"version":1,"plugins":[
   {"name":"claudemac","source":"github.com/x/claudemac","tier":"official","description":"d"},
-  {"name":"foo","source":"github.com/x/foo","tier":"community","description":"e"}
+  {"name":"foo","source":"github.com/x/foo","tier":"official","description":"e"}
 ]}
 JSON
 ( MACRIFT_DIR="$_cat_dir"
-  off=$(_plugin_catalog_entries official)
-  com=$(_plugin_catalog_entries community)
-  all=$(_plugin_catalog_entries | wc -l | tr -d ' ')
-  if [[ "$off" == $'claudemac\tgithub.com/x/claudemac\tofficial\td' ]]; then ok "catalog: official tier filter"; else no "catalog: official tier filter" "got [$off]"; fi
-  if [[ "$com" == foo* ]]; then ok "catalog: community tier filter"; else no "catalog: community tier filter" "got [$com]"; fi
-  if [[ "$all" == "2" ]]; then ok "catalog: no-filter returns all"; else no "catalog: no-filter returns all" "got [$all]"; fi
+  cat_rows=$(_plugin_catalog_entries)
+  all=$(printf '%s\n' "$cat_rows" | wc -l | tr -d ' ')
+  first=$(printf '%s\n' "$cat_rows" | head -1)
+  if [[ "$first" == $'claudemac\tgithub.com/x/claudemac\td' ]]; then ok "catalog: TSV is name/source/desc (no tier)"; else no "catalog: TSV is name/source/desc (no tier)" "got [$first]"; fi
+  if [[ "$all" == "2" ]]; then ok "catalog: lists all entries"; else no "catalog: lists all entries" "got [$all]"; fi
 )
-( MACRIFT_DIR="$_cat_dir-missing"; out=$(_plugin_catalog_entries official); if [[ -z "$out" ]]; then ok "catalog: missing file → empty"; else no "catalog: missing file → empty"; fi )
+# shellcheck disable=SC2030,SC2031  # MACRIFT_DIR override is intentionally subshell-local
+( MACRIFT_DIR="$_cat_dir-missing"; out=$(_plugin_catalog_entries); if [[ -z "$out" ]]; then ok "catalog: missing file → empty"; else no "catalog: missing file → empty"; fi )
 rm -rf "$_cat_dir"
 
-# Shipped catalog.json is valid JSON and lists claudemac as official.
-if jq -e '.plugins[] | select(.name=="claudemac" and .tier=="official")' "$ROOT/catalog.json" >/dev/null 2>&1; then
-    ok "shipped catalog: claudemac is official"
+# Shipped catalog.json is valid JSON and lists claudemac.
+if jq -e '.plugins[] | select(.name=="claudemac")' "$ROOT/catalog.json" >/dev/null 2>&1; then
+    ok "shipped catalog: lists claudemac"
 else
-    no "shipped catalog: claudemac is official"
+    no "shipped catalog: lists claudemac"
 fi
 
 # == _plugin_load_all (auto-source + registry) ==
@@ -380,6 +268,18 @@ eq "two plugins in same section: both registered" "${#MACRIFT_PLUGIN_REGISTRY[@]
 # Idempotent re-load — calling twice should give same final state, not double
 _plugin_load_all
 eq "idempotent reload (no doubling)" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
+
+# Malicious .name (path traversal / non-kebab) → rejected, never registered
+rm -rf "${PT:?}"/*
+mkdir -p "$PT/evil"
+cat > "$PT/evil/plugin.json" <<'JSON'
+{"name":"../../../../tmp/evil","version":"1.0.0","description":"","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"evil_menu"}}
+JSON
+cat > "$PT/evil/menu.sh" <<'SH'
+evil_menu() { :; }
+SH
+_plugin_load_all 2>/dev/null
+eq "traversal .name: plugin skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
 
 
 # == menu.parent (inject into built-in submenus) ==
@@ -462,92 +362,55 @@ eq "_plugin_attach_builtin: no match → items untouched" "${#_ab_items2[@]}" "1
 eq "_plugin_attach_builtin: no match → funcs empty" "${#_ab_funcs2[@]}" "0"
 
 
-# == wallpaper-links sample plugin (end-to-end against the real vendor tree) ==
-# The minimal-viable plugin — single show_menu + open. Used as the template
-# example in PLUGINS.md / README.
-if [[ -d "$ROOT/vendor/wallpaper-links" ]]; then
-    printf '== wallpaper-links (vendor/) ==\n'
-    if jq . "$ROOT/vendor/wallpaper-links/plugin.json" >/dev/null 2>&1; then
-        ok "wallpaper-links plugin.json valid"
+# == sample plugin (end-to-end loader against a fixture tree) ==
+# The minimal-viable plugin — manifest + a single menu function, parent=customize.
+if [[ -d "$ROOT/tests/fixtures/sample-plugin" ]]; then
+    printf '== sample-plugin (fixture) ==\n'
+    if jq . "$ROOT/tests/fixtures/sample-plugin/plugin.json" >/dev/null 2>&1; then
+        ok "sample-plugin plugin.json valid"
     else
-        no "wallpaper-links plugin.json valid"
+        no "sample-plugin plugin.json valid"
     fi
+    eq "name kebab-case" \
+       "$(jq -r .name "$ROOT/tests/fixtures/sample-plugin/plugin.json" | grep -cE '^[a-z][a-z0-9-]*[a-z0-9]$')" "1"
+    eq "version is semver" \
+       "$(jq -r .version "$ROOT/tests/fixtures/sample-plugin/plugin.json" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+')" "1"
+    eq "menu.function names a valid bash identifier" \
+       "$(jq -r .menu.function "$ROOT/tests/fixtures/sample-plugin/plugin.json" | grep -cE '^[a-zA-Z_][a-zA-Z0-9_]*$')" "1"
+
     SBX2="$(mktemp -d)"
-    ln -sf "$ROOT/vendor/wallpaper-links" "$SBX2/wallpaper-links"
+    ln -sf "$ROOT/tests/fixtures/sample-plugin" "$SBX2/sample-plugin"
     saved_dir2="$MACRIFT_PLUGINS_DIR"
     MACRIFT_PLUGINS_DIR="$SBX2"
     _plugin_load_all 2>/dev/null
-    eq "wallpaper-links registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
-    if declare -F wallpaper_links_menu >/dev/null; then
-        ok "wallpaper_links_menu function defined"
+    eq "sample-plugin registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
+    if declare -F sample_plugin_menu >/dev/null; then
+        ok "sample_plugin_menu function defined"
     else
-        no "wallpaper_links_menu function defined"
+        no "sample_plugin_menu function defined"
     fi
-    eq "wallpaper-links targets parent=customize" \
+    eq "sample-plugin targets parent=customize" \
        "$(IFS=$'\t'; read -r t _ _ <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$t")" \
        "p:customize"
     rm -rf "$SBX2"
     MACRIFT_PLUGINS_DIR="$saved_dir2"
 fi
 
-# == multi-plugin scenario (both seed plugins load together) ==
-if [[ -d "$ROOT/vendor/claudemac" && -d "$ROOT/vendor/wallpaper-links" ]]; then
-    printf '== multi-plugin (vendor/ as plugins dir) ==\n'
+# == multi-plugin scenario (both fixtures load together) ==
+if [[ -d "$ROOT/tests/fixtures/sample-plugin" && -d "$ROOT/tests/fixtures/other-plugin" ]]; then
+    printf '== multi-plugin (fixtures as plugins dir) ==\n'
     saved_dir3="$MACRIFT_PLUGINS_DIR"
-    MACRIFT_PLUGINS_DIR="$ROOT/vendor"
+    MACRIFT_PLUGINS_DIR="$ROOT/tests/fixtures"
     _plugin_load_all 2>/dev/null
     eq "both plugins register" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "2"
-    # Order is filesystem-alphabetical: claudemac < wallpaper-links
-    eq "first registered is claudemac" \
+    # Order is filesystem-alphabetical: other-plugin < sample-plugin
+    eq "first registered is other-plugin" \
        "$(IFS=$'\t'; read -r _ _ f <<<"${MACRIFT_PLUGIN_REGISTRY[0]}"; printf '%s' "$f")" \
-       "claudemac_menu"
-    eq "second registered is wallpaper-links" \
+       "other_plugin_menu"
+    eq "second registered is sample-plugin" \
        "$(IFS=$'\t'; read -r _ _ f <<<"${MACRIFT_PLUGIN_REGISTRY[1]}"; printf '%s' "$f")" \
-       "wallpaper_links_menu"
+       "sample_plugin_menu"
     MACRIFT_PLUGINS_DIR="$saved_dir3"
-fi
-
-# == claudemac flagship plugin (end-to-end against the real vendor tree) ==
-if [[ -d "$ROOT/vendor/claudemac" ]]; then
-    printf '== claudemac (vendor/) ==\n'
-    if jq . "$ROOT/vendor/claudemac/plugin.json" >/dev/null 2>&1; then
-        ok "plugin.json is valid JSON"
-    else
-        no "plugin.json is valid JSON"
-    fi
-    eq "name kebab-case" \
-       "$(jq -r .name "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[a-z][a-z0-9-]*[a-z0-9]$')" "1"
-    eq "version is semver" \
-       "$(jq -r .version "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+')" "1"
-    eq "menu.function names a valid bash identifier" \
-       "$(jq -r .menu.function "$ROOT/vendor/claudemac/plugin.json" | grep -cE '^[a-zA-Z_][a-zA-Z0-9_]*$')" "1"
-
-    # Real loader against vendor/claudemac under a sandbox plugins dir.
-    SBX="$(mktemp -d)"
-    ln -sf "$ROOT/vendor/claudemac" "$SBX/claudemac"
-    saved_dir="$MACRIFT_PLUGINS_DIR"
-    MACRIFT_PLUGINS_DIR="$SBX"
-    _plugin_load_all 2>/dev/null  # silence path warnings from non-test envs
-    eq "claudemac registered" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "1"
-    if declare -F claudemac_menu >/dev/null; then
-        ok "claudemac_menu function defined"
-    else
-        no "claudemac_menu function defined"
-    fi
-    if declare -F claude_code_menu >/dev/null; then
-        ok "claude_code_menu (handler) defined"
-    else
-        no "claude_code_menu (handler) defined"
-    fi
-    if declare -F _cc_telegram_menu >/dev/null; then
-        ok "_cc_telegram_menu (handler) defined"
-    else
-        no "_cc_telegram_menu (handler) defined"
-    fi
-    eq "CC_CONFIG resolves into the plugin tree" \
-       "$(printf '%s' "$CC_CONFIG" | grep -c '/claudemac/config$')" "1"
-    rm -rf "$SBX"
-    MACRIFT_PLUGINS_DIR="$saved_dir"
 fi
 
 
@@ -555,16 +418,16 @@ fi
 if command -v git >/dev/null 2>&1; then
     printf '== plugin CLI (add/remove/update/info/lint) ==\n'
 
-    # Build a local git repo from vendor/wallpaper-links so we can test the
+    # Build a local git repo from the sample-plugin fixture so we can test the
     # add CLI without network.
-    FX_REPO="$(mktemp -d)/wp-links"
-    cp -R "$ROOT/vendor/wallpaper-links" "$FX_REPO"
+    FX_REPO="$(mktemp -d)/sample-plugin"
+    cp -R "$ROOT/tests/fixtures/sample-plugin" "$FX_REPO"
     ( cd "$FX_REPO" \
       && git init -q \
       && git config user.email "test@local" \
       && git config user.name "test" \
       && git add -A \
-      && git commit -q -m "init wallpaper-links 1.0.0" \
+      && git commit -q -m "init sample-plugin 1.0.0" \
       && git tag v1.0.0 ) || no "fixture repo setup"
 
     # Sandbox $HOME-ish env for the CLI commands
@@ -577,26 +440,26 @@ if command -v git >/dev/null 2>&1; then
 
     # --- add (no @ref so HEAD stays on a tracking branch — needed for update tests) ---
     _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1
-    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+    if [[ -d "$MACRIFT_PLUGINS_DIR/sample-plugin" ]]; then
         ok "plugin add installs the plugin tree"
     else
         no "plugin add installs the plugin tree"
     fi
     eq "lockfile records the install"   "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "1"
-    eq "lockfile has source"            "$(jq -r '.plugins."wallpaper-links".source' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | grep -c 'wp-links')" "1"
-    eq "lockfile has commit"            "$(jq -r '.plugins."wallpaper-links".commit' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | wc -c | tr -d ' ')" "41"  # 40 hex + newline
+    eq "lockfile has source"            "$(jq -r '.plugins."sample-plugin".source' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | grep -c 'sample-plugin')" "1"
+    eq "lockfile has commit"            "$(jq -r '.plugins."sample-plugin".commit' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null | wc -c | tr -d ' ')" "41"  # 40 hex + newline
 
     # --- add again with denied confirm — must NOT overwrite the install ---
-    pre_install_at=$(jq -r '.plugins."wallpaper-links".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
+    pre_install_at=$(jq -r '.plugins."sample-plugin".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
     MACRIFT_TEST_DENY=true
     _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1 || true
     MACRIFT_TEST_DENY=""
-    post_install_at=$(jq -r '.plugins."wallpaper-links".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
+    post_install_at=$(jq -r '.plugins."sample-plugin".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
     eq "collision: declined confirm leaves install untouched" "$pre_install_at" "$post_install_at"
 
     # --- info ---
-    info_out=$(_plugin_cli_info wallpaper-links 2>&1)
-    if echo "$info_out" | grep -q "wallpaper-links 1.0.0"; then ok "info: name + version"; else no "info: name + version"; fi
+    info_out=$(_plugin_cli_info sample-plugin 2>&1)
+    if echo "$info_out" | grep -q "sample-plugin 1.0.0"; then ok "info: name + version"; else no "info: name + version"; fi
     if echo "$info_out" | grep -q "Status:    ok"; then ok "info: status ok"; else no "info: status ok"; fi
     if echo "$info_out" | grep -q "Source:"; then ok "info: source line"; else no "info: source line"; fi
     if echo "$info_out" | grep -q "Commit:"; then ok "info: commit line"; else no "info: commit line"; fi
@@ -608,7 +471,7 @@ if command -v git >/dev/null 2>&1; then
     fi
 
     # --- lint ---
-    if _plugin_cli_lint wallpaper-links >/dev/null 2>&1; then
+    if _plugin_cli_lint sample-plugin >/dev/null 2>&1; then
         ok "lint clean on a well-formed plugin"
     else
         no "lint clean on a well-formed plugin"
@@ -631,9 +494,9 @@ SH
     if echo "$lint_out" | grep -q "curl"; then ok "lint flags 'curl | bash'"; else no "lint flags 'curl | bash'"; fi
 
     # --- update (idempotent — nothing changed upstream) ---
-    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
-    if _plugin_cli_update wallpaper-links >/dev/null 2>&1; then ok "update: idempotent returns 0"; else no "update: idempotent returns 0"; fi
-    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/sample-plugin" rev-parse HEAD 2>/dev/null || echo "?")
+    if _plugin_cli_update sample-plugin >/dev/null 2>&1; then ok "update: idempotent returns 0"; else no "update: idempotent returns 0"; fi
+    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/sample-plugin" rev-parse HEAD 2>/dev/null || echo "?")
     eq "update: idempotent leaves HEAD unchanged" "$pre_head" "$post_head"
 
     # --- update after upstream advances ---
@@ -641,21 +504,21 @@ SH
       && echo "# extra" >> README.md \
       && git add README.md \
       && git commit -q -m "extra commit" ) || no "fixture upstream advance"
-    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
-    _plugin_cli_update wallpaper-links >/dev/null 2>&1 || true
-    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/wallpaper-links" rev-parse HEAD 2>/dev/null || echo "?")
+    pre_head=$(git -C "$MACRIFT_PLUGINS_DIR/sample-plugin" rev-parse HEAD 2>/dev/null || echo "?")
+    _plugin_cli_update sample-plugin >/dev/null 2>&1 || true
+    post_head=$(git -C "$MACRIFT_PLUGINS_DIR/sample-plugin" rev-parse HEAD 2>/dev/null || echo "?")
     if [[ "$pre_head" != "$post_head" ]]; then ok "update pulls a new commit"; else no "update pulls a new commit"; fi
 
     # --- remove ---
-    _plugin_cli_remove wallpaper-links >/dev/null 2>&1
-    if [[ ! -e "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+    _plugin_cli_remove sample-plugin >/dev/null 2>&1
+    if [[ ! -e "$MACRIFT_PLUGINS_DIR/sample-plugin" ]]; then
         ok "remove deletes the plugin tree"
     else
         no "remove deletes the plugin tree"
     fi
     eq "lockfile entry removed" "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "0"
 
-    if _plugin_cli_remove wallpaper-links >/dev/null 2>&1; then
+    if _plugin_cli_remove sample-plugin >/dev/null 2>&1; then
         no "remove on missing plugin should fail"
     else
         ok "remove on missing plugin fails"
@@ -676,14 +539,14 @@ SH
     # --- @ref ref-handling (separate install — detached HEAD precludes 'update') ---
     _plugin_cli_add "file://$FX_REPO@v1.0.0" >/dev/null 2>&1
     eq "lockfile records ref when @ref given" \
-       "$(jq -r '.plugins."wallpaper-links".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" \
+       "$(jq -r '.plugins."sample-plugin".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" \
        "v1.0.0"
 
     # --- restore: rm the plugin dir, keep lockfile, restore should reinstall ---
-    rm -rf "$MACRIFT_PLUGINS_DIR/wallpaper-links"
-    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then no "test setup: removed dir"; fi
+    rm -rf "$MACRIFT_PLUGINS_DIR/sample-plugin"
+    if [[ -d "$MACRIFT_PLUGINS_DIR/sample-plugin" ]]; then no "test setup: removed dir"; fi
     _plugin_cli_restore >/dev/null 2>&1
-    if [[ -d "$MACRIFT_PLUGINS_DIR/wallpaper-links" ]]; then
+    if [[ -d "$MACRIFT_PLUGINS_DIR/sample-plugin" ]]; then
         ok "restore: reinstalls from lockfile"
     else
         no "restore: reinstalls from lockfile"
@@ -693,7 +556,7 @@ SH
     if _plugin_cli_restore >/dev/null 2>&1; then ok "restore: idempotent when already installed"; else no "restore: idempotent"; fi
 
     # --- restore: empty lockfile is a no-op ---
-    _plugin_cli_remove wallpaper-links >/dev/null 2>&1
+    _plugin_cli_remove sample-plugin >/dev/null 2>&1
     eq "lockfile fully empty before restore-empty test" \
        "$(jq -r '.plugins | length' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "0"
     if _plugin_cli_restore >/dev/null 2>&1; then ok "restore: empty lockfile no-op"; else no "restore: empty lockfile no-op"; fi
@@ -710,6 +573,112 @@ SH
     MACRIFT_PLUGINS_LOCK="$saved_lk"
     unset MACRIFT_NO_CONFIRM
 fi
+
+# == plugin schema validation (_plugin_schema_check) ==
+# Mirrors schemas/plugin.schema.json — guards against the validator drifting
+# from the schema. Fixtures must stay clean; representative violations must fire.
+printf '== plugin schema validation ==\n'
+SC="$PT/schema"
+sc_check() { # name json want-substring (empty want = expect clean)
+  local d="$SC/$1"; mkdir -p "$d"; printf '%s' "$2" > "$d/plugin.json"
+  local out rc; out=$(_plugin_schema_check "$d"); rc=$?
+  if [[ -z "$3" ]]; then
+    if (( rc == 0 )); then ok "schema: $1 clean"; else no "schema: $1 clean" "got: $out"; fi
+  elif (( rc != 0 )) && grep -q "$3" <<<"$out"; then
+    ok "schema: $1 → $3"
+  else
+    no "schema: $1 → $3" "rc=$rc got: $out"
+  fi
+}
+GOOD='{"name":"good-plug","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"f"}}'
+sc_check valid       "$GOOD" ""
+sc_check badjson     '{not json'                                                                                                                                                              "not valid JSON"
+sc_check badsemver   '{"name":"x-y","version":"1.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"f"}}'                       "version: not semver"
+sc_check badname     '{"name":"Bad_Name","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"f"}}'               "name: not kebab-case"
+sc_check nodesc      '{"name":"x-y","version":"1.0.0","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"f"}}'                                      "missing required field: description"
+sc_check unknown     '{"name":"x-y","version":"1.0.0","description":"d","bogus":1,"compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"f"}}'           "unknown field: bogus"
+sc_check apiZero     '{"name":"x-y","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":0},"menu":{"section":"X","entry":"E","function":"f"}}'                     "macrift_api: must be an integer"
+sc_check menuBoth    '{"name":"x-y","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","parent":"tweaks","entry":"E","function":"f"}}'   "mutually exclusive"
+sc_check menuNeither '{"name":"x-y","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"entry":"E","function":"f"}}'                                   "exactly one of section or parent"
+sc_check badParent   '{"name":"x-y","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"parent":"nope","entry":"E","function":"f"}}'                   "menu.parent: not a built-in"
+sc_check badFunc     '{"name":"x-y","version":"1.0.0","description":"d","compat":{"macrift_min":"26.05","macrift_api":1},"menu":{"section":"X","entry":"E","function":"9bad"}}'                  "menu.function: not a valid bash identifier"
+# the shipped fixtures must validate clean against the schema
+if _plugin_schema_check "$ROOT/tests/fixtures/sample-plugin" >/dev/null; then ok "schema: sample-plugin fixture clean"; else no "schema: sample-plugin fixture clean"; fi
+if _plugin_schema_check "$ROOT/tests/fixtures/other-plugin"  >/dev/null; then ok "schema: other-plugin fixture clean";  else no "schema: other-plugin fixture clean";  fi
+
+# == core engine (common.sh) ==
+# The change engine — journal, drift classification, the nvram/chflags maps that
+# undo inverts. MACRIFT_NO_INIT lets us source common.sh for its functions alone:
+# no errexit, no traps, no menu temp file. Real macOS reads (defaults/nvram) are
+# avoided by testing the pure seams and the journal writer directly.
+printf '== core engine (common.sh) ==\n'
+ENG_STATE="$(mktemp -d)"
+export MACRIFT_NO_INIT=1 MACRIFT_OS_VER="14.0" MACRIFT_STATE_DIR="$ENG_STATE" \
+       MACRIFT_SESSION="2606-test" MACRIFT_DRY_RUN=false
+# shellcheck disable=SC1091
+source "$ROOT/common.sh"
+
+# --- _drift_state: pure classification (held / reverted / drifted) ---
+eq "drift: held when live matches value"         "$(_drift_state true true false 0)"  "held"
+eq "drift: reverted to unset (old_null=1)"        "$(_drift_state default true '' 1)"   "reverted"
+eq "drift: reverted to prior value (old_null=0)"  "$(_drift_state false true false 0)"  "reverted"
+eq "drift: drifted to a third value"              "$(_drift_state maybe true false 0)"  "drifted"
+eq "drift: not reverted when live != recorded old" "$(_drift_state x true false 0)"     "drifted"
+
+# --- nvram / chflags forward maps (undo inverts these) ---
+eq "nvram byte: true → %00"   "$(_nvram_byte_for_bool true)"  "%00"
+eq "nvram byte: false → %01"  "$(_nvram_byte_for_bool false)" "%01"
+eq "chflags: true → nohidden" "$(_chflags_for_visible true)"  "nohidden"
+eq "chflags: false → hidden"  "$(_chflags_for_visible false)" "hidden"
+
+# --- _json_escape ---
+eq "json escape: double quote" "$(_json_escape 'a"b')"             'a\"b'
+eq "json escape: backslash"    "$(_json_escape 'a\b')"             'a\\b'
+eq "json escape: tab"          "$(_json_escape "$(printf 'a\tb')")" 'a\tb'
+eq "json escape: newline"      "$(_json_escape "$(printf 'a\nb')")" 'a\nb'
+
+# --- _journal_append: JSONL shape + old null-vs-string semantics ---
+_journal_append default "Autohide Dock" com.apple.dock autohide -bool true false
+_journal_append default "Show ext" NSGlobalDomain AppleShowAllExtensions -bool true default
+_journal_append_dotfile "$ROOT/x" "$HOME/.macrift-test-zshrc" "/tmp/zshrc.bak"
+_journal_append_dotfile "$ROOT/y" "$HOME/.macrift-test-gitconfig" ""
+
+eq "journal: one line per append" "$(wc -l < "$MACRIFT_JOURNAL" | tr -d ' ')" "4"
+if jq -e . "$MACRIFT_JOURNAL" >/dev/null 2>&1; then ok "journal: all lines valid JSON"; else no "journal: all lines valid JSON"; fi
+eq "journal: prior value recorded as string"    "$(jq -r 'select(.key=="autohide").old' "$MACRIFT_JOURNAL")"               "false"
+eq "journal: unset prior recorded as JSON null" "$(jq -r 'select(.key=="AppleShowAllExtensions").old' "$MACRIFT_JOURNAL")" "null"
+eq "journal: dotfile bak recorded as string"    "$(jq -r 'select((.dest // "")|test("zshrc")).old' "$MACRIFT_JOURNAL")"     "/tmp/zshrc.bak"
+eq "journal: dotfile no-bak recorded as null"   "$(jq -r 'select((.dest // "")|test("gitconfig")).old' "$MACRIFT_JOURNAL")"  "null"
+eq "journal: session stamped on every entry"    "$(jq -r '.session' "$MACRIFT_JOURNAL" | sort -u)"                         "2606-test"
+eq "journal: kinds preserved"                   "$(jq -r '.kind' "$MACRIFT_JOURNAL" | sort -u | paste -sd, -)"             "default,dotfile"
+
+# --- manifest apply: dotfile round-trip (apply → drift → undo) ---
+# Re-stub the interactive seams that `source common.sh` replaced with the real
+# (tty-reading) versions, so the apply runs unattended.
+confirm() { return 0; }
+wait_enter() { :; }
+MF_DIR="$(mktemp -d)"; MF_HOME="$(mktemp -d)"
+mkdir -p "$MF_DIR/dotfiles"
+printf 'managed\n' > "$MF_DIR/dotfiles/.testrc"
+cat > "$MF_DIR/macrift.json" <<JSON
+{ "dotfile": [ { "src": "dotfiles/.testrc", "dest": "$MF_HOME/.testrc" } ] }
+JSON
+: > "$MACRIFT_JOURNAL"
+MACRIFT_SESSION="2606-mf" manifest_apply_cli "$MF_DIR/macrift.json" >/dev/null 2>&1
+eq "manifest: dotfile copied to dest"       "$(cat "$MF_HOME/.testrc" 2>/dev/null)"                         "managed"
+eq "manifest: dotfile journaled by dest"    "$(jq -r 'select(.kind=="dotfile").dest' "$MACRIFT_JOURNAL")"  "$MF_HOME/.testrc"
+eq "manifest: dotfile old=null (no prior)"  "$(jq -r 'select(.kind=="dotfile").old' "$MACRIFT_JOURNAL")"   "null"
+journal_undo_cli "2606-mf" >/dev/null 2>&1
+if [[ -e "$MF_HOME/.testrc" ]]; then no "manifest: undo removes copied dotfile"; else ok "manifest: undo removes copied dotfile"; fi
+rm -rf "$MF_DIR" "$MF_HOME"
+
+# --- dry-run journals nothing ---
+: > "$MACRIFT_JOURNAL"
+MACRIFT_DRY_RUN=true _journal_append default "x" com.apple.dock tilesize -int 48 36
+eq "journal: dry-run writes nothing" "$(wc -l < "$MACRIFT_JOURNAL" | tr -d ' ')" "0"
+
+rm -rf "$ENG_STATE"
+unset MACRIFT_NO_INIT MACRIFT_STATE_DIR MACRIFT_JOURNAL MACRIFT_SESSION MACRIFT_DRY_RUN
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]
