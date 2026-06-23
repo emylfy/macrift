@@ -1261,6 +1261,23 @@ _journal_append_brew() {
         >> "$MACRIFT_JOURNAL" 2>/dev/null || true
 }
 
+# Append a whole-domain plist import to the journal. domain is the change identity;
+# old holds the pre-import backup export path (or null if the domain didn't exist),
+# so undo re-imports the backup or deletes the domain.
+# Usage: _journal_append_plist <domain> <file> <backup-path-or-empty>
+_journal_append_plist() {
+    [[ "${MACRIFT_DRY_RUN:-false}" == true ]] && return 0
+    local domain="$1" file="$2" bak="$3"
+    mkdir -p "$MACRIFT_STATE_DIR" 2>/dev/null || return 0
+    local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local old_json="null"
+    [[ -n "$bak" ]] && old_json="\"$(_json_escape "$bak")\""
+    printf '{"session":"%s","ts":"%s","macos":"%s","status":"applied","kind":"plist","id":"","domain":"%s","file":"%s","old":%s}\n' \
+        "$MACRIFT_SESSION" "$ts" "$MACRIFT_OS_VER" \
+        "$(_json_escape "$domain")" "$(_json_escape "$file")" "$old_json" \
+        >> "$MACRIFT_JOURNAL" 2>/dev/null || true
+}
+
 # Read the current live value of a journaled change, normalized to compare
 # against the stored value/old. Echoes "default" if unset, "__UNKNOWN__" if
 # the kind can't be read. Mirrors the read logic in the tweak files.
@@ -1720,8 +1737,20 @@ for b in m.get("brew", []):
         continue
     brews.append(("__BREW__", name, b.get("source", "formula"), str(b.get("id") or "")))
 
+# plist units (whole-domain defaults import) — opaque third-party domains, own
+# channel. Columns reused: domain=domain, key=file.
+plists = []
+for pl in m.get("plist", []):
+    if not version_ok(pl):
+        skipped_version += 1
+        continue
+    dom, fil = pl.get("domain", ""), pl.get("file", "")
+    if not dom or not fil:
+        continue
+    plists.append(("__PLIST__", dom, fil))
+
 unsupported = [f"{k}:{len(m.get(k, []))}"
-               for k in ("plist", "command") if m.get(k)]
+               for k in ("command",) if m.get(k)]
 
 for u in units:
     print(SEP.join(u))
@@ -1729,6 +1758,8 @@ for d in dots:
     print(SEP.join(d))
 for b in brews:
     print(SEP.join(b))
+for pl in plists:
+    print(SEP.join(pl))
 print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
 PY
 ) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
@@ -1736,6 +1767,7 @@ PY
     audit_reset
     DOTFILE_UNITS=()
     BREW_UNITS=()
+    PLIST_UNITS=()
     local skipped_version=0 unsupported=""
     while IFS=$'\x1f' read -r kind domain key vtype value label; do
         [[ -z "$kind" ]] && continue
@@ -1752,12 +1784,17 @@ PY
             BREW_UNITS+=("${domain}"$'\x1f'"${key}"$'\x1f'"${vtype}")
             continue
         fi
+        if [[ "$kind" == "__PLIST__" ]]; then
+            # Reader columns reused: domain=domain, key=file.
+            PLIST_UNITS+=("${domain}"$'\x1f'"${key}")
+            continue
+        fi
         local current
         current=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         AUDIT_ENTRIES+=("${label}|${current}|${value}|${domain}|${key}|${vtype}")
     done <<< "$out"
 
-    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 && ${#BREW_UNITS[@]} -eq 0 ]]; then
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 && ${#BREW_UNITS[@]} -eq 0 && ${#PLIST_UNITS[@]} -eq 0 ]]; then
         log_warn "No applicable settings in manifest"
         [[ -n "$unsupported" ]] && log_info "Not yet supported by apply: $unsupported"
         return 0
@@ -1792,6 +1829,12 @@ PY
     # each new install journaled so undo only removes what this run added.
     if [[ ${#BREW_UNITS[@]} -gt 0 ]]; then
         _manifest_apply_brew
+    fi
+
+    # Preferences — whole-domain plist imports (iTerm2, editors). Current domain
+    # backed up first so undo can re-import it. Separate preview/confirm.
+    if [[ ${#PLIST_UNITS[@]} -gt 0 ]]; then
+        _manifest_apply_plist "$(dirname "$manifest")"
     fi
 
     [[ "${skipped_version:-0}" -gt 0 ]] && log_info "$skipped_version skipped (macOS version guard)"
@@ -1921,6 +1964,68 @@ _manifest_apply_brew() {
                 fi ;;
             *)    brew_install "$name" formula && _journal_append_brew "$name" "formula" "" "absent" ;;
         esac
+    done
+}
+
+# Apply manifest plist units (PLIST_UNITS, each "domain\x1ffile" with file relative
+# to the manifest dir). Whole-domain `defaults import` — coarse by nature, so it is
+# previewed as one honest wholesale line per domain, not a fake per-key diff. The
+# current domain is exported to a backup first so undo can re-import it.
+_manifest_apply_plist() {
+    local manifest_dir="$1"
+    local unit domain file file_abs status nkeys p
+    local -a plan=()
+    for unit in "${PLIST_UNITS[@]}"; do
+        IFS=$'\x1f' read -r domain file <<< "$unit"
+        case "$file" in /*) file_abs="$file" ;; *) file_abs="$manifest_dir/$file" ;; esac
+        if [[ ! -f "$file_abs" ]]; then
+            status="missing src"; nkeys="?"
+        else
+            nkeys=$(plutil -p "$file_abs" 2>/dev/null | grep -c '=>'); [[ -z "$nkeys" ]] && nkeys="?"
+            defaults read "$domain" &>/dev/null && status="replace" || status="new"
+        fi
+        plan+=("${domain}"$'\x1f'"${file_abs}"$'\x1f'"${nkeys}"$'\x1f'"${status}")
+    done
+
+    printf '\n'
+    printf '  %b── Preferences %b' "${BOLD}" "${RESET}${DIM}"
+    printf '─%.0s' {1..31}
+    printf '%b\n' "$RESET"
+    printf '  %b%-34s %-10s %s%b\n' "$DIM" "Domain" "Keys" "Action" "$RESET"
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r domain file_abs nkeys status <<< "$p"
+        local color="$GREEN"; [[ "$status" == "missing src" ]] && color="$RED"
+        printf '  %-34.34s ~%-9s %b%s%b\n' "$domain" "$nkeys" "$color" "$status" "$RESET"
+    done
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+    log_warn "Whole-domain import — replaces every key in each domain, not a per-key merge"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf '\n'; log_info "Dry run — no preferences imported"; return 0
+    fi
+    printf '\n'
+    if ! confirm "Import these preference domains?"; then
+        log_info "No preferences imported"; return 0
+    fi
+
+    local backup_dir="$MACRIFT_STATE_DIR/plist-backup"
+    mkdir -p "$backup_dir" 2>/dev/null || true
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r domain file_abs nkeys status <<< "$p"
+        if [[ "$status" == "missing src" ]]; then
+            log_warn "$domain — source not found: $file_abs"; continue
+        fi
+        local bak=""
+        if [[ "$status" == "replace" ]]; then
+            bak="$backup_dir/${domain}.${MACRIFT_SESSION}.plist"
+            defaults export "$domain" "$bak" 2>/dev/null || bak=""
+        fi
+        if defaults import "$domain" "$file_abs" 2>/dev/null; then
+            log_ok "$domain imported"
+            _journal_append_plist "$domain" "$file_abs" "$bak"
+        else
+            log_err "Failed: $domain"
+        fi
     done
 }
 
