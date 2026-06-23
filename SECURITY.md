@@ -89,7 +89,7 @@ git history is on screen for a reason.
 
 ## Threat model for macrift core
 
-macrift core mutates the user's system in three places that warrant separate
+macrift core mutates the user's system in four places that warrant separate
 attention:
 
 1. **`defaults write` via `audit_default`.** Every change is queued and
@@ -110,6 +110,14 @@ attention:
    bootstrapped via `launchctl bootstrap gui/$UID`. Failure modes: a
    bootstrap that fails (label collision, malformed plist) is reported but
    does not abort the calling menu (guarded by `|| true`).
+
+4. **Manifest `command` units.** `macrift apply` can run a manifest's
+   `kind: command` shell — arbitrary code from a file, so it is hard-gated: every
+   command is printed in full before running and needs an explicit confirm, and
+   under `--no-confirm` it runs only when `MACRIFT_ALLOW_COMMANDS=true`. `undo`
+   likewise uninstalls brew packages only when `MACRIFT_ALLOW_UNINSTALL=true` (and
+   skips anything now depended on). Treat a manifest from an untrusted source like
+   a shell script — read its `command` section before applying.
 
 ## Hooks shipped with the Claude Code section
 

@@ -1,11 +1,12 @@
 # macrift manifest & journal — spec
 
-Status: implemented for the defaults family — `default`, `finder_sort`, `nvram`,
-and `chflags` flow end-to-end through `apply` / `undo` / `drift`, as does
-`dotfile` (file copies via `copy_config`). The `brew`, `plist`, and `command`
-kinds are modeled here but still reported as not-yet-applied (see the status
-column under "Commands enabled"). This describes the data model behind those
-features, layered on the audit/apply engine in `common.sh`.
+Status: implemented. The defaults family (`default`, `finder_sort`, `nvram`,
+`chflags`), `dotfile`, `brew`, `plist`, and `command` all flow end-to-end through
+`apply` / `undo` / `drift`. `macrift save` records the defaults family plus
+installed packages; the interactive Profile export writes a full bundle (defaults
++ brew + dotfiles + iTerm2 plist) and restores it through `apply` — so restore is
+previewed and journaled like every other change. This describes the data model
+behind those features, layered on the audit/apply engine in `common.sh`.
 
 ## Why this exists
 
@@ -124,8 +125,8 @@ Whole-domain `defaults import` — coarse, no per-key diff possible (iTerm2 etc.
 
 In the audit table this renders as a single honest line —
 `replace domain com.googlecode.iterm2 (~340 keys) — wholesale` — with a warning,
-**not** silently and not pretending to be a key-level diff (the current
-`_profile_import` defect).
+**not** silently and not pretending to be a key-level diff. (This is exactly what
+the Profile restore now does, replacing the old unaudited `defaults import`.)
 
 #### `kind: command`
 
@@ -247,13 +248,13 @@ load — surface and internal model stay deliberately different.
 
 | Manifest surface                 | Change-unit                                       | In `apply` v1?                     |
 | :------------------------------- | :------------------------------------------------ | :--------------------------------- |
-| `defaults[]` element             | `kind=default` (1:1)                              | yes                                |
-| `finder.sort`                    | `kind=finder_sort`                                | yes                                |
-| `finder.hidden_files`            | `kind=default` com.apple.finder AppleShowAllFiles | yes                                |
-| `boot.startup_sound`             | `kind=nvram` StartupMute                          | yes                                |
-| `library.visible`                | `kind=chflags` ~/Library                          | yes                                |
-| `dotfile[]` element              | `kind=dotfile` (file copy via `copy_config`)      | yes                                |
-| `brew[]`, `plist[]`, `command[]` | matching kind                                     | no — reported as "not yet applied" |
+| `defaults[]` element             | `kind=default` (1:1)                              | yes |
+| `finder.sort`                    | `kind=finder_sort`                                | yes |
+| `finder.hidden_files`            | `kind=default` com.apple.finder AppleShowAllFiles | yes |
+| `boot.startup_sound`             | `kind=nvram` StartupMute                          | yes |
+| `library.visible`                | `kind=chflags` ~/Library                          | yes |
+| `dotfile[]` element              | `kind=dotfile` (file copy via `copy_config`)      | yes |
+| `brew[]`, `plist[]`, `command[]` | matching kind                                     | yes |
 
 Sugar covers only the handful of well-known pseudo-domains. Anything else goes
 through explicit `defaults[]` elements — no magic.
@@ -264,8 +265,10 @@ current via `_journal_live_value`), previews through `show_audit_table`, and
 applies via `apply_audited_defaults` — so every applied change is journaled for
 free. `dotfile[]` units are previewed in a separate section and copied via
 `copy_config` (also journaled, so undo/drift work for free).
-`min_macos`/`max_macos` are enforced (major-version compare). brew/plist/command
-are counted and reported, not applied.
+`min_macos`/`max_macos` are enforced (major-version compare). brew, plist, and
+command units apply in their own preview/confirm sections after the defaults
+table — brew via `brew install` / `mas`, plist via `defaults import` (with a
+pre-import backup for undo), command via a hard-gated shell run.
 
 ## How it flows through the existing engine
 
@@ -277,10 +280,9 @@ The payoff: restore-with-preview is nearly free because the diff already exists.
    does per-key `old → value` comparison, `(no change)` detection, and red/green
    rendering. `restore` stops _bypassing_ this diff (its current defect) instead
    of needing a new one.
-3. **Apply** — `apply_audited_defaults` (`common.sh`) already routes by domain
-   (`finder_sort`, `nvram`, `chflags`, plain defaults); `dotfile` units copy via
-   `copy_config` alongside it. Extend to `plist` / `brew` / `command` next, and
-   append each result to `journal.jsonl`.
+3. **Apply** — `apply_audited_defaults` (`common.sh`) routes the defaults family
+   by domain; `dotfile`/`brew`/`plist`/`command` units apply in their own
+   sections (`_manifest_apply_*`), each appending to `journal.jsonl`.
 4. **Undo / drift** — read the journal back. No new diff logic.
 
 One union, three features, mostly reusing code that already ships.
@@ -289,11 +291,11 @@ One union, three features, mostly reusing code that already ships.
 
 | Command                          | Behavior                                                                                                                                                                            | Status                            |
 | :------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------- |
-| `macrift apply [<file.json>]`    | load manifest → desugar → audit table → apply → journal. Honors `--dry-run` / `--no-confirm`.                                                                                       | done (defaults family + dotfiles) |
-| `macrift undo [<session>\|list]` | read the session in reverse, invert each unit via `old`. Default: last session. `list` shows sessions. (Positional, not `--flags`: the global flag parser drops unknown `--flags`.) | done (defaults family)            |
+| `macrift apply [<file.json>]`    | load manifest → desugar → audit table → apply → journal. Honors `--dry-run` / `--no-confirm`.                                                                                       | done (all kinds)                  |
+| `macrift undo [<session>\|list]` | read the session in reverse, invert each unit via `old`. Default: last session. `list` shows sessions. (Positional, not `--flags`: the global flag parser drops unknown `--flags`.) | done (all kinds)                  |
 | `macrift drift`                  | for each journaled unit, compare current system value to `value`; report held / drifted / reverted / unknown.                                                                       | done                              |
-| profile `save`                   | emit a JSON manifest with `meta` populated + the referenced files (dotfiles, plists).                                                                                               | todo                              |
-| profile `restore`                | load that manifest exactly like `apply` — through the audit table.                                                                                                                  | todo                              |
+| profile `save`                   | emit a manifest bundle: `macrift.json` (granular defaults + brew + dotfile + plist) + the referenced files.                                                                          | done                              |
+| profile `restore`                | filter the manifest to the chosen categories, then load it exactly like `apply` — through the audit table.                                                                          | done                              |
 
 ## Edge cases & cautions
 
@@ -323,12 +325,8 @@ One union, three features, mostly reusing code that already ships.
 
 ## Future work
 
-1. **apply for brew/plist/command.** Today these are reported as not-applied;
-   they need handling outside the audit-table path (brew install, wholesale
-   plist import with a coarse warning, user-command execution). `dotfile` already
-   applies via `copy_config`.
-2. **Journal rotation.** Append-only grows forever. Cap by size or session count?
-3. **Custom tweaks loading.** Does `kind: command` fully cover
+1. **Journal rotation.** Append-only grows forever. Cap by size or session count?
+2. **Custom tweaks loading.** Does `kind: command` fully cover
    `~/.config/macrift/custom.sh`, or should custom units be sourced separately
    and merged into the manifest model?
 

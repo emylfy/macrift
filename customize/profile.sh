@@ -151,6 +151,8 @@ _profile_detect() {
 #   <target>/macrift.json  + dotfiles/ + plists/ (referenced by relative paths)
 # Restore goes through manifest_apply_cli, so every change is previewed and
 # journaled (undo/drift work). Reuses the shared capture helpers in common.sh.
+# Manifest `dest` values intentionally keep a literal ~ (the apply side expands it).
+# shellcheck disable=SC2088
 _profile_export() {
     local target="$1"
     mkdir -p "$target/dotfiles" "$target/plists"

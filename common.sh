@@ -1769,7 +1769,7 @@ _undo_restore_plists() {
     for entry in "${PLIST_RESETS[@]}"; do
         IFS='|' read -r domain bak old_null <<< "$entry"
         if [[ "$old_null" == "1" ]]; then
-            defaults delete "$domain" 2>/dev/null && log_ok "$domain removed" || log_warn "Could not remove $domain"
+            if defaults delete "$domain" 2>/dev/null; then log_ok "$domain removed"; else log_warn "Could not remove $domain"; fi
         elif defaults import "$domain" "$bak" 2>/dev/null; then
             log_ok "$domain re-imported"
         else
@@ -1817,8 +1817,9 @@ _undo_uninstall_brew() {
 # `macrift apply [<file.json>]` — apply a declarative manifest. Desugars the
 # JSON surface into the engine's audit entries, previews via show_audit_table,
 # and applies through apply_audited_defaults (which journals each change).
-# Covers the defaults family (default/finder_sort/nvram/chflags) plus dotfile
-# copies (via copy_config); brew, plist, command are reported as not-yet-applied.
+# Covers the defaults family (default/finder_sort/nvram/chflags), dotfile copies
+# (via copy_config), brew packages, whole-domain plist imports, and gated command
+# units — each in its own preview/confirm section, all journaled for undo/drift.
 manifest_apply_cli() {
     local manifest="${1:-$HOME/.config/macrift/macrift.json}"
     if [[ ! -f "$manifest" ]]; then

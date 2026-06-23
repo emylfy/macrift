@@ -88,8 +88,8 @@ Skip the menu and run a single action directly:
 | `check`                        | Mac diagnostics — DEP/MDM, activation lock, SMART, battery   |
 | `drift`                        | Show which applied tweaks still hold vs. drifted             |
 | `undo [<session>\|list]`       | Revert a journaled session (default: last)                   |
-| `apply [<file.json>]`          | Apply a declarative manifest (defaults family + dotfiles)    |
-| `save [<file.json>]`           | Snapshot current tweaks to a manifest                        |
+| `apply [<file.json>]`          | Apply a declarative manifest (settings, packages, dotfiles, configs) |
+| `save [<file.json>]`           | Snapshot current settings + packages to a manifest          |
 | `plugin <subcommand>`          | Manage plugins (see `macrift plugin help`)                   |
 
 Pair with the one-shot install above to inspect someone else's Mac without leaving anything behind.

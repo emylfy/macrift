@@ -672,6 +672,49 @@ journal_undo_cli "2606-mf" >/dev/null 2>&1
 if [[ -e "$MF_HOME/.testrc" ]]; then no "manifest: undo removes copied dotfile"; else ok "manifest: undo removes copied dotfile"; fi
 rm -rf "$MF_DIR" "$MF_HOME"
 
+# --- manifest build helper: defaults + brew + dotfile + plist + command ---
+mb_entries="$(mktemp)"; mb_brew="$(mktemp)"; mb_dot="$(mktemp)"; mb_plist="$(mktemp)"; mb_cmd="$(mktemp)"
+printf 'Autohide Dock|true|true|com.apple.dock|autohide|-bool\n' > "$mb_entries"
+printf 'ripgrep\tformula\t\nThings\tmas\t904280696\n' > "$mb_brew"
+printf 'dotfiles/.zshrc\t~/.zshrc\n' > "$mb_dot"
+printf 'com.googlecode.iterm2\tplists/iterm2.plist\n' > "$mb_plist"
+printf 'demo\techo hi\techo bye\tDemo\n' > "$mb_cmd"
+mb_json="$(_manifest_build_json host "$mb_entries" "$mb_brew" "$mb_dot" "$mb_plist" "$mb_cmd")"
+eq "build: defaults captured"   "$(jq -r '.defaults[0].key' <<<"$mb_json")"                       "autohide"
+eq "build: brew formula"        "$(jq -r '.brew[0].name' <<<"$mb_json")"                          "ripgrep"
+eq "build: brew mas keeps id"   "$(jq -r '.brew[] | select(.source=="mas").id' <<<"$mb_json")"    "904280696"
+# shellcheck disable=SC2088  # literal ~ is the expected manifest value, not a path to expand
+eq "build: dotfile section"     "$(jq -r '.dotfile[0].dest' <<<"$mb_json")"                       "~/.zshrc"
+eq "build: plist section"       "$(jq -r '.plist[0].domain' <<<"$mb_json")"                       "com.googlecode.iterm2"
+eq "build: command run"         "$(jq -r '.command[0].run' <<<"$mb_json")"                        "echo hi"
+rm -f "$mb_entries" "$mb_brew" "$mb_dot" "$mb_plist" "$mb_cmd"
+
+# --- journal appends for the new kinds ---
+: > "$MACRIFT_JOURNAL"
+_journal_append_brew raycast cask "" absent
+_journal_append_plist com.googlecode.iterm2 /m/iterm2.plist /bak/iterm2.plist
+_journal_append_command demo.id "echo hi" "echo bye"
+if jq -e . "$MACRIFT_JOURNAL" >/dev/null 2>&1; then ok "journal (new kinds): valid JSON"; else no "journal (new kinds): valid JSON"; fi
+eq "journal brew: source"      "$(jq -r 'select(.kind=="brew").source' "$MACRIFT_JOURNAL")"   "cask"
+eq "journal brew: old=absent"  "$(jq -r 'select(.kind=="brew").old' "$MACRIFT_JOURNAL")"      "absent"
+eq "journal plist: backup old" "$(jq -r 'select(.kind=="plist").old' "$MACRIFT_JOURNAL")"     "/bak/iterm2.plist"
+eq "journal command: undo"     "$(jq -r 'select(.kind=="command").undo' "$MACRIFT_JOURNAL")"  "echo bye"
+
+# --- command apply: gate + run + undo round-trip (harmless temp marker) ---
+CMD_MARK="$(mktemp -u)"; CMD_DIR="$(mktemp -d)"
+cat > "$CMD_DIR/macrift.json" <<JSON
+{ "command": [ { "id": "mark", "label": "mark", "run": "echo x > '$CMD_MARK'", "undo": "rm -f '$CMD_MARK'" } ] }
+JSON
+: > "$MACRIFT_JOURNAL"
+MACRIFT_NO_CONFIRM=true MACRIFT_ALLOW_COMMANDS=false MACRIFT_SESSION=2606-cg manifest_apply_cli "$CMD_DIR/macrift.json" >/dev/null 2>&1
+if [[ -e "$CMD_MARK" ]]; then no "command gate: blocked under --no-confirm w/o opt-in"; else ok "command gate: blocked under --no-confirm w/o opt-in"; fi
+MACRIFT_NO_CONFIRM=true MACRIFT_ALLOW_COMMANDS=true MACRIFT_SESSION=2606-cr manifest_apply_cli "$CMD_DIR/macrift.json" >/dev/null 2>&1
+if [[ -e "$CMD_MARK" ]]; then ok "command apply: runs with opt-in"; else no "command apply: runs with opt-in"; fi
+eq "command apply: journaled" "$(jq -r 'select(.kind=="command").id' "$MACRIFT_JOURNAL")" "mark"
+MACRIFT_NO_CONFIRM=true MACRIFT_ALLOW_COMMANDS=true journal_undo_cli "2606-cr" >/dev/null 2>&1
+if [[ -e "$CMD_MARK" ]]; then no "command undo: runs inverse (removes marker)"; else ok "command undo: runs inverse (removes marker)"; fi
+rm -rf "$CMD_DIR"; rm -f "$CMD_MARK"
+
 # --- dry-run journals nothing ---
 : > "$MACRIFT_JOURNAL"
 MACRIFT_DRY_RUN=true _journal_append default "x" com.apple.dock tilesize -int 48 36

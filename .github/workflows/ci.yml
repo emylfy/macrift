@@ -41,6 +41,9 @@ jobs:
             bash macrift.sh plugin lint "$p" || exit 1
           done
 
+      - name: Manifest apply (dry-run, all kinds)
+        run: MACRIFT_NO_UPDATE=true bash macrift.sh apply tests/fixtures/manifests/all-kinds.json --dry-run
+
       - name: Brewfile syntax
         run: |
           for bf in config/Brewfile.*; do

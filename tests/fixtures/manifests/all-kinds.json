@@ -1,0 +1,23 @@
+{
+  "meta": { "name": "fixture", "macrift": "26.06" },
+  "defaults": [
+    { "domain": "com.apple.dock", "key": "autohide", "type": "bool", "value": true, "label": "Autohide Dock" }
+  ],
+  "finder": { "sort": "kind" },
+  "boot": { "startup_sound": false },
+  "library": { "visible": true },
+  "brew": [
+    { "name": "ripgrep", "source": "formula" },
+    { "name": "raycast", "source": "cask" },
+    { "name": "Things", "source": "mas", "id": "904280696" }
+  ],
+  "dotfile": [
+    { "src": "files/sample.conf", "dest": "~/.config/macrift-fixture/sample.conf" }
+  ],
+  "plist": [
+    { "domain": "com.example.macrift-fixture", "file": "files/sample.plist" }
+  ],
+  "command": [
+    { "id": "demo.echo", "label": "demo echo", "run": "echo hello", "undo": "true" }
+  ]
+}
