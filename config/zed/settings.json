@@ -1,0 +1,101 @@
+// macrift — Zed settings
+// theme / icon_theme below need the Catppuccin extensions installed (cmd-shift-x):
+// "Catppuccin Blur" for the "(Blur)" theme variant and "Catppuccin Icons" for icons.
+{
+  // UI / panels
+  "calls": {
+    "mute_on_join": true // join calls muted
+  },
+  "horizontal_scroll_margin": 5.0,
+  "vertical_scroll_margin": 3.0,
+  "session": {
+    "trust_all_worktrees": false // ask before trusting opened worktrees
+  },
+  "telemetry": {
+    "diagnostics": false, // no crash/diagnostic reports
+    "metrics": false, // no usage metrics
+    "anthropic_retention": false // no data retention
+  },
+  "theme": "Catppuccin Mocha (Blur)",
+  "icon_theme": "Catppuccin Mocha",
+  "project_panel": {
+    "dock": "left", // sidebar on the left
+    "indent_size": 16, // tree indentation (px)
+    "indent_guides": { "show": "never" }, // no indent guide lines
+    "sticky_scroll": false, // no sticky scroll in the tree
+    "auto_fold_dirs": false // each folder on its own line
+  },
+
+  // Files / saving
+  "autosave": { "after_delay": { "milliseconds": 1000 } }, // auto-save after a short delay
+  "ensure_final_newline_on_save": true, // add trailing newline on save
+  "remove_trailing_whitespace_on_save": true, // trim trailing spaces on save
+  "file_scan_exclusions": [
+    // hidden from panel + search
+    "**/.expo",
+    "**/.expo-shared",
+    "**/.idea",
+    "**/.nuxt"
+  ],
+
+  // Tabs / toolbar
+  "tab_bar": {
+    "show": false, // hide the tab bar (VSCode showTabs: single)
+    "show_nav_history_buttons": false, // hide back/forward nav arrows
+    "show_tab_bar_buttons": false // hide per-tab action buttons
+  },
+  "toolbar": {
+    "breadcrumbs": true, // show breadcrumbs
+    "quick_actions": false // hide editor toolbar quick actions
+  },
+
+  // Cursor
+  "cursor_blink": true, // blinking cursor
+  "cursor_shape": "bar", // thin line cursor
+  "multi_cursor_modifier": "cmd_or_ctrl", // Cmd/Ctrl+Click adds a cursor
+
+  // Editor behavior
+  "format_on_save": "on", // format on save
+  "code_actions_on_format": { "source.organizeImports": true }, // organize imports on save
+  "tab_size": 2, // 2-space tab width
+  "hard_tabs": true, // indent with tabs, not spaces
+  "minimap": { "show": "never" }, // hide the minimap
+  "scroll_beyond_last_line": "one_page", // allow scrolling past the last line
+  "scrollbar": {
+    "axes": { "vertical": true, "horizontal": false }, // vertical only
+    "cursors": false // hide cursor markers in the scrollbar
+  },
+  "gutter": {
+    "min_line_number_digits": 2,
+    "bookmarks": true,
+    "breakpoints": true,
+    "runnables": true,
+    "line_numbers": true,
+    "folds": false // disable code folding controls
+  },
+  "linked_edits": true, // edit matching tags together
+  "use_autoclose": true, // auto-close brackets/tags
+  "soft_wrap": "none", // no word wrap (matches VSCode default)
+  "preferred_line_length": 80, // wrap column when wrapping is enabled
+  "inlay_hints": { "enabled": true }, // show inlay hints
+
+  // Fonts
+  "ui_font_family": "Maple Mono", // UI font
+  "buffer_font_family": "FiraCode Nerd Font", // editor font
+  "buffer_font_size": 16,
+  "buffer_font_weight": 400,
+  "buffer_font_features": { "calt": true }, // ligatures
+  "buffer_line_height": { "custom": 1.8 }, // spacious line height
+
+  // Git
+  "git": { "git_gutter": "hide" }, // no git diff bars in the gutter
+
+  // Terminal
+  "terminal": {
+    "cursor_shape": "bar" // thin line cursor in terminal
+  },
+
+  // Misc
+  "disable_ai": true, // disable AI features
+  "auto_update": false // disable auto-update
+}

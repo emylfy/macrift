@@ -238,17 +238,17 @@ shell_menu() {
 
         local choice
         choice=$(show_menu "Shell" \
-            "Full setup (Zinit + Starship + .zshrc + Catppuccin)" \
+            "Full setup (Zinit + Starship + .zshrc)" \
             "---" \
             "Starship (install + preset)" \
-            "Shell colors (fzf / bat / eza)" \
+            "Shell theme (fzf / bat / eza / fsh)" \
             "Copy .zshrc only" \
             "Back")
 
         case "$choice" in
-            1) _ensure_nerd_font; install_zinit; install_starship; starship_preset; install_zshrc; apply_catppuccin ;;
+            1) _ensure_nerd_font; install_zinit; install_starship; install_zshrc; theme_menu ;;
             2) _ensure_nerd_font; install_starship; starship_preset ;;
-            3) apply_catppuccin ;;
+            3) theme_menu ;;
             4) install_zshrc ;;
             0) break ;;
             *) ;;
@@ -640,6 +640,31 @@ install_zshrc() {
     fi
 }
 
+theme_menu() {
+    crumb_push "Shell theme"
+    while true; do
+        clear
+
+        local choice
+        choice=$(show_menu "Shell theme" \
+            "Catppuccin Mocha" \
+            "Tokyo Night" \
+            "Gruvbox Dark" \
+            "Monokai" \
+            "Back")
+
+        case "$choice" in
+            1) apply_catppuccin ;;
+            2) apply_tokyo_night ;;
+            3) apply_gruvbox ;;
+            4) apply_monokai ;;
+            0) break ;;
+            *) ;;
+        esac
+    done
+    crumb_pop
+}
+
 apply_catppuccin() {
     crumb_push "Shell colors"
     clear
@@ -649,6 +674,7 @@ apply_catppuccin() {
     printf '  %b›%b  bat syntax highlighting\n' "$CYAN" "$RESET"
     printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
     printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
     printf '\n'
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
@@ -658,11 +684,12 @@ apply_catppuccin() {
         :
     else
         local theme_source="$MACRIFT_DIR/config/shell/catppuccin.zsh"
-        local theme_target="$HOME/.config/zsh/catppuccin.zsh"
+        local theme_target="$HOME/.config/zsh/theme.zsh"
         if [[ -f "$theme_source" ]]; then
             mkdir -p "$HOME/.config/zsh"
             copy_config "$theme_source" "$theme_target"
             log_ok "Shell colors applied (fzf, bat, autosuggestions, eza)"
+            log_info "Ghostty: set  theme = dark:catppuccin-mocha,light:catppuccin-latte"
             log_info "Restart shell to apply"
         else
             log_err "catppuccin.zsh not found in config/shell/"
@@ -672,51 +699,166 @@ apply_catppuccin() {
     crumb_pop
 }
 
-_starship_apply_catppuccin() {
-    local target="$1"
+apply_tokyo_night() {
+    crumb_push "Shell colors"
+    clear
+    printf '\n'
+    printf '  %bApply Tokyo Night to shell tools:%b\n\n' "$BOLD" "$RESET"
+    printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  bat syntax highlighting (downloads tokyonight_night.tmTheme)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
+    printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Starship preset: tokyo-night\n' "$CYAN" "$RESET"
+    printf '\n'
+    printf '  Ghostty: set  %btheme = tokyo-night%b\n' "$BOLD" "$RESET"
+    printf '\n'
 
-    # Set palette directive
-    if grep -q '^palette' "$target"; then
-        sed -i '' 's/^palette.*/palette = "catppuccin_mocha"/' "$target"
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply Tokyo Night shell colors"
+        wait_enter
+    elif ! confirm "Apply Tokyo Night to shell tools?"; then
+        :
     else
-        sed -i '' '1s/^/palette = "catppuccin_mocha"\n/' "$target"
+        local theme_source="$MACRIFT_DIR/config/shell/tokyo-night.zsh"
+        local theme_target="$HOME/.config/zsh/theme.zsh"
+        if [[ ! -f "$theme_source" ]]; then
+            log_err "tokyo-night.zsh not found in config/shell/"
+            wait_enter
+            crumb_pop
+            return
+        fi
+        mkdir -p "$HOME/.config/zsh"
+        copy_config "$theme_source" "$theme_target"
+
+        # bat theme (not built-in — download from tokyonight.nvim extras)
+        local bat_themes_dir="$HOME/.config/bat/themes"
+        local bat_theme_file="$bat_themes_dir/tokyonight_night.tmTheme"
+        if [[ ! -f "$bat_theme_file" ]]; then
+            log_info "Downloading Tokyo Night bat theme..."
+            mkdir -p "$bat_themes_dir"
+            if curl -fsSL \
+                "https://raw.githubusercontent.com/folke/tokyonight.nvim/main/extras/bat/tokyonight_night.tmTheme" \
+                -o "$bat_theme_file"; then
+                bat cache --build 2>/dev/null || true
+                log_ok "bat theme installed"
+            else
+                log_warn "bat theme download failed — set BAT_THEME manually"
+            fi
+        else
+            log_skip "bat theme already installed"
+        fi
+
+        # Starship preset
+        if command -v starship &>/dev/null; then
+            starship preset tokyo-night -o "$HOME/.config/starship.toml" 2>/dev/null \
+                && log_ok "Starship preset applied" \
+                || log_warn "starship preset tokyo-night failed"
+        fi
+
+        log_ok "Shell colors applied"
+        log_info "Ghostty: set  theme = tokyo-night"
+        log_info "Restart shell to apply"
+        wait_enter
     fi
+    crumb_pop
+}
 
-    # Update module styles
-    sed -i '' 's/style = "bold cyan"/style = "bold lavender"/' "$target"
-    sed -i '' 's/style = "bold purple"/style = "bold mauve"/' "$target"
-    sed -i '' 's/style = "bold red"/style = "bold maroon"/' "$target"
-    sed -i '' 's/style = "bold yellow"/style = "bold peach"/' "$target"
+apply_gruvbox() {
+    crumb_push "Shell colors"
+    clear
+    printf '\n'
+    printf '  %bApply Gruvbox Dark to shell tools:%b\n\n' "$BOLD" "$RESET"
+    printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  bat syntax highlighting (built-in: gruvbox-dark)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
+    printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Starship preset: gruvbox-rainbow\n' "$CYAN" "$RESET"
+    printf '\n'
+    printf '  Ghostty: set  %btheme = Gruvbox dark%b\n' "$BOLD" "$RESET"
+    printf '\n'
 
-    # Append palette if not present
-    cat >> "$target" << 'PALETTE'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply Gruvbox Dark shell colors"
+        wait_enter
+    elif ! confirm "Apply Gruvbox Dark to shell tools?"; then
+        :
+    else
+        local theme_source="$MACRIFT_DIR/config/shell/gruvbox.zsh"
+        local theme_target="$HOME/.config/zsh/theme.zsh"
+        if [[ -f "$theme_source" ]]; then
+            mkdir -p "$HOME/.config/zsh"
+            copy_config "$theme_source" "$theme_target"
 
-[palettes.catppuccin_mocha]
-rosewater = "#f5e0dc"
-flamingo = "#f2cdcd"
-pink = "#f5c2e7"
-mauve = "#cba6f7"
-red = "#f38ba8"
-maroon = "#eba0ac"
-peach = "#fab387"
-yellow = "#f9e2af"
-green = "#a6e3a1"
-teal = "#94e2d5"
-sky = "#89dceb"
-sapphire = "#74c7ec"
-blue = "#89b4fa"
-lavender = "#b4befe"
-text = "#cdd6f4"
-subtext1 = "#bac2de"
-subtext0 = "#a6adc8"
-overlay2 = "#9399b2"
-overlay1 = "#7f849c"
-overlay0 = "#6c7086"
-surface2 = "#585b70"
-surface1 = "#45475a"
-surface0 = "#313244"
-base = "#1e1e2e"
-mantle = "#181825"
-crust = "#11111b"
-PALETTE
+            if command -v starship &>/dev/null; then
+                starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml" 2>/dev/null \
+                    && log_ok "Starship preset applied" \
+                    || log_warn "starship preset gruvbox-rainbow failed"
+            fi
+
+            log_ok "Shell colors applied (fzf, bat, autosuggestions, eza)"
+            log_info "Ghostty: set  theme = Gruvbox dark"
+            log_info "Restart shell to apply"
+        else
+            log_err "gruvbox.zsh not found in config/shell/"
+        fi
+        wait_enter
+    fi
+    crumb_pop
+}
+
+apply_monokai() {
+    crumb_push "Shell colors"
+    clear
+    printf '\n'
+    printf '  %bApply Monokai to shell tools:%b\n\n' "$BOLD" "$RESET"
+    printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  bat syntax highlighting (built-in: Monokai Extended)\n' "$CYAN" "$RESET"
+    printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
+    printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
+    printf '  %b›%b  Starship config: starship-monokai.toml\n' "$CYAN" "$RESET"
+    printf '\n'
+
+    local ghostty_variant
+    local variant_choice
+    variant_choice=$(show_menu "Ghostty variant" \
+        "Monokai Pro" \
+        "Monokai Ristretto" \
+        "Skip")
+    case "$variant_choice" in
+        1) ghostty_variant="Monokai Pro" ;;
+        2) ghostty_variant="Monokai Ristretto" ;;
+        0) crumb_pop; return ;;
+        *) ghostty_variant="" ;;
+    esac
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would apply Monokai shell colors"
+        wait_enter
+    elif ! confirm "Apply Monokai to shell tools?"; then
+        :
+    else
+        local theme_source="$MACRIFT_DIR/config/shell/monokai.zsh"
+        local theme_target="$HOME/.config/zsh/theme.zsh"
+        local starship_source="$MACRIFT_DIR/config/shell/starship-monokai.toml"
+        if [[ -f "$theme_source" ]]; then
+            mkdir -p "$HOME/.config/zsh"
+            copy_config "$theme_source" "$theme_target"
+
+            if [[ -f "$starship_source" ]]; then
+                copy_config "$starship_source" "$HOME/.config/starship.toml"
+                log_ok "Starship config applied"
+            fi
+
+            log_ok "Shell colors applied (fzf, bat, autosuggestions, eza, fsh)"
+            [[ -n "$ghostty_variant" ]] && log_info "Ghostty: set  theme = $ghostty_variant"
+            log_info "Restart shell to apply"
+        else
+            log_err "monokai.zsh not found in config/shell/"
+        fi
+        wait_enter
+    fi
+    crumb_pop
 }

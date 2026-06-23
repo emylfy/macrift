@@ -1,20 +1,29 @@
-aaron-bond.better-comments
-alefragnani.project-manager
-alexdauenhauer.catppuccin-noctis-icons
+## AI / agents
 anthropic.claude-code
-coderabbit.coderabbit-vscode
-davidbwaters.macos-modern-theme
-esbenp.prettier-vscode
-kamikillerto.vscode-colorize
 kilocode.kilo-code
-kisstkondoros.vscode-gutter-preview
-ms-azuretools.vscode-containers
+coderabbit.coderabbit-vscode
+
+## Themes / icons / UI
+davidbwaters.macos-modern-theme
 mvllow.rose-pine
 noahraskin.electronic-dawn-theme
 richardluo.frosted-glass-theme
-shd101wyy.markdown-preview-enhanced
-streetsidesoftware.code-spell-checker
-streetsidesoftware.code-spell-checker-cspell-bundled-dictionaries
+alexdauenhauer.catppuccin-noctis-icons
 subframe7536.custom-ui-style
+
+## Formatting / diagnostics
+esbenp.prettier-vscode
 usernamehw.errorlens
 yoavbls.pretty-ts-errors
+streetsidesoftware.code-spell-checker
+streetsidesoftware.code-spell-checker-cspell-bundled-dictionaries
+
+## Editor enhancements
+aaron-bond.better-comments
+kamikillerto.vscode-colorize
+kisstkondoros.vscode-gutter-preview
+alefragnani.project-manager
+
+## Languages / tools
+shd101wyy.markdown-preview-enhanced
+ms-azuretools.vscode-containers

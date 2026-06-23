@@ -1,0 +1,57 @@
+# macrift — Starship prompt config (Monokai)
+
+format = """
+$directory\
+$git_branch\
+$git_status\
+$nodejs\
+$python\
+$rust\
+$golang\
+$docker_context\
+$cmd_duration\
+$line_break\
+$character"""
+
+[directory]
+truncation_length = 3
+truncation_symbol = ".../"
+style = "bold #66d9ef"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style = "bold #ae81ff"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "bold #f92672"
+
+[nodejs]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[python]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[rust]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[golang]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[docker_context]
+format = "[$symbol$context]($style) "
+symbol = " "
+
+[cmd_duration]
+min_time = 2_000
+format = "[$duration]($style) "
+style = "bold #e6db74"
+
+[character]
+success_symbol = "[❯](bold #a6e22e)"
+error_symbol = "[❯](bold #f92672)"

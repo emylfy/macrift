@@ -93,7 +93,7 @@ alias ip="curl -s ifconfig.me"
 alias ports="lsof -i -P -n | grep LISTEN"
 
 # Theme
-[ -f "$HOME/.config/zsh/catppuccin.zsh" ] && source "$HOME/.config/zsh/catppuccin.zsh"
+[ -f "$HOME/.config/zsh/theme.zsh" ] && source "$HOME/.config/zsh/theme.zsh"
 
 # FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
