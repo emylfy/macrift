@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # macrift — shared utilities
 
-set -euo pipefail
+# MACRIFT_NO_INIT lets the test suite source this file for its functions alone,
+# without enabling errexit or installing traps/temp files. Production never sets it.
+[[ -n "${MACRIFT_NO_INIT:-}" ]] || set -euo pipefail
 
 # CPU architecture — used to detect Apple Silicon vs Intel for brew paths
 ARCH=$(uname -m)
@@ -11,26 +13,31 @@ MACRIFT_DRY_RUN="${MACRIFT_DRY_RUN:-false}"
 MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
 MACRIFT_LOG="${MACRIFT_LOG:-}"
 
-# Shared state file for menu cursor positions (per macrift PID).
-# Needed because show_menu runs in a $() subshell — in-memory var won't persist.
-MENU_STATE_FILE="${TMPDIR:-/tmp}/macrift-menu.$$"
-
 # Persistent applied-change journal (JSONL) — feeds undo/drift. Unlike the menu
-# state file above, this is NOT removed on exit; it accumulates across runs.
+# state file below, this is NOT removed on exit; it accumulates across runs.
 MACRIFT_STATE_DIR="${MACRIFT_STATE_DIR:-$HOME/.macrift/state}"
 MACRIFT_JOURNAL="$MACRIFT_STATE_DIR/journal.jsonl"
 # One session id per run; groups entries so undo can target the last session.
 MACRIFT_SESSION="${MACRIFT_SESSION:-$(date +%y%m)-$(printf '%04x' "$RANDOM")}"
 # macOS version recorded with each entry (defaults keys change across releases).
-MACRIFT_OS_VER="$(sw_vers -productVersion 2>/dev/null || echo '?')"
+MACRIFT_OS_VER="${MACRIFT_OS_VER:-$(sw_vers -productVersion 2>/dev/null || echo '?')}"
 
 # Restore cursor on exit, clean up state file
 _macrift_cleanup() {
     printf "\033[?25h" 2>/dev/null
     rm -f "$MENU_STATE_FILE"
 }
-trap '_macrift_cleanup; sudo -k 2>/dev/null' EXIT
-trap 'exit 130' INT TERM
+
+# Shared state file for menu cursor positions (per macrift run).
+# Needed because show_menu runs in a $() subshell — in-memory var won't persist.
+# Created via mktemp (random name, mode 0600) so a shared /tmp can't be seeded
+# with a symlink at a predictable path; falls back to a PID name if mktemp fails.
+# Skipped under MACRIFT_NO_INIT so sourcing for tests leaves no temp file / trap.
+if [[ -z "${MACRIFT_NO_INIT:-}" ]]; then
+    MENU_STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/macrift-menu.XXXXXX" 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/macrift-menu.$$")"
+    trap '_macrift_cleanup; sudo -k 2>/dev/null' EXIT
+    trap 'exit 130' INT TERM
+fi
 
 # Strip ANSI escape codes and append to log file
 _log_file() {
@@ -412,6 +419,7 @@ show_menu() {
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
         local _wtext="${items[$i]#\#\# }"   # strip the heading marker for width
+        _wtext="${_wtext%$'\x1f'}"          # strip the dim marker for width
         [[ ${#_wtext} -gt $max_len ]] && max_len=${#_wtext}
     done
     [[ -n "$subtitle" && ${#subtitle} -gt $max_len ]] && max_len=${#subtitle}
@@ -434,7 +442,10 @@ show_menu() {
     # Render one selectable row: text, is_selected, is_back. The cursor is a
     # left accent bar (▌) in the gutter, so selection reads without relying on color.
     _menu_row() {
-        local is_sel="$2" is_back="${3:-false}" indent="${4:-}" raw="$1" glyph=""
+        local is_sel="$2" is_back="${3:-false}" indent="${4:-}" raw="$1" glyph="" is_dim=false
+        # A trailing US byte (\x1f) marks a dim row (e.g. "not installed") that is
+        # still selectable; strip it before the affordance split below.
+        [[ "$raw" == *$'\x1f' ]] && { is_dim=true; raw="${raw%$'\x1f'}"; }
         # A trailing " ›" (opens a submenu) or " ↗" (opens System Settings) is
         # split off and right-aligned to the border as a dim affordance.
         case "$raw" in
@@ -444,8 +455,8 @@ show_menu() {
         local text; text=$(_fit "${indent}${raw}")
         local lead="  "; $is_sel && lead=" $BAR"
         local body
-        if $is_sel;   then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
-        elif $is_back; then body=$(printf '%b%s%b' "$DIM" "$text" "$R")
+        if $is_sel;               then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
+        elif $is_back || $is_dim; then body=$(printf '%b%s%b' "$DIM" "$text" "$R")
         else body="$text"; fi
         if [[ -n "$glyph" ]]; then
             # …text…<gap>glyph<1-col margin>│  — right-aligned with a small margin
@@ -648,7 +659,7 @@ show_multiselect() {
     # that should be unchecked by default. Reset after show_multiselect returns.
     local opt_set=" ${MULTISELECT_OPTIONAL:-} "
     for ((i=0; i<count; i++)); do
-        if [[ "${items[$i]}" == "---" ]]; then
+        if [[ "${items[$i]}" == "---" || "${items[$i]}" == "## "* ]]; then
             selected[i]="-"
         elif [[ "$opt_set" == *" $i "* ]]; then
             selected[i]="0"
@@ -657,7 +668,7 @@ show_multiselect() {
         fi
     done
     MULTISELECT_OPTIONAL=""
-    while [[ $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+    while [[ $cursor -lt $count && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
         cursor=$((cursor + 1))
     done
 
@@ -683,7 +694,9 @@ show_multiselect() {
     local max_len=0
     for ((i=0; i<count; i++)); do
         [[ "${items[$i]}" == "---" ]] && continue
-        [[ ${#items[$i]} -gt $max_len ]] && max_len=${#items[$i]}
+        local _ilen=${#items[$i]}
+        [[ "${items[$i]}" == "## "* ]] && _ilen=$((_ilen - 3))   # strip "## " prefix
+        [[ $_ilen -gt $max_len ]] && max_len=$_ilen
     done
     for ((i=0; i<view_count; i++)); do
         [[ ${#view_items[$i]} -gt $max_len ]] && max_len=${#view_items[$i]}
@@ -831,6 +844,16 @@ show_multiselect() {
                 continue
             fi
 
+            if [[ "${items[$i]}" == "## "* ]]; then
+                # Section heading: dim, flush with its items (mirrors show_menu)
+                local htext="${items[$i]#\#\# }"
+                local hmax=$((inner_w - 4)); [[ ${#htext} -gt $hmax ]] && htext="${htext:0:hmax-1}…"
+                local hpad=$((inner_w - 2 - ${#htext})); [[ $hpad -lt 0 ]] && hpad=0
+                _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$htext" "$R")" "$hpad"
+                rendered=$((rendered + 1))
+                continue
+            fi
+
             local pad=$((inner_w - 6 - ${#items[$i]})); [[ $pad -lt 0 ]] && pad=0
             local lead="  "; [[ $i -eq $cursor ]] && lead=" $BAR"
             local box
@@ -880,14 +903,18 @@ show_multiselect() {
             up)
                 if [[ $cursor -gt 0 ]]; then
                     cursor=$((cursor - 1))
-                    while [[ $cursor -gt 0 && $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+                    while [[ $cursor -gt 0 && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
                         cursor=$((cursor - 1))
+                    done
+                    # bounce off a leading header/separator onto the first selectable
+                    while [[ $cursor -lt $count && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
+                        cursor=$((cursor + 1))
                     done
                 fi ;;
             down)
                 if [[ $cursor -lt $((total - 1)) ]]; then
                     cursor=$((cursor + 1))
-                    while [[ $cursor -lt $count && "${items[$cursor]}" == "---" ]]; do
+                    while [[ $cursor -lt $count && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
                         cursor=$((cursor + 1))
                     done
                 fi ;;
@@ -905,12 +932,12 @@ show_multiselect() {
             a|A)
                 local all_on=true
                 for ((i=0; i<count; i++)); do
-                    [[ "${items[$i]}" == "---" ]] && continue
+                    [[ "${items[$i]}" == "---" || "${items[$i]}" == "## "* ]] && continue
                     [[ "${selected[$i]}" == "0" ]] && { all_on=false; break; }
                 done
                 local val="1"; $all_on && val="0"
                 for ((i=0; i<count; i++)); do
-                    [[ "${items[$i]}" == "---" ]] && continue
+                    [[ "${items[$i]}" == "---" || "${items[$i]}" == "## "* ]] && continue
                     selected[i]="$val"
                 done ;;
             enter)
@@ -922,7 +949,7 @@ show_multiselect() {
     _ui_end
 
     for ((i=0; i<count; i++)); do
-        [[ "${items[$i]}" == "---" ]] && continue
+        [[ "${items[$i]}" == "---" || "${items[$i]}" == "## "* ]] && continue
         if [[ "${selected[i]}" == "1" ]]; then echo "${items[$i]}"; fi
     done
 }
@@ -1139,6 +1166,9 @@ show_audit_table() {
 # Domains that were actually modified (used to decide which services to restart)
 declare -a MACRIFT_CHANGED_DOMAINS=()
 
+# Pending dotfile copies from a manifest apply (src\x1fdest\x1fmode\x1flabel)
+declare -a DOTFILE_UNITS=()
+
 # Run defaults write/delete with sudo fallback
 # Usage: _defaults_cmd "write" domain key type value label sudo_flag
 #        _defaults_cmd "delete" domain key "" "" label sudo_flag
@@ -1244,6 +1274,35 @@ _journal_live_value() {
     esac
 }
 
+# Forward maps for the non-defaults change kinds, shared by apply (forward) and
+# undo/reset (inverse) so the two directions can't drift out of sync.
+# nvram StartupMute: true = sound on (%00 raw byte), false = muted (%01).
+_nvram_byte_for_bool() {
+    if [[ "$1" == "true" ]]; then printf '%%00'; else printf '%%01'; fi
+}
+# chflags ~/Library: true = visible (nohidden), false = hidden.
+_chflags_for_visible() {
+    if [[ "$1" == "true" ]]; then printf 'nohidden'; else printf 'hidden'; fi
+}
+
+# Classify a journaled change against its live value (pure). Caller handles the
+# dotfile and __UNKNOWN__ cases separately.
+#   held: live still matches the applied value
+#   reverted: live is back to the pre-macrift state — "default" when the key was
+#             unset before (old_null=1), else the recorded old value
+#   drifted: anything else
+_drift_state() {
+    local live="$1" value="$2" old="$3" old_null="$4"
+    if [[ "$live" == "$value" ]]; then
+        echo "held"
+    elif [[ "$old_null" == "1" && "$live" == "default" ]] || \
+         [[ "$old_null" == "0" && "$live" == "$old" ]]; then
+        echo "reverted"
+    else
+        echo "drifted"
+    fi
+}
+
 # `macrift drift` — read-only. Compares each journaled change to the live system.
 # Classifies each: held (still matches), reverted (back to pre-macrift state),
 # drifted (changed to something else), unknown (couldn't read).
@@ -1323,13 +1382,13 @@ PY
         live=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         if [[ "$live" == "__UNKNOWN__" ]]; then
             state="unknown"; color="$DIM"; unknown=$((unknown + 1)); live="?"
-        elif [[ "$live" == "$value" ]]; then
-            state="held"; color="$GREEN"; held=$((held + 1))
-        elif [[ "$old_null" == "1" && "$live" == "default" ]] || \
-             [[ "$old_null" == "0" && "$live" == "$old" ]]; then
-            state="reverted"; color="$YELLOW"; reverted=$((reverted + 1))
         else
-            state="drifted"; color="$RED"; drifted=$((drifted + 1))
+            state=$(_drift_state "$live" "$value" "$old" "$old_null")
+            case "$state" in
+                held)     color="$GREEN";  held=$((held + 1)) ;;
+                reverted) color="$YELLOW"; reverted=$((reverted + 1)) ;;
+                drifted)  color="$RED";    drifted=$((drifted + 1)) ;;
+            esac
         fi
         printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
             "$label" "$DIM" "$(_friendly_val "$value")" "$RESET" \
@@ -1545,8 +1604,8 @@ PY
 # `macrift apply [<file.json>]` — apply a declarative manifest. Desugars the
 # JSON surface into the engine's audit entries, previews via show_audit_table,
 # and applies through apply_audited_defaults (which journals each change).
-# v1 covers the defaults family (default/finder_sort/nvram/chflags); brew,
-# dotfile, plist, command are reported as not-yet-applied.
+# Covers the defaults family (default/finder_sort/nvram/chflags) plus dotfile
+# copies (via copy_config); brew, plist, command are reported as not-yet-applied.
 manifest_apply_cli() {
     local manifest="${1:-$HOME/.config/macrift/macrift.json}"
     if [[ ! -f "$manifest" ]]; then
@@ -1557,7 +1616,7 @@ manifest_apply_cli() {
 
     local out
     out=$(python3 - "$manifest" "$MACRIFT_OS_VER" <<'PY'
-import json, sys
+import json, sys, os
 SEP = "\x1f"
 TYPE_MAP = {"bool": "-bool", "int": "-int", "float": "-float", "string": "-string"}
 
@@ -1621,34 +1680,56 @@ lib = m.get("library", {})
 if "visible" in lib:
     add("chflags", "chflags", "nohidden", "-bool", nval(lib["visible"]), "Show Library folder")
 
+# dotfile units are file copies, not audit-table entries — emit on a separate
+# channel (__DOTFILE__ marker) and let the bash side route them to copy_config.
+dots = []
+for df in m.get("dotfile", []):
+    if not version_ok(df):
+        skipped_version += 1
+        continue
+    src, dest = df.get("src", ""), df.get("dest", "")
+    if not src or not dest:
+        continue
+    label = df.get("label") or df.get("id") or os.path.basename(dest) or dest
+    dots.append(("__DOTFILE__", src, dest, str(df.get("mode") or ""), label))
+
 unsupported = [f"{k}:{len(m.get(k, []))}"
-               for k in ("brew", "dotfile", "plist", "command") if m.get(k)]
+               for k in ("brew", "plist", "command") if m.get(k)]
 
 for u in units:
     print(SEP.join(u))
+for d in dots:
+    print(SEP.join(d))
 print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
 PY
 ) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
 
     audit_reset
+    DOTFILE_UNITS=()
     local skipped_version=0 unsupported=""
     while IFS=$'\x1f' read -r kind domain key vtype value label; do
         [[ -z "$kind" ]] && continue
         if [[ "$kind" == "__META__" ]]; then
             skipped_version="$domain"; unsupported="$key"; continue
         fi
+        if [[ "$kind" == "__DOTFILE__" ]]; then
+            # Reader columns reused: domain=src, key=dest, vtype=mode, value=label.
+            DOTFILE_UNITS+=("${domain}"$'\x1f'"${key}"$'\x1f'"${vtype}"$'\x1f'"${value}")
+            continue
+        fi
         local current
         current=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         AUDIT_ENTRIES+=("${label}|${current}|${value}|${domain}|${key}|${vtype}")
     done <<< "$out"
 
-    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 ]]; then
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 ]]; then
         log_warn "No applicable settings in manifest"
         [[ -n "$unsupported" ]] && log_info "Not yet supported by apply: $unsupported"
         return 0
     fi
 
-    if show_audit_table "Manifest"; then
+    # Defaults family — audit table gates and applies (each change journaled).
+    if [[ ${#AUDIT_ENTRIES[@]} -gt 0 ]] && show_audit_table "Manifest"; then
         MACRIFT_CHANGED_DOMAINS=()
         apply_audited_defaults
         local need_dock=false need_finder=false d
@@ -1666,9 +1747,62 @@ PY
         fi
     fi
 
+    # Dotfiles — separate preview/confirm, copied via copy_config (journaled, so
+    # undo/drift work for free). Gated independently of the defaults table.
+    if [[ ${#DOTFILE_UNITS[@]} -gt 0 ]]; then
+        _manifest_apply_dotfiles "$(dirname "$manifest")"
+    fi
+
     [[ "${skipped_version:-0}" -gt 0 ]] && log_info "$skipped_version skipped (macOS version guard)"
     [[ -n "$unsupported" ]] && log_info "Not yet applied by macrift apply: $unsupported"
     return 0
+}
+
+# Apply manifest dotfile units (DOTFILE_UNITS, each "src\x1fdest\x1fmode\x1flabel"
+# with src relative to the manifest dir). Previews, confirms once, then copies via
+# copy_config — which backs up and journals each copy for undo/drift.
+_manifest_apply_dotfiles() {
+    local manifest_dir="$1"
+    local unit src dest mode label src_abs dest_abs status p
+    local -a plan=()
+    for unit in "${DOTFILE_UNITS[@]}"; do
+        IFS=$'\x1f' read -r src dest mode label <<< "$unit"
+        case "$src" in /*) src_abs="$src" ;; *) src_abs="$manifest_dir/$src" ;; esac
+        dest_abs="${dest/#\~/$HOME}"
+        if [[ ! -f "$src_abs" ]]; then status="missing src"
+        elif [[ -e "$dest_abs" ]]; then status="overwrite"
+        else status="new"; fi
+        plan+=("${label}"$'\x1f'"${src_abs}"$'\x1f'"${dest_abs}"$'\x1f'"${mode}"$'\x1f'"${status}")
+    done
+
+    printf '\n'
+    printf '  %b── Dotfiles %b' "${BOLD}" "${RESET}${DIM}"
+    printf '─%.0s' {1..34}
+    printf '%b\n' "$RESET"
+    printf '  %b%-26s %-13s %s%b\n' "$DIM" "File" "Action" "Destination" "$RESET"
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r label src_abs dest_abs mode status <<< "$p"
+        local color="$GREEN"; [[ "$status" == "missing src" ]] && color="$RED"
+        printf '  %-26.26s %b%-13s%b %s\n' "$label" "$color" "$status" "$RESET" "$dest_abs"
+    done
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf '\n'; log_info "Dry run — no dotfiles copied"; return 0
+    fi
+    printf '\n'
+    if ! confirm "Copy these dotfiles?"; then
+        log_info "No dotfiles copied"; return 0
+    fi
+
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r label src_abs dest_abs mode status <<< "$p"
+        if [[ "$status" == "missing src" ]]; then
+            log_warn "$label — source not found: $src_abs"; continue
+        fi
+        copy_config "$src_abs" "$dest_abs"
+        [[ -n "$mode" ]] && chmod "$mode" "$dest_abs" 2>/dev/null
+    done
 }
 
 # `macrift save [<file.json>]` — snapshot the current value of every tweak
@@ -1781,8 +1915,7 @@ apply_audited_defaults() {
 
         # Handle chflags entries (e.g. ~/Library)
         if [[ "$domain" == "chflags" ]]; then
-            local chflag="$key"
-            [[ "$new_val" == "false" ]] && chflag="hidden"
+            local chflag; chflag=$(_chflags_for_visible "$new_val")
             if chflags "$chflag" ~/Library 2>/dev/null; then
                 log_ok "$label → $friendly"
                 _journal_append "chflags" "$label" "$domain" "$key" "$type" "$new_val" "$current"
@@ -1796,8 +1929,7 @@ apply_audited_defaults() {
 
         # Handle nvram entries (e.g. StartupMute)
         if [[ "$domain" == "nvram" ]]; then
-            local nvram_val="%01"                           # %01 = muted, %00 = sound on (NVRAM raw byte)
-            [[ "$new_val" == "true" ]] && nvram_val="%00"
+            local nvram_val; nvram_val=$(_nvram_byte_for_bool "$new_val")
             require_sudo
             if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
                 log_ok "$label → $friendly"
@@ -1925,7 +2057,7 @@ apply_reset_defaults() {
             if [[ "$current" == "default" ]]; then
                 log_warn "$label — no prior state recorded, skipping"
             else
-                local nvram_val="%01"; [[ "$current" == "true" ]] && nvram_val="%00"
+                local nvram_val; nvram_val=$(_nvram_byte_for_bool "$current")
                 require_sudo
                 if sudo nvram "${key}=${nvram_val}" 2>/dev/null; then
                     log_ok "$label → $(_friendly_val "$current")"; reset=$((reset + 1))
@@ -1940,7 +2072,7 @@ apply_reset_defaults() {
             if [[ "$current" == "default" ]]; then
                 log_warn "$label — no prior state recorded, skipping"
             else
-                local cf="nohidden"; [[ "$current" == "false" ]] && cf="hidden"
+                local cf; cf=$(_chflags_for_visible "$current")
                 if chflags "$cf" ~/Library 2>/dev/null; then
                     log_ok "$label → $(_friendly_val "$current")"; reset=$((reset + 1))
                 else
@@ -2022,7 +2154,7 @@ copy_config() {
     _journal_append_dotfile "$source" "$target" "$bak"
 }
 
-# 
+#
 check_macos() {
     if [[ "$(uname)" != "Darwin" ]]; then
         log_err "This script is for macOS only"
@@ -2030,7 +2162,7 @@ check_macos() {
     fi
 }
 
-# 
+#
 get_script_dir() {
     cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
 }
@@ -2132,6 +2264,15 @@ except Exception:
 
 # Download and apply update
 macrift_update() {
+    # Refuse to clobber a git checkout. The atomic swap below rm -rf's the install
+    # dir, which would destroy .git, uncommitted work, and untracked files. If you
+    # run macrift from a clone, update with git, not this command.
+    if [[ -e "$MACRIFT_DIR/.git" ]]; then
+        log_err "Refusing to update: $MACRIFT_DIR is a git checkout."
+        log_info "Update with git instead:  git -C \"$MACRIFT_DIR\" pull --ff-only"
+        return 1
+    fi
+
     # Show changelog first, then ask
     if [[ -n "$MACRIFT_UPDATE" ]]; then
         printf '\n'
