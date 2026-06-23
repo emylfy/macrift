@@ -5,6 +5,30 @@
 The latest tagged release is the only supported version. macrift is small and
 moves fast; older calver tags do not receive backports.
 
+## Distribution & updates
+
+Both install channels fetch a **pinned, checksum-verified release tarball** — never
+a floating `main`:
+
+- **Homebrew** (`brew install emylfy/macrift/macrift`) is the primary channel.
+  The formula pins a tagged release URL and its `sha256`; Homebrew verifies the
+  download. Updates go through `brew upgrade macrift` — the in-app self-updater
+  detects a Homebrew install and defers to it instead of swapping files.
+- **curl installer + in-app self-update** resolve the latest GitHub release tag,
+  download `macrift-<version>.tar.gz` plus its published `.sha256`, and verify
+  with `shasum -a 256 -c` **before** extracting. A missing release, a missing
+  checksum, or a mismatch aborts loudly — there is no fallback to an unverified
+  `main.tar.gz`. (This closes the prior failure mode where any commit to `main`
+  propagated instantly and unverified to every user.)
+
+Releases are cut locally and inspectably (`.githooks/publish` → `pre-push` →
+`scripts/release-assets.sh`): VERSION bump, tag, GitHub Release, then a
+`git archive`-built tarball + `sha256` uploaded as assets and a rendered
+`Formula/macrift.rb` pushed to the tap. The formula bump uses local git
+credentials, not a CI secret. The release tarball is built with `git archive`
+from the tag (deterministic), and macrift ships and verifies **its own** built
+asset rather than GitHub's auto-generated archive (whose checksum can change).
+
 ## Reporting a vulnerability
 
 If you find a security issue in macrift itself — for example, an unsafe

@@ -41,11 +41,22 @@ See every macOS tweak before it touches your system. One keypress to apply or sk
 
 ## Quick Start
 
+**Homebrew** (recommended):
+
+```bash
+brew install emylfy/macrift/macrift
+```
+
+Run `macrift` to start; update later with `brew upgrade macrift`.
+
+**curl** (no Homebrew):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh | bash
 ```
 
 Installs to `~/.macrift`, creates a global `macrift` command, and launches automatically.
+Both channels download a **pinned, sha256-verified release tarball** — never floating `main`.
 Doesn't touch your system until you choose what to apply.
 
 Prefer to read it first? Download, inspect, then run:
@@ -64,7 +75,7 @@ less install.sh && bash install.sh
 git clone https://github.com/emylfy/macrift.git ~/.macrift && ~/.macrift/macrift.sh
 ```
 
-**Manual download:** grab the [latest archive](https://github.com/emylfy/macrift/archive/main.tar.gz), extract to `~/.macrift`, and run `~/.macrift/macrift.sh`
+**Manual download:** grab the latest tarball from the [Releases page](https://github.com/emylfy/macrift/releases/latest) (verify it against the published `.sha256`), extract to `~/.macrift`, and run `~/.macrift/macrift.sh`
 
 **Run once without installing** — useful for `check` on someone else's Mac:
 
