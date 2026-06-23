@@ -2283,10 +2283,111 @@ _manifest_apply_command() {
     done
 }
 
-# `macrift save [<file.json>]` — snapshot the current value of every tweak
-# macrift knows about into a JSON manifest. Reuses the tweak spec-builders to
-# populate AUDIT_ENTRIES with live values, then records only non-default ones
-# (per-key, not a wholesale domain dump). Restore with `macrift apply <file>`.
+# Build a manifest JSON from capture temp files (any path may be "" / missing):
+#   entries: AUDIT_ENTRIES lines (label|current|new|domain|key|vtype) → defaults family
+#   brew:    "name<TAB>source<TAB>id" lines
+#   dotfile: "src_rel<TAB>dest" lines
+#   plist:   "domain<TAB>file_rel" lines
+#   command: "id<TAB>run<TAB>undo<TAB>label" lines
+# Echoes the JSON. Shared by `macrift save` and the Profile export so the two
+# can't drift apart. Usage: _manifest_build_json <name> <entries> <brew> <dotfile> <plist> <command>
+_manifest_build_json() {
+    local name="$1" entries="$2" brewf="$3" dotf="$4" plistf="$5" cmdf="$6"
+    python3 - "$name" "$MACRIFT_VERSION" "$MACRIFT_OS_VER" "$entries" "$brewf" "$dotf" "$plistf" "$cmdf" <<'PY'
+import sys, json
+name, ver, osv = sys.argv[1], sys.argv[2], sys.argv[3]
+entries_p, brew_p, dot_p, plist_p, cmd_p = sys.argv[4:9]
+TYPE = {"-bool": "bool", "-int": "int", "-float": "float", "-string": "string"}
+
+def conv(t, v):
+    # Only bool becomes a JSON boolean; others keep the raw `defaults read` string
+    # so a save→apply round-trip compares byte-identical.
+    return (v == "true") if t == "-bool" else v
+
+def rows(p):
+    if not p:
+        return []
+    try:
+        return [l.rstrip("\n") for l in open(p) if l.strip()]
+    except Exception:
+        return []
+
+defaults, finder, boot, library = [], {}, {}, {}
+for line in rows(entries_p):
+    p = line.split("|")
+    if len(p) < 6:
+        continue
+    label, current, new_val, domain, key, vtype = p[:6]
+    label = label.split("~", 1)[0]
+    if label == "---" or current == "default":
+        continue
+    if domain == "finder_sort":
+        finder["sort"] = current
+    elif domain == "nvram" and key == "StartupMute":
+        boot["startup_sound"] = (current == "true")
+    elif domain == "chflags":
+        library["visible"] = (current == "true")
+    else:
+        defaults.append({"label": label, "domain": domain, "key": key,
+                         "type": TYPE.get(vtype, "string"), "value": conv(vtype, current)})
+
+brew = []
+for line in rows(brew_p):
+    p = line.split("\t")
+    if len(p) < 2 or not p[0]:
+        continue
+    e = {"name": p[0], "source": p[1]}
+    if p[1] == "mas" and len(p) > 2 and p[2]:
+        e["id"] = p[2]
+    brew.append(e)
+
+dotfile = [{"src": p[0], "dest": p[1]}
+           for p in (l.split("\t") for l in rows(dot_p)) if len(p) >= 2]
+plist = [{"domain": p[0], "file": p[1]}
+         for p in (l.split("\t") for l in rows(plist_p)) if len(p) >= 2]
+
+command = []
+for line in rows(cmd_p):
+    p = line.split("\t")
+    if len(p) < 2:
+        continue
+    c = {"run": p[1]}
+    if p[0]:
+        c["id"] = p[0]
+    if len(p) > 2 and p[2]:
+        c["undo"] = p[2]
+    if len(p) > 3 and p[3]:
+        c["label"] = p[3]
+    command.append(c)
+
+m = {"meta": {"name": name, "macrift": ver, "source_macos": osv}, "defaults": defaults}
+if finder:  m["finder"] = finder
+if boot:    m["boot"] = boot
+if library: m["library"] = library
+if brew:    m["brew"] = brew
+if dotfile: m["dotfile"] = dotfile
+if plist:   m["plist"] = plist
+if command: m["command"] = command
+print(json.dumps(m, indent=2))
+PY
+}
+
+# Emit installed packages as "name<TAB>source<TAB>id" lines: top-level brew
+# formulae (leaves), casks, and Mac App Store apps (id last).
+_capture_brew_list() {
+    if command -v brew &>/dev/null; then
+        brew leaves 2>/dev/null      | while IFS= read -r n; do [[ -n "$n" ]] && printf '%s\tformula\t\n' "$n"; done
+        brew list --cask 2>/dev/null | while IFS= read -r n; do [[ -n "$n" ]] && printf '%s\tcask\t\n' "$n"; done
+    fi
+    if command -v mas &>/dev/null; then
+        mas list 2>/dev/null | awk 'NF{id=$1; $1=""; sub(/^ +/,""); sub(/ \([^)]*\)$/,""); print $0"\tmas\t"id}'
+    fi
+}
+
+# `macrift save [<file.json>]` — snapshot the tweaks macrift knows about (granular,
+# per-key) plus installed packages (brew leaves/casks + App Store) into a JSON
+# manifest. Restore with `macrift apply <file>`. Dotfiles/plists are captured by
+# the Profile export, which copies their files alongside the manifest.
 manifest_save_cli() {
     local out_file="${1:-$HOME/.config/macrift/macrift.json}"
 
@@ -2301,65 +2402,18 @@ manifest_save_cli() {
     # shellcheck disable=SC1090
     source "$MACRIFT_DIR/tweaks/privacy.sh"; privacy_recommended; privacy_strict
 
-    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 ]]; then
-        log_warn "No tweaks detected to save"
-        return 1
-    fi
-
-    # Pass entries via a temp file, not stdin: python's program already comes
-    # from the heredoc on stdin, so a pipe would be shadowed by it.
-    local entries_tmp
-    entries_tmp=$(mktemp)
-    printf '%s\n' "${AUDIT_ENTRIES[@]}" > "$entries_tmp"
+    # Pass captures via temp files, not stdin: python's program is on stdin.
+    local entries_tmp brew_tmp
+    entries_tmp=$(mktemp); brew_tmp=$(mktemp)
+    : > "$entries_tmp"
+    (( ${#AUDIT_ENTRIES[@]} )) && printf '%s\n' "${AUDIT_ENTRIES[@]}" > "$entries_tmp"
     audit_reset
+    _capture_brew_list > "$brew_tmp"
 
-    local manifest_json
-    manifest_json=$(python3 - "$entries_tmp" "$MACRIFT_VERSION" "$MACRIFT_OS_VER" \
-        "$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo mac)" <<'PY'
-import sys, json
-entries_path, ver, osv, host = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-TYPE = {"-bool": "bool", "-int": "int", "-float": "float", "-string": "string"}
-
-def conv(t, v):
-    # Only bool becomes a JSON boolean. int/float/string keep their raw
-    # `defaults read` string so a save→apply round-trip compares byte-identical
-    # (e.g. avoids "0" vs "0.0" float-formatting drift).
-    if t == "-bool":
-        return v == "true"
-    return v
-
-defaults, finder, boot, library = [], {}, {}, {}
-for line in open(entries_path):
-    line = line.rstrip("\n")
-    if not line:
-        continue
-    p = line.split("|")
-    if len(p) < 6:
-        continue
-    label, current, new_val, domain, key, vtype = p[:6]
-    label = label.split("~", 1)[0]
-    if label == "---" or current == "default":
-        continue                       # separators / already-default keys: nothing to reproduce
-    if domain == "finder_sort":
-        finder["sort"] = current
-    elif domain == "nvram" and key == "StartupMute":
-        boot["startup_sound"] = (current == "true")
-    elif domain == "chflags":
-        library["visible"] = (current == "true")
-    else:
-        defaults.append({
-            "label": label, "domain": domain, "key": key,
-            "type": TYPE.get(vtype, "string"), "value": conv(vtype, current),
-        })
-
-m = {"meta": {"name": host, "macrift": ver, "source_macos": osv}, "defaults": defaults}
-if finder:  m["finder"] = finder
-if boot:    m["boot"] = boot
-if library: m["library"] = library
-print(json.dumps(m, indent=2))
-PY
-)
-    rm -f "$entries_tmp"
+    local host manifest_json
+    host=$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo mac)
+    manifest_json=$(_manifest_build_json "$host" "$entries_tmp" "$brew_tmp" "" "" "")
+    rm -f "$entries_tmp" "$brew_tmp"
 
     if [[ -z "$manifest_json" ]]; then
         log_err "Failed to build manifest"
@@ -2368,11 +2422,12 @@ PY
 
     mkdir -p "$(dirname "$out_file")"
     printf '%s\n' "$manifest_json" > "$out_file"
-    local n
-    n=$(grep -c '"domain"' "$out_file" 2>/dev/null) || true
+    local nd nb
+    nd=$(grep -c '"key"' "$out_file" 2>/dev/null) || true
+    nb=$(grep -c '"source"' "$out_file" 2>/dev/null) || true
     printf '\n'
     log_ok "Saved manifest → $out_file"
-    log_info "Captured ${n:-0} non-default setting(s). Restore: macrift apply \"$out_file\""
+    log_info "Captured ${nd:-0} setting(s) + ${nb:-0} package(s). Restore: macrift apply \"$out_file\""
 }
 
 # Apply all queued defaults writes
