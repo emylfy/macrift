@@ -44,6 +44,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             printf '[pre-push] gh release v%s already exists — skipping create\n' "$v" >&2
         elif printf '%s\n' "$notes" | gh release create "v$v" --notes-file - --title "v$v" 2>/dev/null; then
             printf '[pre-push] created gh release v%s\n' "$v" >&2
+            # Attach the checksummed tarball + bump the Homebrew formula. Best-effort:
+            # stdin detached so it can't consume this loop's ref list, and a failure
+            # must not abort the push (the tag + release are already up).
+            relscript="$(git rev-parse --show-toplevel)/scripts/release-assets.sh"
+            if [[ -f "$relscript" ]]; then
+                bash "$relscript" "v$v" </dev/null >&2 \
+                    || printf '[pre-push] release-assets v%s failed — release made, assets/formula incomplete\n' "$v" >&2
+            fi
         else
             printf '[pre-push] gh release create v%s failed (auth? rate limit?) — tag still pushed\n' "$v" >&2
         fi

@@ -27,6 +27,18 @@ Two extras kick in if the tools are on `PATH`; both fail silently otherwise so t
 
 If both are installed, `./.githooks/publish` produces: a release commit with bumped `VERSION` + updated `CHANGELOG.md`, an annotated `v<VERSION>` tag, _and_ a GitHub Release page with human-readable notes — in one command.
 
+## checksummed asset + Homebrew formula
+
+Right after `pre-push` creates the GitHub Release, it calls `scripts/release-assets.sh v<VERSION>`, which:
+
+- builds a reproducible tarball `dist/macrift-<VERSION>.tar.gz` (`git archive` of the tag, stable `macrift/` top dir),
+- writes its `.sha256`, and uploads both as release assets (this is the pinned, verified artifact the curl installer + in-app self-update download — never floating `main`),
+- renders `packaging/homebrew/macrift.rb.tmpl` (the formula source of truth) with the asset URL + sha256 and pushes `Formula/macrift.rb` to the tap.
+
+The step is best-effort: a failure never aborts the push (tag + release are already up). Re-run by hand anytime with `bash scripts/release-assets.sh v<VERSION>` (or `--dry-run` to preview).
+
+**Tap bootstrap** (one-time): create an empty `emylfy/homebrew-macrift` repo, clone it as a sibling of this repo (or set `MACRIFT_TAP_DIR` to its path), and the next release renders the initial `Formula/macrift.rb` into it. Without the tap checkout, the asset still ships and the formula bump is skipped with a notice. Needs `gh` authed; the formula push uses your local git credentials (no CI secret).
+
 ## flagging manual actions
 
 If an update needs the user to do something by hand, add a `Manual-Action:` trailer in the commit body:
