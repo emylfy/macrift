@@ -14,6 +14,9 @@ MACRIFT_NO_CONFIRM="${MACRIFT_NO_CONFIRM:-false}"
 # Opt-in: allow `kind: command` manifest units (arbitrary shell) to run under
 # --no-confirm. Off by default — auto-approving shell from a file is unsafe.
 MACRIFT_ALLOW_COMMANDS="${MACRIFT_ALLOW_COMMANDS:-false}"
+# Opt-in: let `undo` uninstall brew formulae/casks this session installed. Off by
+# default — uninstalling is destructive; we never touch packages without it.
+MACRIFT_ALLOW_UNINSTALL="${MACRIFT_ALLOW_UNINSTALL:-false}"
 MACRIFT_LOG="${MACRIFT_LOG:-}"
 
 # Persistent applied-change journal (JSONL) — feeds undo/drift. Unlike the menu
@@ -1368,14 +1371,28 @@ journal_drift_cli() {
     rows=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
 import json, sys, collections, os
 def ident(d):
-    # dotfile identity is its dest (domain/key are empty); everything else
-    # keys on (domain, key).
-    if d.get("kind") == "dotfile":
+    # dotfile keys on dest; brew on name+source; plist on domain; command on
+    # id (or run); the defaults family on (domain, key).
+    k = d.get("kind")
+    if k == "dotfile":
         return ("dotfile", d.get("dest"))
-    return (d.get("kind"), d.get("domain"), d.get("key"))
+    if k == "brew":
+        return ("brew", d.get("name"), d.get("source"))
+    if k == "plist":
+        return ("plist", d.get("domain"))
+    if k == "command":
+        return ("command", d.get("id") or d.get("run"))
+    return (k, d.get("domain"), d.get("key"))
 def label_of(d):
-    if d.get("kind") == "dotfile":
+    k = d.get("kind")
+    if k == "dotfile":
         return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
+    if k == "brew":
+        return d.get("name", "")
+    if k == "plist":
+        return d.get("domain", "")
+    if k == "command":
+        return d.get("id") or d.get("run", "")[:24]
     return d.get("label", "") or d.get("key", "")
 latest = collections.OrderedDict()
 for line in open(sys.argv[1]):
@@ -1398,6 +1415,8 @@ for d in latest.values():
         "1" if old is None else "0",
         label_of(d),
         d.get("dest", ""), d.get("src", ""),
+        d.get("name", ""), d.get("source", ""), str(d.get("id", "")),
+        d.get("undo") or "",
     ]))
 PY
 )
@@ -1411,7 +1430,7 @@ PY
     printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..62})" "$RESET"
 
     local held=0 drifted=0 reverted=0 unknown=0
-    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src; do
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src name source bid undo; do
         [[ -z "$kind" ]] && continue
         local state color live
 
@@ -1427,6 +1446,29 @@ PY
             fi
             printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
                 "$label" "$DIM" "present" "$RESET" "$live" "$color" "$state" "$RESET"
+            continue
+        fi
+
+        # brew: held if still installed, reverted if removed (it was absent before).
+        if [[ "$kind" == "brew" ]]; then
+            local installed=false
+            case "$source" in
+                cask) brew list --cask "$name" &>/dev/null && installed=true ;;
+                mas)  mas list 2>/dev/null | awk '{print $1}' | grep -qxF "$bid" && installed=true ;;
+                *)    brew list "$name" &>/dev/null && installed=true ;;
+            esac
+            if $installed; then state="held"; color="$GREEN"; held=$((held + 1)); live="installed"
+            else state="reverted"; color="$YELLOW"; reverted=$((reverted + 1)); live="absent"; fi
+            printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
+                "$label" "$DIM" "installed" "$RESET" "$live" "$color" "$state" "$RESET"
+            continue
+        fi
+
+        # plist/command: coarse — no per-key/no state to compare, reported honestly.
+        if [[ "$kind" == "plist" || "$kind" == "command" ]]; then
+            state="unknown"; color="$DIM"; unknown=$((unknown + 1))
+            printf '  %-26.26s %b%-14.14s%b %-14.14s %b%s%b\n' \
+                "$label" "$DIM" "applied" "$RESET" "?" "$color" "$state" "$RESET"
             continue
         fi
 
@@ -1524,12 +1566,26 @@ PY
 import json, sys, collections, os
 target = sys.argv[2]
 def ident(d):
-    if d.get("kind") == "dotfile":
+    k = d.get("kind")
+    if k == "dotfile":
         return ("dotfile", d.get("dest"))
-    return (d.get("kind"), d.get("domain"), d.get("key"))
+    if k == "brew":
+        return ("brew", d.get("name"), d.get("source"))
+    if k == "plist":
+        return ("plist", d.get("domain"))
+    if k == "command":
+        return ("command", d.get("id") or d.get("run"))
+    return (k, d.get("domain"), d.get("key"))
 def label_of(d):
-    if d.get("kind") == "dotfile":
+    k = d.get("kind")
+    if k == "dotfile":
         return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
+    if k == "brew":
+        return d.get("name", "")
+    if k == "plist":
+        return d.get("domain", "")
+    if k == "command":
+        return d.get("id") or d.get("run", "")[:24]
     return d.get("label", "") or d.get("key", "")
 first = collections.OrderedDict()
 for line in open(sys.argv[1]):
@@ -1555,6 +1611,8 @@ for d in first.values():
         "1" if old is None else "0",
         label_of(d),
         d.get("dest", ""), d.get("src", ""),
+        d.get("name", ""), d.get("source", ""), str(d.get("id", "")),
+        d.get("undo") or "",
     ]))
 PY
 )
@@ -1571,8 +1629,11 @@ PY
 
     RESET_ENTRIES=()
     DOTFILE_RESETS=()
-    local changes=0
-    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src; do
+    BREW_UNDOS=()
+    PLIST_RESETS=()
+    COMMAND_UNDOS=()
+    local changes=0 brew_kept=0
+    while IFS=$'\x1f' read -r kind domain key vtype value old old_null label dest src name source bid undo; do
         [[ -z "$kind" ]] && continue
 
         # dotfile: restore the .bak, or remove dest if nothing existed before.
@@ -1589,6 +1650,51 @@ PY
             printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
                 "$label" "$DIM" "$cur" "$RESET" "$GREEN" "$d_disp" "$RESET"
             DOTFILE_RESETS+=("${dest}|${old}|${old_null}")
+            changes=$((changes + 1))
+            continue
+        fi
+
+        # plist: re-import the pre-apply backup, or delete the domain if it was new.
+        if [[ "$kind" == "plist" ]]; then
+            local p_disp
+            if [[ "$old_null" == "1" ]]; then
+                defaults read "$domain" &>/dev/null || continue   # already gone
+                p_disp="delete domain"
+            else
+                [[ -f "$old" ]] || { log_warn "$label — backup gone, skipping"; continue; }
+                p_disp="re-import backup"
+            fi
+            printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+                "$label" "$DIM" "imported" "$RESET" "$GREEN" "$p_disp" "$RESET"
+            PLIST_RESETS+=("${domain}|${old}|${old_null}")
+            changes=$((changes + 1))
+            continue
+        fi
+
+        # command: run the inverse `undo` shell if one was recorded, else skip.
+        if [[ "$kind" == "command" ]]; then
+            if [[ -z "$undo" ]]; then
+                printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+                    "$label" "$DIM" "ran" "$RESET" "$DIM" "irreversible" "$RESET"
+                continue
+            fi
+            printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+                "$label" "$DIM" "ran" "$RESET" "$GREEN" "run undo" "$RESET"
+            COMMAND_UNDOS+=("$undo")
+            changes=$((changes + 1))
+            continue
+        fi
+
+        # brew: never uninstall what was already present; uninstalling additions is
+        # destructive and off unless MACRIFT_ALLOW_UNINSTALL=true (mas: manual).
+        if [[ "$kind" == "brew" ]]; then
+            [[ "$old" == "absent" ]] || continue
+            if [[ "${MACRIFT_ALLOW_UNINSTALL:-false}" != true || "$source" == "mas" ]]; then
+                brew_kept=1; continue
+            fi
+            printf '  %-26.26s %b%-14.14s%b %b%-14.14s%b\n' \
+                "$name" "$DIM" "installed" "$RESET" "$GREEN" "uninstall" "$RESET"
+            BREW_UNDOS+=("${name}|${source}")
             changes=$((changes + 1))
             continue
         fi
@@ -1610,31 +1716,35 @@ PY
         changes=$((changes + 1))
     done <<< "$rows"
     printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+    [[ "$brew_kept" == 1 ]] && log_hint "brew packages kept — set MACRIFT_ALLOW_UNINSTALL=true to remove ones this session added"
 
     if [[ $changes -eq 0 ]]; then
         printf '\n'
         log_ok "Nothing to undo — already at pre-macrift state"
-        RESET_ENTRIES=(); DOTFILE_RESETS=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=(); BREW_UNDOS=(); PLIST_RESETS=(); COMMAND_UNDOS=()
         return 0
     fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         printf '\n'
         log_info "Dry run — no changes applied"
-        RESET_ENTRIES=(); DOTFILE_RESETS=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=(); BREW_UNDOS=(); PLIST_RESETS=(); COMMAND_UNDOS=()
         return 0
     fi
 
     printf '\n'
     if ! confirm "Revert these $changes change(s)?"; then
         log_info "Undo cancelled"
-        RESET_ENTRIES=(); DOTFILE_RESETS=()
+        RESET_ENTRIES=(); DOTFILE_RESETS=(); BREW_UNDOS=(); PLIST_RESETS=(); COMMAND_UNDOS=()
         return 0
     fi
 
     MACRIFT_CHANGED_DOMAINS=()
     [[ ${#RESET_ENTRIES[@]} -gt 0 ]] && apply_reset_defaults
     [[ ${#DOTFILE_RESETS[@]} -gt 0 ]] && _undo_restore_dotfiles
+    [[ ${#PLIST_RESETS[@]} -gt 0 ]] && _undo_restore_plists
+    [[ ${#BREW_UNDOS[@]} -gt 0 ]] && _undo_uninstall_brew
+    [[ ${#COMMAND_UNDOS[@]} -gt 0 ]] && _undo_run_commands
 
     # Restart services whose domain we touched
     local need_dock=false need_finder=false d
@@ -1650,6 +1760,58 @@ PY
             $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
         fi
     fi
+}
+
+# Undo helper: re-import a domain's pre-apply backup, or delete the domain if it
+# was new. PLIST_RESETS entries are "domain|backup-path|old_null".
+_undo_restore_plists() {
+    local entry domain bak old_null
+    for entry in "${PLIST_RESETS[@]}"; do
+        IFS='|' read -r domain bak old_null <<< "$entry"
+        if [[ "$old_null" == "1" ]]; then
+            defaults delete "$domain" 2>/dev/null && log_ok "$domain removed" || log_warn "Could not remove $domain"
+        elif defaults import "$domain" "$bak" 2>/dev/null; then
+            log_ok "$domain re-imported"
+        else
+            log_warn "Could not re-import $domain"
+        fi
+    done
+    PLIST_RESETS=()
+}
+
+# Undo helper: run each recorded inverse `undo` shell. Gated like apply — under
+# --no-confirm it runs only when MACRIFT_ALLOW_COMMANDS=true.
+_undo_run_commands() {
+    if [[ "$MACRIFT_NO_CONFIRM" == true && "${MACRIFT_ALLOW_COMMANDS:-false}" != true ]]; then
+        log_warn "Skipped ${#COMMAND_UNDOS[@]} command undo(s) — set MACRIFT_ALLOW_COMMANDS=true to run under --no-confirm"
+        COMMAND_UNDOS=()
+        return 0
+    fi
+    local undo
+    for undo in "${COMMAND_UNDOS[@]}"; do
+        if bash -c "$undo"; then log_ok "ran undo"; else log_warn "undo failed: $undo"; fi
+    done
+    COMMAND_UNDOS=()
+}
+
+# Undo helper: uninstall brew formulae/casks this session added. Skips anything
+# now depended on (brew uses --installed). BREW_UNDOS entries are "name|source".
+_undo_uninstall_brew() {
+    local entry name source
+    for entry in "${BREW_UNDOS[@]}"; do
+        IFS='|' read -r name source <<< "$entry"
+        if [[ "$source" != "cask" ]] && [[ -n "$(brew uses --installed "$name" 2>/dev/null)" ]]; then
+            log_warn "Kept $name — other packages depend on it"
+            continue
+        fi
+        local -a flag=(); [[ "$source" == "cask" ]] && flag=("--cask")
+        if brew uninstall ${flag[@]+"${flag[@]}"} "$name" 2>/dev/null; then
+            log_ok "$name uninstalled"
+        else
+            log_warn "Could not uninstall $name"
+        fi
+    done
+    BREW_UNDOS=()
 }
 
 # `macrift apply [<file.json>]` — apply a declarative manifest. Desugars the
