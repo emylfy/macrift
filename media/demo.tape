@@ -11,13 +11,16 @@
 
 Output media/demo.gif
 
+# Rendered at 2x (FontSize/Width/Height/Padding all doubled vs the on-screen grid)
+# so the GIF stays crisp when GitHub scales it down via the README width.
 Set Shell "zsh"
 Set FontFamily "FiraCode Nerd Font"
-Set FontSize 20
-Set Theme "Catppuccin Mocha"
-Set Width 490
-Set Height 580
-Set Padding 20
+Set FontSize 40
+# GitHub Dark Dimmed (official Primer palette) — soft grey-blue, not pure black.
+Set Theme {"background":"#22272e","foreground":"#adbac7","cursor":"#539bf5","selection":"#2e3c51","black":"#545d68","red":"#f47067","green":"#57ab5a","yellow":"#c69026","blue":"#539bf5","magenta":"#b083f0","cyan":"#39c5cf","white":"#909dab","brightBlack":"#636e7b","brightRed":"#ff938a","brightGreen":"#6bc46d","brightYellow":"#daaa3f","brightBlue":"#6cb6ff","brightMagenta":"#dcbdfb","brightCyan":"#56d4dd","brightWhite":"#cdd9e5"}
+Set Width 980
+Set Height 1160
+Set Padding 40
 Set TypingSpeed 55ms
 
 # Hidden setup: keep `macrift` on PATH and skip the update check, then clear.

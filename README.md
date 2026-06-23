@@ -6,7 +6,7 @@
 
 <sub>Extensible via plugins · journaled undo · nothing changes until you confirm</sub>
 
-<img src="media/demo.gif" alt="macrift main menus" width="90%">
+<img src="media/demo.gif" alt="macrift main menus" width="55%">
 
 <a href="https://github.com/emylfy/macrift/stargazers"><img src="https://img.shields.io/github/stars/emylfy/macrift?style=for-the-badge&logo=starship&color=C9CBFF&logoColor=C9CBFF&labelColor=302D41" alt="GitHub Stars"></a>&nbsp;&nbsp;
 <a href="https://github.com/emylfy/macrift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/emylfy/macrift?style=for-the-badge&color=CBA6F7&logoColor=CBA6F7&labelColor=302D41&label=License" alt="License"></a>&nbsp;&nbsp;
