@@ -240,8 +240,8 @@ main_menu() {
             fi
         fi
 
-        items+=("---" "Manage Plugins ›" "$update_label" "Exit")
-        actions+=(plugins update)
+        items+=("---" "Manage Plugins ›" "Snapshots & Undo ›" "$update_label" "Exit")
+        actions+=(plugins snapshots update)
         # No action for trailing "Exit" — show_menu returns 0 for it.
 
         local choice
@@ -259,6 +259,7 @@ main_menu() {
             customize) source "$MACRIFT_DIR/customize/menu.sh" && customize_menu ;;
             security)  source "$MACRIFT_DIR/security/menu.sh"  && privacy_menu ;;
             cleanup)   source "$MACRIFT_DIR/cleanup/menu.sh"   && cleanup_menu ;;
+            snapshots) source "$MACRIFT_DIR/snapshots/menu.sh" && snapshots_menu ;;
             update)
                 if macrift_update; then
                     log_info "Restarting..."
