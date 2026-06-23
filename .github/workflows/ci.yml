@@ -33,6 +33,14 @@ jobs:
       - name: Tests
         run: bash tests/run.sh
 
+      - name: Plugin manifest lint
+        run: |
+          for p in tests/fixtures/*/; do
+            [ -f "$p/plugin.json" ] || continue
+            echo "Linting $p"
+            bash macrift.sh plugin lint "$p" || exit 1
+          done
+
       - name: Brewfile syntax
         run: |
           for bf in config/Brewfile.*; do
