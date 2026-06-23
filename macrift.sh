@@ -75,11 +75,17 @@ for arg in "$@"; do
         --no-confirm)  export MACRIFT_NO_CONFIRM=true ;;
         --log)         export MACRIFT_LOG="$HOME/.macrift/macrift.log" ;;
         --uninstall)
-            # Brew owns the files for a Homebrew install — defer to it rather than
-            # rm -rf'ing the Cellar. (common.sh isn't sourced yet, so check the path.)
+            # A Homebrew install is owned by brew — delegate to it (rm -rf'ing the
+            # Cellar would leave brew's records dangling). common.sh isn't sourced
+            # yet, so detect brew from the path; exec so brew runs after this script
+            # exits and can safely remove the Cellar files out from under it.
             if [[ "${BASH_SOURCE[0]}" == */Cellar/macrift/* || "${BASH_SOURCE[0]}" == */opt/macrift/* ]]; then
-                printf '\n  macrift was installed via Homebrew.\n'
-                printf '  Uninstall it with:  brew uninstall macrift\n\n'
+                printf '\n  Uninstall macrift (installed via Homebrew)?\n\n'
+                printf '  Runs: brew uninstall macrift\n'
+                printf '  Your data in ~/.macrift (journal, plugins) is left untouched.\n\n'
+                printf '  [y/n] '
+                read -r answer
+                [[ "$answer" =~ ^[Yy]$ ]] && exec brew uninstall macrift
                 exit 0
             fi
             printf '\n  Uninstall macrift?\n\n'
