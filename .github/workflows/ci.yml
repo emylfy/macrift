@@ -61,3 +61,17 @@ jobs:
                    config/vscode/settings.json; do
             [ -f "$f" ] && echo "OK: $f" || { echo "MISSING: $f"; exit 1; }
           done
+
+      - name: Homebrew formula lint
+        run: |
+          # brew style only runs inside a tap — render the template into a
+          # throwaway tap with dummy url/sha and lint it there.
+          tap="$(brew --repository)/Library/Taps/emylfy/homebrew-citest"
+          mkdir -p "$tap/Formula"
+          sed -e 's|@URL@|https://example.com/macrift-0.0.0.tar.gz|' \
+              -e 's|@SHA256@|0000000000000000000000000000000000000000000000000000000000000000|' \
+              packaging/homebrew/macrift.rb.tmpl > "$tap/Formula/macrift.rb"
+          git -C "$tap" init -q
+          git -C "$tap" add -A
+          git -C "$tap" -c user.email=ci@example.com -c user.name=ci commit -qm init
+          brew style emylfy/citest/macrift
