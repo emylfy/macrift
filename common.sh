@@ -2705,7 +2705,6 @@ MACRIFT_DIR="$(get_script_dir)"
 
 # Version & Updates
 MACRIFT_REPO="emylfy/macrift"
-MACRIFT_REPO_TAR="https://github.com/${MACRIFT_REPO}/archive/main.tar.gz"
 MACRIFT_VERSION_URL="https://raw.githubusercontent.com/${MACRIFT_REPO}/main/VERSION"
 MACRIFT_VERSION=$(cat "$MACRIFT_DIR/VERSION" 2>/dev/null || echo "0")
 # Short form (YY.MM) for menu title; full (YY.MM.N) for footer + update compare
@@ -2734,9 +2733,51 @@ _macrift_version_gt() {
     return 1
 }
 
+# True when this checkout was installed by Homebrew (lives under the brew Cellar/
+# opt prefix). Brew owns updates for these, so self-update + the version nag defer
+# to `brew upgrade`. Path-only check — no `brew` subprocess, works even off-PATH.
+_macrift_is_brew() {
+    [[ "$MACRIFT_DIR" == */Cellar/macrift/* || "$MACRIFT_DIR" == */opt/macrift/* ]]
+}
+
+# Resolve the latest published release, download its checksummed tarball, verify
+# the sha256, and extract into $1 (yielding $1/macrift). Pinned + verified — never
+# floating `main`; fails loud. Mirrors install.sh's fetch (which runs before this
+# file exists, so it can't be shared).
+_macrift_fetch_release() {
+    local dest="$1" url tag ver fname asset_url
+    url=$(curl -fsSL -I -o /dev/null -w '%{url_effective}' \
+        "https://github.com/$MACRIFT_REPO/releases/latest" 2>/dev/null) || true
+    tag="${url##*/}"
+    if [[ -z "$tag" || "$tag" == "latest" ]]; then
+        log_err "Could not resolve a published release"
+        return 1
+    fi
+    ver="${tag#v}"
+    fname="macrift-$ver.tar.gz"
+    asset_url="https://github.com/$MACRIFT_REPO/releases/download/$tag/$fname"
+    if ! curl -fsSL -o "$dest/$fname" "$asset_url"; then
+        log_err "Download failed — release asset missing or no connection"
+        return 1
+    fi
+    if ! curl -fsSL -o "$dest/$fname.sha256" "$asset_url.sha256"; then
+        log_err "No checksum published for $tag — refusing to update unverified"
+        return 1
+    fi
+    if ! ( cd "$dest" && shasum -a 256 -c "$fname.sha256" ) >/dev/null 2>&1; then
+        log_err "Checksum mismatch — refusing to update"
+        return 1
+    fi
+    if ! tar -xzf "$dest/$fname" -C "$dest" || [[ ! -d "$dest/macrift" ]]; then
+        log_err "Extract failed or unexpected archive layout"
+        return 1
+    fi
+}
+
 # Check for updates (2s timeout, silent on failure)
 check_update() {
     [[ "${MACRIFT_NO_UPDATE:-}" == true ]] && return 0
+    _macrift_is_brew && return 0
     local remote
     remote=$(curl -fsSL --connect-timeout 2 --max-time 2 "$MACRIFT_VERSION_URL" 2>/dev/null) || return 0
     # Only offer an update when remote is strictly NEWER — never a downgrade
@@ -2807,6 +2848,12 @@ macrift_update() {
         return 1
     fi
 
+    # Homebrew owns updates for brew installs — defer to it.
+    if _macrift_is_brew; then
+        log_info "Installed via Homebrew — update with:  brew upgrade macrift"
+        return 1
+    fi
+
     # Show changelog first, then ask
     if [[ -n "$MACRIFT_UPDATE" ]]; then
         printf '\n'
@@ -2844,16 +2891,18 @@ macrift_update() {
         fi
     fi
 
-    log_info "Downloading latest version..."
+    log_info "Downloading latest release..."
     local tmp
     tmp="$(mktemp -d)"
-    if curl -fsSL "$MACRIFT_REPO_TAR" | tar -xz -C "$tmp" && [[ -d "$tmp/macrift-main" ]]; then
+    # Pinned + sha256-verified release tarball (never floating main). The helper
+    # logs the specific failure; here we just clean up and report.
+    if _macrift_fetch_release "$tmp"; then
         # Atomic swap: backup old → move new → remove backup.
         # Clear any stale .bak from a prior interrupted run first, or the backup
         # mv would nest the install inside it and the restore path would be wrong.
         rm -rf "$MACRIFT_DIR.bak"
         mv "$MACRIFT_DIR" "$MACRIFT_DIR.bak"
-        if mv "$tmp/macrift-main" "$MACRIFT_DIR"; then
+        if mv "$tmp/macrift" "$MACRIFT_DIR"; then
             chmod +x "$MACRIFT_DIR/macrift.sh"
             find "$MACRIFT_DIR" -name "*.sh" -exec chmod +x {} +
             rm -rf "$MACRIFT_DIR.bak"
@@ -2867,7 +2916,6 @@ macrift_update() {
     else
         # Don't fall through to `return 0` — the caller treats success as "update
         # applied" and re-execs, so a failed download must report failure.
-        log_err "Download failed"
         rm -rf "$tmp"
         return 1
     fi

@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-REPO_TAR="https://github.com/emylfy/macrift/archive/main.tar.gz"
+REPO="emylfy/macrift"
 INSTALL_DIR="$HOME/.macrift"
 LOCAL_BIN="$HOME/.local/bin"
 
@@ -27,6 +27,48 @@ ask() {
     [[ "$answer" =~ ^[Yy]$ ]]
 }
 
+# Resolve the latest published release, download its checksummed tarball, verify
+# the sha256, and extract into $1 (yielding $1/macrift). Pinned + verified — never
+# floating `main`; fails loud rather than installing anything unverified. Needs
+# only curl/tar/shasum (all stock on macOS — no python/jq).
+fetch_verified_macrift() {
+    local dest="$1" url tag ver fname asset_url
+
+    info "Resolving latest release..."
+    url=$(curl -fsSL -I -o /dev/null -w '%{url_effective}' \
+        "https://github.com/$REPO/releases/latest" 2>/dev/null) || true
+    tag="${url##*/}"
+    if [[ -z "$tag" || "$tag" == "latest" ]]; then
+        err "Could not resolve a published release"
+        return 1
+    fi
+    ver="${tag#v}"
+    fname="macrift-$ver.tar.gz"
+    asset_url="https://github.com/$REPO/releases/download/$tag/$fname"
+
+    info "Downloading macrift $tag..."
+    if ! curl -fsSL -o "$dest/$fname" "$asset_url"; then
+        err "Download failed — release asset missing or no connection"
+        return 1
+    fi
+    if ! curl -fsSL -o "$dest/$fname.sha256" "$asset_url.sha256"; then
+        err "No checksum published for $tag — refusing to install unverified"
+        return 1
+    fi
+
+    info "Verifying checksum..."
+    if ! ( cd "$dest" && shasum -a 256 -c "$fname.sha256" ) >/dev/null 2>&1; then
+        err "Checksum mismatch — refusing to install"
+        return 1
+    fi
+    ok "Verified $tag"
+
+    if ! tar -xzf "$dest/$fname" -C "$dest" || [[ ! -d "$dest/macrift" ]]; then
+        err "Extract failed or unexpected archive layout"
+        return 1
+    fi
+}
+
 if [[ "$(uname)" != "Darwin" ]]; then
     err "macrift is for macOS only"
     exit 1
@@ -39,27 +81,24 @@ if [[ $# -gt 0 ]]; then
     printf '\n  %bmacrift%b %bone-shot:%b %s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET" "$*"
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
-    info "Fetching macrift..."
-    if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
-        chmod +x "$tmp/macrift-main/macrift.sh"
-        find "$tmp/macrift-main" -name "*.sh" -exec chmod +x {} +
-        "$tmp/macrift-main/macrift.sh" "$@"
+    if fetch_verified_macrift "$tmp"; then
+        chmod +x "$tmp/macrift/macrift.sh"
+        find "$tmp/macrift" -name "*.sh" -exec chmod +x {} +
+        "$tmp/macrift/macrift.sh" "$@"
         exit $?
     else
-        err "Download failed — check your internet connection"
         exit 1
     fi
 fi
 
 printf '\n  %bmacrift installer%b\n\n' "$BOLD" "$RESET"
 
-# Download
-info "Downloading macrift..."
+# Download + verify
 tmp="$(mktemp -d)"
-if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
+if fetch_verified_macrift "$tmp"; then
     # Atomic swap: backup old → move new → remove backup
     [[ -d "$INSTALL_DIR" ]] && mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
-    if mv "$tmp/macrift-main" "$INSTALL_DIR"; then
+    if mv "$tmp/macrift" "$INSTALL_DIR"; then
         rm -rf "$INSTALL_DIR.bak"
     else
         err "Failed to move files into place"
@@ -68,10 +107,9 @@ if curl -fsSL "$REPO_TAR" | tar -xz -C "$tmp"; then
         exit 1
     fi
     rm -rf "$tmp"
-    ok "Downloaded → $INSTALL_DIR"
+    ok "Installed → $INSTALL_DIR"
 else
     rm -rf "$tmp"
-    err "Download failed — check your internet connection"
     exit 1
 fi
 
