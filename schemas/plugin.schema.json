@@ -97,21 +97,6 @@
           "description": "Bash function defined in menu.sh — macrift calls this when the user selects the entry."
         }
       }
-    },
-
-    "lifecycle": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "on_install": {
-          "type": "string",
-          "description": "Path (relative to the plugin root) to a script run once at `macrift plugin add`."
-        },
-        "on_remove": {
-          "type": "string",
-          "description": "Path (relative to the plugin root) to a script run once at `macrift plugin remove`, before journal undo."
-        }
-      }
     }
   }
 }

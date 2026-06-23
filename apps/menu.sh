@@ -40,8 +40,9 @@ apps_menu() {
         local -a items=(
             "Homebrew Bundles ›"
             "Mac App Store ›"
-            "Spotify (SpotX + Spicetify) ›"
         )
+        # Spotify (SpotX + Spicetify) now ships as the bundled `misc` plugin and
+        # injects itself here via menu.parent=apps (see _plugin_attach_builtin).
         # Only offer CLT install if it isn't already present
         if ! xcode-select -p &>/dev/null; then
             items+=("---" "Xcode Command Line Tools")
@@ -63,8 +64,7 @@ apps_menu() {
         case "$choice" in
             1) source "$MACRIFT_DIR/apps/brew.sh" && brew_menu ;;
             2) source "$MACRIFT_DIR/apps/appstore.sh" && appstore_menu ;;
-            3) source "$MACRIFT_DIR/apps/spotify.sh" && spotify_menu ;;
-            4) install_xcode_clt ;;
+            3) install_xcode_clt ;;
             0) break ;;
             *) ;;
         esac

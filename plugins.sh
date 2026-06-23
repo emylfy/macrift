@@ -59,6 +59,13 @@ _plugin_compat_ok() {
         log_warn "Plugin in $(basename "$dir"): missing or invalid .name"
         return 1
     }
+    # .name is used as a filesystem path component (install dir, lockfile key),
+    # so constrain it to the schema's kebab pattern — a manifest with
+    # .name="../../x" must not escape $MACRIFT_PLUGINS_DIR on install.
+    if ! [[ "$name" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]] || (( ${#name} > 64 )); then
+        log_warn "Plugin in $(basename "$dir"): .name '$name' is not a valid kebab-case identifier (a-z, 0-9, -; 2–64 chars)"
+        return 1
+    fi
 
     # macrift API version — integer, exact match within a major
     api=$(_plugin_field "$dir" .compat.macrift_api) || {
@@ -149,6 +156,12 @@ _plugin_load_all() {
             continue
         }
 
+        # MACRIFT_PLUGIN_DIR is the plugin's own root, exposed only while its
+        # menu.sh is being sourced. Menu functions run later (on selection), when
+        # this loop var would be stale — so a plugin that ships config/handlers
+        # must capture it at top level (e.g. `_FOO_DIR="$MACRIFT_PLUGIN_DIR"`).
+        export MACRIFT_PLUGIN_DIR="$dir"
+
         # `if !` suspends set -e inside the source so a broken plugin can't
         # take macrift down; the function-defined check below catches partial
         # sources (syntax error mid-file leaves the function undefined). We
@@ -166,6 +179,8 @@ _plugin_load_all() {
         if [[ -n "$parent" ]]; then target="p:$parent"; else target="s:$section"; fi
         MACRIFT_PLUGIN_REGISTRY+=("$target"$'\t'"$entry"$'\t'"$func")
     done < <(_plugin_discover)
+    # Don't leak the last-loaded plugin's dir into the rest of the program.
+    unset MACRIFT_PLUGIN_DIR
 }
 
 # Count selectable (non-`---`, non-`## `) entries in a menu items array (nameref).
@@ -318,6 +333,15 @@ _plugin_cli_add() {
         return 1
     fi
 
+    # Schema mismatches are surfaced but don't block install — a working plugin
+    # with a cosmetic manifest miss shouldn't be unusable. `plugin lint` is strict.
+    local schema_issues
+    schema_issues=$(_plugin_schema_check "$clone_dir") || true
+    if [[ -n "$schema_issues" ]]; then
+        log_warn "plugin.json doesn't fully match the schema (installing anyway — run 'macrift plugin lint $clone_dir'):"
+        printf '%s\n' "$schema_issues" | sed 's|^|    |'
+    fi
+
     local name version desc
     name=$(_plugin_field "$clone_dir" .name) || {
         log_err "plugin.json: missing or invalid .name"
@@ -389,16 +413,6 @@ _plugin_cli_add() {
     fi
     rm -rf "$tmp"
 
-    # Run on_install hook if defined
-    local on_install
-    on_install=$(_plugin_field "$target" .lifecycle.on_install 2>/dev/null || true)
-    if [[ -n "${on_install:-}" && -f "$target/$on_install" ]]; then
-        log_info "Running on_install hook: $on_install"
-        if ! bash "$target/$on_install"; then
-            log_warn "on_install returned non-zero (plugin installed but hook may not have completed)"
-        fi
-    fi
-
     _plugin_lock_add "$name" "$version" "$src" "$ref" "$target"
 
     printf '\n'
@@ -408,8 +422,8 @@ _plugin_cli_add() {
     [[ "${MACRIFT_IN_TUI:-}" == 1 ]] || log_hint "restart macrift to see '$name' in the main menu"
 }
 
-# `macrift plugin remove <name>` — run on_remove hook if any, delete dir,
-# update lockfile. State changes the plugin made (defaults / launchd / rc-file
+# `macrift plugin remove <name>` — delete the plugin dir and update the
+# lockfile. State changes the plugin made (defaults / launchd / rc-file
 # markers) need `macrift undo` separately — full per-plugin journal-undo is
 # future work (the journal currently tags by session, not plugin).
 _plugin_cli_remove() {
@@ -435,13 +449,6 @@ _plugin_cli_remove() {
     if ! confirm "Continue?" "n"; then
         log_skip "kept $name"
         return 0
-    fi
-
-    local on_remove
-    on_remove=$(_plugin_field "$target" .lifecycle.on_remove 2>/dev/null || true)
-    if [[ -n "${on_remove:-}" && -f "$target/$on_remove" ]]; then
-        log_info "Running on_remove hook: $on_remove"
-        bash "$target/$on_remove" || log_warn "on_remove returned non-zero (continuing)"
     fi
 
     rm -rf "$target"
@@ -557,6 +564,60 @@ _plugin_cli_info() {
 
 # `macrift plugin lint <path-or-name>` — static checks against the
 # do-not-do rules documented in PLUGINS.md. Exit 0 if clean, 1 if findings.
+# Validate plugin.json against schemas/plugin.schema.json (the source of truth).
+# Prints one issue per line to stdout, returns non-zero if any. Single jq pass,
+# no extra deps. Used by `plugin lint` (fatal) and `plugin add` (warning).
+# Keep the enums/key lists below in sync with schemas/plugin.schema.json.
+_plugin_schema_check() {
+    local dir="$1" manifest="$1/plugin.json"
+    [[ -f "$manifest" ]] || { echo "no plugin.json in $dir"; return 1; }
+    if ! jq . "$manifest" >/dev/null 2>&1; then
+        echo "plugin.json is not valid JSON"
+        return 1
+    fi
+    local issues
+    issues=$(jq -r '
+        [
+          # top level: required + unknown fields
+          ((["name","version","description","compat","menu"] - keys_unsorted) | map("missing required field: \(.)") | .[]),
+          ((keys_unsorted - ["$schema","name","version","description","author","license","homepage","compat","menu"]) | map("unknown field: \(.)") | .[]),
+
+          # name
+          (if (.name != null) and ((.name|test("^[a-z][a-z0-9-]*[a-z0-9]$"))|not) then "name: not kebab-case (a-z, 0-9, -)" else empty end),
+          (if (.name != null) and ((.name|length) < 2 or (.name|length) > 64) then "name: must be 2–64 chars" else empty end),
+
+          # version
+          (if (.version != null) and ((.version|test("^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?$"))|not) then "version: not semver (MAJOR.MINOR.PATCH)" else empty end),
+
+          # description
+          (if (.description != null) and ((.description|length) < 1 or (.description|length) > 200) then "description: must be 1–200 chars" else empty end),
+
+          # compat
+          (if (.compat|type) == "object"
+           then ((["macrift_min","macrift_api"] - (.compat|keys_unsorted)) | map("missing required field: compat.\(.)") | .[]),
+                (((.compat|keys_unsorted) - ["macrift_min","macrift_api","macos_min"]) | map("unknown field: compat.\(.)") | .[])
+           elif .compat != null then "compat: must be an object" else empty end),
+          (if (.compat.macrift_min != null) and ((.compat.macrift_min|test("^[0-9]{2}\\.[0-9]{2}(\\.[0-9]+)?$"))|not) then "compat.macrift_min: not calver (YY.MM[.N])" else empty end),
+          (if (.compat.macrift_api != null) and ((.compat.macrift_api|type) != "number" or (.compat.macrift_api < 1) or ((.compat.macrift_api|floor) != .compat.macrift_api)) then "compat.macrift_api: must be an integer ≥ 1" else empty end),
+          (if (.compat.macos_min != null) and ((.compat.macos_min|test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"))|not) then "compat.macos_min: not a version (e.g. 14.0)" else empty end),
+
+          # menu
+          (if (.menu|type) == "object"
+           then ((["entry","function"] - (.menu|keys_unsorted)) | map("missing required field: menu.\(.)") | .[]),
+                (((.menu|keys_unsorted) - ["section","parent","entry","function"]) | map("unknown field: menu.\(.)") | .[])
+           elif .menu != null then "menu: must be an object" else empty end),
+          (if (.menu|type) == "object" and (.menu|has("section")) and (.menu|has("parent")) then "menu: section and parent are mutually exclusive" else empty end),
+          (if (.menu|type) == "object" and (((.menu|has("section")) or (.menu|has("parent")))|not) then "menu: needs exactly one of section or parent" else empty end),
+          (if (.menu.parent != null) and ((.menu.parent | IN("tweaks","apps","customize","security","cleanup")) | not) then "menu.parent: not a built-in submenu (tweaks|apps|customize|security|cleanup)" else empty end),
+          (if (.menu.entry != null) and ((.menu.entry|length) < 1) then "menu.entry: must be non-empty" else empty end),
+          (if (.menu.function != null) and ((.menu.function|test("^[a-zA-Z_][a-zA-Z0-9_]*$"))|not) then "menu.function: not a valid bash identifier" else empty end)
+        ] | .[]
+    ' "$manifest" 2>/dev/null)
+    [[ -z "$issues" ]] && return 0
+    printf '%s\n' "$issues"
+    return 1
+}
+
 _plugin_cli_lint() {
     if [[ $# -lt 1 ]]; then
         log_err "Usage: macrift plugin lint <path-or-name>"
@@ -584,6 +645,15 @@ _plugin_cli_lint() {
     if ! jq . "$target/plugin.json" >/dev/null 2>&1; then
         log_err "plugin.json is not valid JSON"
         issues=$((issues + 1))
+    else
+        # Manifest schema (mirrors schemas/plugin.schema.json)
+        local schema_issues
+        schema_issues=$(_plugin_schema_check "$target") || true
+        if [[ -n "$schema_issues" ]]; then
+            log_warn "plugin.json does not match the schema:"
+            printf '%s\n' "$schema_issues" | sed 's|^|    |'
+            issues=$((issues + $(printf '%s\n' "$schema_issues" | grep -c .)))
+        fi
     fi
     if [[ ! -f "$target/menu.sh" ]]; then
         log_warn "menu.sh missing — plugin won't expose any menu entry"
@@ -767,14 +837,12 @@ _plugin_cli_list() {
 
 # TUI
 
-# Read catalog entries as TSV (name<TAB>source<TAB>tier<TAB>description).
-# Optional $1 filters by tier (official|community). Empty / missing file → no rows.
+# Read catalog entries as TSV (name<TAB>source<TAB>description).
+# Empty / missing file → no rows. The catalog is a single flat list.
 _plugin_catalog_entries() {
-    local tier="${1:-}" cf="$MACRIFT_DIR/catalog.json"
+    local cf="$MACRIFT_DIR/catalog.json"
     [[ -f "$cf" ]] || return 0
-    local q='.plugins[]'
-    [[ -n "$tier" ]] && q=".plugins[] | select(.tier == \"$tier\")"
-    jq -r "$q | [.name, .source, .tier, .description] | @tsv" "$cf" 2>/dev/null
+    jq -r '.plugins[] | [.name, .source, .description] | @tsv' "$cf" 2>/dev/null
 }
 
 # Set of installed plugin names → assoc array via name-ref ($1).
@@ -803,51 +871,9 @@ _plugin_add_manual() {
     _plugin_cli_add "$src"
 }
 
-# Community-tier catalog browse screen (drill-down from Add plugin).
-# Returns 0 if it installed something (caller exits the Add screen too), else 1.
-_plugin_catalog_browse() {
-    crumb_push "Catalog"
-    local rc=1
-    while true; do
-        clear
-        local -A installed=()
-        _plugin_installed_set installed
-
-        local -a items=("## Community") actions=()
-        local name src tier desc
-        while IFS=$'\t' read -r name src tier desc; do
-            [[ -n "$name" ]] || continue
-            [[ -n "${installed[$name]+x}" ]] && continue
-            items+=("$name")
-            actions+=("install:$src")
-        done < <(_plugin_catalog_entries community)
-        (( ${#actions[@]} == 0 )) && items+=("## (nothing new in catalog)")
-        items+=("Back")
-
-        local choice
-        choice=$(show_menu "Catalog" "${items[@]}")
-        [[ "$choice" == "0" ]] && break
-        local action="${actions[$((choice - 1))]:-}"
-        case "$action" in
-            install:*)
-                clear
-                local n0 n1
-                n0=$(_plugin_discover | wc -l | tr -d ' ')
-                _plugin_cli_add "${action#install:}" || true
-                wait_enter
-                n1=$(_plugin_discover | wc -l | tr -d ' ')
-                if (( n1 > n0 )); then rc=0; break; fi
-                ;;
-            "") ;;
-        esac
-    done
-    crumb_pop
-    return $rc
-}
-
-# Add-plugin screen: official entries install directly, community behind a
-# browse sub-screen, manual URL/path as the escape hatch. Already-installed
-# plugins are filtered out (they live under Manage Plugins).
+# Add-plugin screen: catalog entries install directly, manual URL/path as the
+# escape hatch. Already-installed plugins are filtered out (they live under
+# Manage Plugins).
 _plugin_add_menu() {
     crumb_push "Add plugin"
     while true; do
@@ -857,28 +883,21 @@ _plugin_add_menu() {
 
         local -a items=() actions=()
 
-        # Official tier — direct install rows (collect first, emit header only if any).
-        local -a off_names=() off_srcs=()
-        local name src tier desc
-        while IFS=$'\t' read -r name src tier desc; do
+        # Catalog — direct install rows for everything not already installed.
+        local -a cat_names=() cat_srcs=()
+        local name src desc
+        while IFS=$'\t' read -r name src desc; do
             [[ -n "$name" ]] || continue
             [[ -n "${installed[$name]+x}" ]] && continue
-            off_names+=("$name"); off_srcs+=("$src")
-        done < <(_plugin_catalog_entries official)
-        if (( ${#off_names[@]} > 0 )); then
-            items+=("## Official")
+            cat_names+=("$name"); cat_srcs+=("$src")
+        done < <(_plugin_catalog_entries)
+        if (( ${#cat_names[@]} > 0 )); then
+            items+=("## Catalog")
             local k
-            for k in "${!off_names[@]}"; do
-                items+=("${off_names[$k]}")
-                actions+=("install:${off_srcs[$k]}")
+            for k in "${!cat_names[@]}"; do
+                items+=("${cat_names[$k]}")
+                actions+=("install:${cat_srcs[$k]}")
             done
-        fi
-
-        # Community tier — only surface the browse entry if the catalog lists any.
-        if [[ -n "$(_plugin_catalog_entries community)" ]]; then
-            (( ${#items[@]} > 0 )) && items+=("---")
-            items+=("## Community" "Browse catalog ›")
-            actions+=(community)
         fi
 
         # Leading `---` only when a section already sits above it, else it renders
@@ -906,7 +925,6 @@ _plugin_add_menu() {
                 n1=$(_plugin_discover | wc -l | tr -d ' ')
                 (( n1 > n0 )) && break
                 ;;
-            community) _plugin_catalog_browse && break ;;
             manual)
                 n0=$(_plugin_discover | wc -l | tr -d ' ')
                 _plugin_add_manual || true

@@ -4,8 +4,12 @@
     {
       "name": "claudemac",
       "source": "github.com/emylfy/claudemac",
-      "tier": "official",
       "description": "Opinionated Claude Code setup for macOS — agents, hooks, rules, statusline, MCP, and a Telegram bridge"
+    },
+    {
+      "name": "misc",
+      "source": "github.com/emylfy/macrift-misc",
+      "description": "Spotify SpotX ad-blocker + Spicetify customization (bundled extras, installed by default)"
     }
   ]
 }

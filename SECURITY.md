@@ -66,7 +66,7 @@ sandboxing arbitrary bash on macOS is essentially impossible.
    A plugin can still install despite lint warnings — we can't enforce them at
    runtime — but `macrift plugin info` will surface the findings to the user.
 
-4. **Trusted-list mechanism *(planned).*** A curated set of plugins maintained
+4. **Trusted-list mechanism _(planned)._** A curated set of plugins maintained
    by the macrift team. `macrift plugin add --trusted <name>` will skip the
    pre-install prompt for entries on that list. Entries are admitted only
    after a manual code review.
@@ -80,8 +80,6 @@ sandboxing arbitrary bash on macOS is essentially impossible.
 - Supply-chain compromise of a previously-trusted plugin upstream — the
   plugin's git history is shown at install time, but a malicious commit can
   be styled to blend in.
-- Rogue `lifecycle.on_install` scripts. They run *after* the user's confirm
-  prompt; the prompt is the trust boundary.
 
 ### Rule of thumb for users
 

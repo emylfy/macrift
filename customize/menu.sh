@@ -11,10 +11,9 @@ customize_menu() {
     while true; do
         clear
 
-        # Claude Code lives in the claudemac plugin now:
+        # Claude Code lives in the claudemac plugin now (it used to be an entry
+        # in this submenu):
         #   macrift plugin add github.com/emylfy/claudemac
-        # Wallpaper sources are similarly carved out (see wallpaper-links in
-        # the plugins ecosystem). Both used to be entries in this submenu.
         local -a items=(
             "## Backup"
             "Profile ›"

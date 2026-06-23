@@ -109,6 +109,19 @@ else
     fi
 fi
 
+# Bundled extras (Spotify SpotX + Spicetify) ship as a separate plugin so the
+# core stays lean. Install it by default to keep the out-of-box experience whole.
+# Best-effort: a failed clone (offline / repo not published yet) just skips it.
+MISC_PLUGIN_DIR="$HOME/.macrift/plugins/misc"
+if [[ ! -d "$MISC_PLUGIN_DIR" ]]; then
+    info "Adding bundled extras plugin (Spotify SpotX + Spicetify)…"
+    if "$INSTALL_DIR/macrift.sh" plugin add github.com/emylfy/macrift-misc </dev/tty; then
+        ok "Extras installed"
+    else
+        info "Skipped extras — add later with: macrift plugin add github.com/emylfy/macrift-misc"
+    fi
+fi
+
 printf '\n  %bDone!%b Run %bmacrift%b to start.\n\n' "$GREEN" "$RESET" "$BOLD" "$RESET"
 
 # Launch
