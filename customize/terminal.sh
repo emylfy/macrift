@@ -751,9 +751,11 @@ apply_tokyo_night() {
 
         # Starship preset
         if command -v starship &>/dev/null; then
-            starship preset tokyo-night -o "$HOME/.config/starship.toml" 2>/dev/null \
-                && log_ok "Starship preset applied" \
-                || log_warn "starship preset tokyo-night failed"
+            if starship preset tokyo-night -o "$HOME/.config/starship.toml" 2>/dev/null; then
+                log_ok "Starship preset applied"
+            else
+                log_warn "starship preset tokyo-night failed"
+            fi
         fi
 
         log_ok "Shell colors applied"
@@ -792,9 +794,11 @@ apply_gruvbox() {
             copy_config "$theme_source" "$theme_target"
 
             if command -v starship &>/dev/null; then
-                starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml" 2>/dev/null \
-                    && log_ok "Starship preset applied" \
-                    || log_warn "starship preset gruvbox-rainbow failed"
+                if starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml" 2>/dev/null; then
+                    log_ok "Starship preset applied"
+                else
+                    log_warn "starship preset gruvbox-rainbow failed"
+                fi
             fi
 
             log_ok "Shell colors applied (fzf, bat, autosuggestions, eza)"
