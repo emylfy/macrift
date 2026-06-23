@@ -1246,6 +1246,21 @@ _journal_append_dotfile() {
         >> "$MACRIFT_JOURNAL" 2>/dev/null || true
 }
 
+# Append a brew unit (formula/cask/mas) to the journal. name+source is the change
+# identity; id carries the App Store numeric id for mas. old records whether the
+# package was present before this run, so undo only removes what macrift added.
+# Usage: _journal_append_brew <name> <source> <id> <old: installed|absent>
+_journal_append_brew() {
+    [[ "${MACRIFT_DRY_RUN:-false}" == true ]] && return 0
+    local name="$1" source="$2" bid="$3" old="$4"
+    mkdir -p "$MACRIFT_STATE_DIR" 2>/dev/null || return 0
+    local ts; ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '{"session":"%s","ts":"%s","macos":"%s","status":"applied","kind":"brew","id":"%s","name":"%s","source":"%s","old":"%s"}\n' \
+        "$MACRIFT_SESSION" "$ts" "$MACRIFT_OS_VER" \
+        "$(_json_escape "$bid")" "$(_json_escape "$name")" "$(_json_escape "$source")" "$(_json_escape "$old")" \
+        >> "$MACRIFT_JOURNAL" 2>/dev/null || true
+}
+
 # Read the current live value of a journaled change, normalized to compare
 # against the stored value/old. Echoes "default" if unset, "__UNKNOWN__" if
 # the kind can't be read. Mirrors the read logic in the tweak files.
@@ -1693,19 +1708,34 @@ for df in m.get("dotfile", []):
     label = df.get("label") or df.get("id") or os.path.basename(dest) or dest
     dots.append(("__DOTFILE__", src, dest, str(df.get("mode") or ""), label))
 
+# brew units (formula/cask/mas) — installed outside the audit table, on their
+# own channel like dotfiles. Columns reused: domain=name, key=source, vtype=id.
+brews = []
+for b in m.get("brew", []):
+    if not version_ok(b):
+        skipped_version += 1
+        continue
+    name = b.get("name", "")
+    if not name:
+        continue
+    brews.append(("__BREW__", name, b.get("source", "formula"), str(b.get("id") or "")))
+
 unsupported = [f"{k}:{len(m.get(k, []))}"
-               for k in ("brew", "plist", "command") if m.get(k)]
+               for k in ("plist", "command") if m.get(k)]
 
 for u in units:
     print(SEP.join(u))
 for d in dots:
     print(SEP.join(d))
+for b in brews:
+    print(SEP.join(b))
 print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
 PY
 ) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
 
     audit_reset
     DOTFILE_UNITS=()
+    BREW_UNITS=()
     local skipped_version=0 unsupported=""
     while IFS=$'\x1f' read -r kind domain key vtype value label; do
         [[ -z "$kind" ]] && continue
@@ -1717,12 +1747,17 @@ PY
             DOTFILE_UNITS+=("${domain}"$'\x1f'"${key}"$'\x1f'"${vtype}"$'\x1f'"${value}")
             continue
         fi
+        if [[ "$kind" == "__BREW__" ]]; then
+            # Reader columns reused: domain=name, key=source, vtype=id.
+            BREW_UNITS+=("${domain}"$'\x1f'"${key}"$'\x1f'"${vtype}")
+            continue
+        fi
         local current
         current=$(_journal_live_value "$kind" "$domain" "$key" "$vtype")
         AUDIT_ENTRIES+=("${label}|${current}|${value}|${domain}|${key}|${vtype}")
     done <<< "$out"
 
-    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 ]]; then
+    if [[ ${#AUDIT_ENTRIES[@]} -eq 0 && ${#DOTFILE_UNITS[@]} -eq 0 && ${#BREW_UNITS[@]} -eq 0 ]]; then
         log_warn "No applicable settings in manifest"
         [[ -n "$unsupported" ]] && log_info "Not yet supported by apply: $unsupported"
         return 0
@@ -1751,6 +1786,12 @@ PY
     # undo/drift work for free). Gated independently of the defaults table.
     if [[ ${#DOTFILE_UNITS[@]} -gt 0 ]]; then
         _manifest_apply_dotfiles "$(dirname "$manifest")"
+    fi
+
+    # Packages — brew formulae/casks + Mac App Store apps. Separate preview/confirm,
+    # each new install journaled so undo only removes what this run added.
+    if [[ ${#BREW_UNITS[@]} -gt 0 ]]; then
+        _manifest_apply_brew
     fi
 
     [[ "${skipped_version:-0}" -gt 0 ]] && log_info "$skipped_version skipped (macOS version guard)"
@@ -1802,6 +1843,84 @@ _manifest_apply_dotfiles() {
         fi
         copy_config "$src_abs" "$dest_abs"
         [[ -n "$mode" ]] && chmod "$mode" "$dest_abs" 2>/dev/null
+    done
+}
+
+# Apply manifest brew units (BREW_UNITS, each "name\x1fsource\x1fid"). Previews,
+# confirms once, installs via brew_install (formula/cask) or mas (App Store), and
+# journals each NEW install so undo only removes what this run added.
+_manifest_apply_brew() {
+    local unit name source bid status installed_ids="" p has_mas=false
+    local -a plan=()
+
+    for unit in "${BREW_UNITS[@]}"; do
+        IFS=$'\x1f' read -r name source bid <<< "$unit"
+        [[ "$source" == "mas" ]] && has_mas=true
+    done
+    if $has_mas && command -v mas &>/dev/null; then
+        installed_ids=$(mas list 2>/dev/null | awk '{print $1}')
+    fi
+
+    for unit in "${BREW_UNITS[@]}"; do
+        IFS=$'\x1f' read -r name source bid <<< "$unit"
+        case "$source" in
+            cask) brew list --cask "$name" &>/dev/null && status="installed" || status="install" ;;
+            mas)  printf '%s\n' "$installed_ids" | grep -qxF "$bid" && status="installed" || status="install" ;;
+            *)    brew list "$name" &>/dev/null && status="installed" || status="install" ;;
+        esac
+        plan+=("${name}"$'\x1f'"${source}"$'\x1f'"${bid}"$'\x1f'"${status}")
+    done
+
+    printf '\n'
+    printf '  %b── Packages %b' "${BOLD}" "${RESET}${DIM}"
+    printf '─%.0s' {1..34}
+    printf '%b\n' "$RESET"
+    printf '  %b%-26s %-8s %s%b\n' "$DIM" "Package" "Source" "Action" "$RESET"
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r name source bid status <<< "$p"
+        local color="$GREEN"; [[ "$status" == "installed" ]] && color="$DIM"
+        printf '  %-26.26s %-8s %b%s%b\n' "$name" "$source" "$color" "$status" "$RESET"
+    done
+    printf '  %b%s%b\n' "$DIM" "$(printf '─%.0s' {1..58})" "$RESET"
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        printf '\n'; log_info "Dry run — no packages installed"; return 0
+    fi
+
+    local pending=0
+    for p in "${plan[@]}"; do [[ "$p" == *$'\x1f'install ]] && pending=$((pending + 1)); done
+    if [[ $pending -eq 0 ]]; then
+        printf '\n'; log_info "All packages already installed"; return 0
+    fi
+
+    printf '\n'
+    if ! confirm "Install these packages?"; then
+        log_info "No packages installed"; return 0
+    fi
+
+    if ! check_homebrew; then log_err "Homebrew required for brew units"; return 1; fi
+    local need_mas=false
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r name source bid status <<< "$p"
+        [[ "$status" == "install" && "$source" == "mas" ]] && need_mas=true
+    done
+    $need_mas && { _ensure_mas || log_warn "mas unavailable — App Store items will be skipped"; }
+
+    for p in "${plan[@]}"; do
+        IFS=$'\x1f' read -r name source bid status <<< "$p"
+        [[ "$status" == "installed" ]] && { log_skip "$name already installed"; continue; }
+        case "$source" in
+            cask) brew_install "$name" cask    && _journal_append_brew "$name" "cask"    "" "absent" ;;
+            mas)
+                if ! command -v mas &>/dev/null; then log_warn "Skipped (no mas): $name"; continue; fi
+                log_info "Installing $name (App Store)..."
+                if mas install "$bid" &>/dev/null; then
+                    log_ok "$name installed"; _journal_append_brew "$name" "mas" "$bid" "absent"
+                else
+                    log_err "Failed: $name"
+                fi ;;
+            *)    brew_install "$name" formula && _journal_append_brew "$name" "formula" "" "absent" ;;
+        esac
     done
 }
 
