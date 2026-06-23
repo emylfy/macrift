@@ -4,12 +4,12 @@
 
 **Preview every macOS change before it happens — then apply with one key**
 
-<sub>Extensible via plugins · journaled undo · zero state writes until you say go</sub>
+<sub>Extensible via plugins · journaled undo · nothing changes until you confirm</sub>
 
 <img src="media/demo.gif" alt="macrift main menus" width="90%">
 
 <a href="https://github.com/emylfy/macrift/stargazers"><img src="https://img.shields.io/github/stars/emylfy/macrift?style=for-the-badge&logo=starship&color=C9CBFF&logoColor=C9CBFF&labelColor=302D41" alt="GitHub Stars"></a>&nbsp;&nbsp;
-<a href="https://github.com/emylfy/macrift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/emylfy/macrift?style=for-the-badge&logo=apache&color=CBA6F7&logoColor=CBA6F7&labelColor=302D41&label=License" alt="License"></a>&nbsp;&nbsp;
+<a href="https://github.com/emylfy/macrift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/emylfy/macrift?style=for-the-badge&color=CBA6F7&logoColor=CBA6F7&labelColor=302D41&label=License" alt="License"></a>&nbsp;&nbsp;
 <a href="https://github.com/emylfy/macrift/commits/main/"><img src="https://img.shields.io/github/last-commit/emylfy/macrift?style=for-the-badge&logo=github&logoColor=eba0ac&label=Last%20Commit&labelColor=302D41&color=eba0ac" alt="Last Commit"></a>&nbsp;&nbsp;
 <a href="https://github.com/emylfy/macrift/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/emylfy/macrift/ci.yml?style=for-the-badge&logo=github-actions&logoColor=a6e3a1&label=CI&labelColor=302D41&color=a6e3a1" alt="CI"></a>
 
@@ -19,6 +19,7 @@
   <a href="#why">Why macrift?</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#features">Features</a> ·
+  <a href="#plugins">Plugins</a> ·
   <a href="#customize">Customize</a>
 </h6>
 
@@ -31,7 +32,7 @@
 See every macOS tweak before it touches your system. One keypress to apply or skip.
 
 - **Preview, then apply** — every `defaults write` shown with current value, new value, and a reset option. No surprise reboots, no "what did I just change"
-- **Pick what you want** — 80+ tweaks, Homebrew bundles, Mac App Store apps, bundled configs — all multi-select, none forced
+- **Pick what you want** — 70+ tweaks, Homebrew bundles, Mac App Store apps, bundled configs — all multi-select, none forced
 - **Move your setup** — save the full environment (Brewfile, defaults, dotfiles, editor, iTerm2, dock, Raycast) and restore on a fresh Mac
 
 ---
@@ -46,6 +47,13 @@ curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh | ba
 
 Installs to `~/.macrift`, creates a global `macrift` command, and launches automatically.
 Doesn't touch your system until you choose what to apply.
+
+Prefer to read it first? Download, inspect, then run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh -o install.sh
+less install.sh && bash install.sh
+```
 
 <details>
 <summary>Alternative install methods</summary>
@@ -73,11 +81,16 @@ Downloads to `/tmp`, runs the command, cleans up. Leaves nothing behind.
 
 Skip the menu and run a single action directly:
 
-| Subcommand                    | Description                                                  |
-| :---------------------------- | :----------------------------------------------------------- |
-| `fix [<path>...]`             | Remove `com.apple.quarantine` xattr (fixes "damaged" errors) |
-| `gatekeeper [on\|off\|status]`| Toggle Gatekeeper (alias: `gk`)                              |
-| `check`                       | Mac diagnostics — DEP/MDM, activation lock, SMART, battery   |
+| Subcommand                     | Description                                                  |
+| :----------------------------- | :----------------------------------------------------------- |
+| `fix [<path>...]`              | Remove `com.apple.quarantine` xattr (fixes "damaged" errors) |
+| `gatekeeper [on\|off\|status]` | Toggle Gatekeeper (alias: `gk`)                              |
+| `check`                        | Mac diagnostics — DEP/MDM, activation lock, SMART, battery   |
+| `drift`                        | Show which applied tweaks still hold vs. drifted             |
+| `undo [<session>\|list]`       | Revert a journaled session (default: last)                   |
+| `apply [<file.json>]`          | Apply a declarative manifest (defaults family + dotfiles)    |
+| `save [<file.json>]`           | Snapshot current tweaks to a manifest                        |
+| `plugin <subcommand>`          | Manage plugins (see `macrift plugin help`)                   |
 
 Pair with the one-shot install above to inspect someone else's Mac without leaving anything behind.
 
@@ -102,57 +115,70 @@ Pair with the one-shot install above to inspect someone else's Mac without leavi
 
 ## Features
 
-|     | Feature                | What it does                                                                      |
-| :-- | :--------------------- | :-------------------------------------------------------------------------------- |
-| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy                      |
-| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, .brewbak backup                       |
-| 🎨  | **Customize**          | Profile, Terminal, Shell, Editor, Claude Code, Dock Layout, Launchpad, Wallpapers |
-| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control                          |
-| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                                 |
+|     | Feature                | What it does                                                           |
+| :-- | :--------------------- | :--------------------------------------------------------------------- |
+| ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy           |
+| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, Xcode CLT, .brewbak backup |
+| 🎨  | **Customize**          | Profile, Terminal, Shell, FastFetch, Editor, Dock Layout, Launchpad    |
+| 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control               |
+| 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
 
 ### ⚙️ System Tweaks
 
 Tweak wizard with per-item skip, apply, or reset to system default. Batch apply or pick individually.
 
-| Category         | What it does                                                                                                                                                |
-| :--------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dock             | Tile size, animation speed, minimize effect, Spaces, recents                                                                                                |
-| Finder           | Show hidden files & extensions, path bar, POSIX title, list view, no .DS_Store, quit menu, spring folders                                                   |
-| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                                                                         |
-| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                                                                         |
-| Screenshots      | Format, save location, shadow, date in filename                                                                                                             |
-| Hot Corners      | Shortcut to System Settings → Desktop & Dock → Hot Corners                                                                                                  |
-| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled margins                                                                            |
-| Privacy          | Ad tracking, guest access, screen lock, analytics, Siri, Gatekeeper                                                                                         |
-| Dithering        | Apple Silicon — disable GPU/DCP temporal dithering ([Stillcolor](https://github.com/aiaf/Stillcolor) port) via headless LaunchAgent daemon, no menu bar app |
-| Space Switcher   | Instant macOS workspace switching via Ctrl+←/→ daemon                                                                                                       |
+| Category         | What it does                                                                                                                                             |
+| :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dock             | Tile size, animation speed, minimize effect, Spaces, recents                                                                                             |
+| Finder           | Show hidden files & extensions, path bar, full path in title bar, list view, no .DS_Store, quit menu, spring folders                                     |
+| Keyboard & Text  | Key repeat speed, press-and-hold, auto-correct, smart substitutions                                                                                      |
+| Trackpad & Mouse | Tap to click, tracking speed, right-click, three-finger drag, drag windows anywhere                                                                      |
+| Screenshots      | Format, save location, shadow, date in filename                                                                                                          |
+| Hot Corners      | Shortcut to System Settings → Desktop & Dock → Hot Corners                                                                                               |
+| Misc             | Boot sound, app open dialog, save/print panels, window animations, tiled margins                                                                         |
+| Privacy          | Ad tracking, guest access, screen lock, analytics, Siri, Gatekeeper                                                                                      |
+| Privacy (Strict) | Aggressive opt-in hardening — fully disable Siri, prevent Gatekeeper auto-rearm                                                                          |
+| Spotlight Hotkey | Free up ⌘Space by disabling the Spotlight shortcut (for Raycast/Alfred)                                                                                  |
+| Dithering        | Apple Silicon — disable GPU/DCP temporal dithering ([Stillcolor](https://github.com/aiaf/Stillcolor) port); runs as a background daemon, no menu bar app |
+| Space Switcher   | Instant macOS workspace switching via Ctrl+←/→ daemon                                                                                                    |
 
 ### 📦 Apps & Packages
 
-**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles + fzf search across all packages:
+**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles + fzf search across all packages.
 
-- **Development** — bash, git, gh, lazygit, node, python, go, rust, docker, tmux, fzf, ripgrep, fd, bat, eza, jq, tlrc, httpie, wget, ffmpeg, tree, fastfetch, macmon, mole, claude, vscode, cursor, zed, warp, ghostty, iterm2, github
-- **Utilities** — Raycast, Alfred, HiddenBar, AltTab, Keyboard Cowboy, Cork, Keka, Motrix, BetterDisplay, SoundSource, Proton Pass, 1Password, RustDesk, Logi Options+, Macs Fan Control, Todoist
+<details>
+<summary>What's in each bundle</summary>
+
+- **Development** — git, gh, lazygit, node, python, go, rust, docker, fzf, ripgrep, plus editors (VS Code, Cursor, Zed) and terminals (iTerm2, Ghostty, Warp) — 35 packages
+- **Utilities** — Raycast, Alfred, AltTab, AeroSpace, 1Password, BetterDisplay, Keka, and more — 17 packages
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium, Helium
 - **Communication** — Ayugram, Telegram, Discord, Vesktop
 - **Media** — IINA, OBS, Spotify, Figma, Affinity
 - **Games** — Steam, Heroic Games Launcher
 - **Fonts** — Fira Code, Maple Mono (Nerd Fonts)
 
+</details>
+
 **Mac App Store** — `mas` entries in Brewfiles installed individually with App Store redirect for unpurchased apps.
 
 Export/import your packages with `.brewbak` backup files.
 
-**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace settings save/restore.
+**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace settings save/restore. Ships as the bundled [`misc`](https://github.com/emylfy/macrift-misc) plugin (installed by default; remove with `macrift plugin remove misc`).
+
+**Xcode Command Line Tools** — one-shot install (git, clang, make, headers); offered only when not already present.
 
 ### 🛡️ Security & Privacy
 
-| Tool                | Description                                                                  |
-| :------------------ | :--------------------------------------------------------------------------- |
-| **Security Status** | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off |
-| **Hostname**        | Set custom hostname — hide your name from the network                        |
-| **DNS**             | 11 providers, benchmark with current DNS comparison, VPN detection           |
-| **Update Control**  | Defer macOS upgrades via MDM profile — 30/60/90 days, status, install/remove |
+Everything here is opt-in and reversible — Gatekeeper, quarantine, and update deferral toggle both ways, and macrift shows the exact command before it runs.
+
+| Tool                  | Description                                                                                   |
+| :-------------------- | :-------------------------------------------------------------------------------------------- |
+| **Security Status**   | FileVault, Firewall, SIP, Gatekeeper — at a glance; toggle Gatekeeper on/off                  |
+| **Privacy Shortcuts** | Jump straight to the relevant System Settings panes (permissions, login items, notifications) |
+| **Hostname**          | Set custom hostname — hide your name from the network                                         |
+| **DNS**               | 11 providers, benchmark with current DNS comparison, VPN detection                            |
+| **Update Control**    | Defer macOS upgrades via MDM profile — 30/60/90 days, status, install/remove                  |
+| **Unquarantine App**  | Strip `com.apple.quarantine` from an app (GUI form of the `fix` subcommand)                   |
 
 ### 🧹 Cleanup
 
@@ -165,27 +191,16 @@ Export/import your packages with `.brewbak` backup files.
 
 ## 🔌 Plugins
 
-macrift is **extensible**. Any git repo with a `plugin.json` and a `menu.sh` becomes a new menu entry, inheriting macrift's TUI, dry-run, and journal-backed undo for free. The plugin's manifest declares which section of the main menu the entry lives under — built-in or new.
+macrift is **extensible**. Any git repo with a `plugin.json` and a `menu.sh` becomes a new menu entry, inheriting macrift's TUI, dry-run, and journal-backed undo for free.
 
 ```bash
-macrift plugin add github.com/emylfy/claudemac@v1.0.0   # install (pinned)
-macrift plugin list                                     # what's installed
-macrift plugin info  claudemac                          # manifest + lockfile
-macrift plugin lint  ~/my-plugin                        # check against do-not-do rules
-macrift plugin update                                   # git pull every plugin
-macrift plugin remove claudemac                         # delete + lockfile drop
+macrift plugin add github.com/emylfy/claudemac
 ```
 
-Reproducible across machines via `~/.macrift/plugins.lock.json` (name · version · source · ref · commit · install time).
+- **[Plugin Gallery →](docs/plugins.md)** — what's available, plus every `macrift plugin` command
+- **[Write your own →](PLUGINS.md)** — author contract: manifest schema, public API, lifecycle, do-not-do rules
 
-### Live plugins
-
-| Plugin                                                      | Section     | What it does                                                                                                        |
-| :---------------------------------------------------------- | :---------- | :------------------------------------------------------------------------------------------------------------------ |
-| **[claudemac](https://github.com/emylfy/claudemac)**        | AI tooling  | Opinionated Claude Code setup — agents, hooks, rules, statusline, MCP, plus a Telegram bridge (supercharged/ccgram) |
-| **[wallpaper-links](https://github.com/emylfy/wallpaper-links)** | Customize   | Quick-open wallpaper sources (Wallhaven, Catppuccin, Gruvbox, curated). ~30-line minimum-viable example.            |
-
-Writing your own? See **[PLUGINS.md](PLUGINS.md)** for the author contract (manifest schema, public API, lifecycle, do-not-do rules) and **[SECURITY.md](SECURITY.md)** for the trust model (plugins run with user privileges — same surface as Homebrew taps / oh-my-zsh).
+Plugins run with your user privileges — same trust surface as Homebrew taps or oh-my-zsh. See **[SECURITY.md](SECURITY.md)**.
 
 ---
 
@@ -193,17 +208,17 @@ Writing your own? See **[PLUGINS.md](PLUGINS.md)** for the author contract (mani
 
 ## How macrift compares
 
-|                                                          | Stars  | UI            | Dry-run     | Undo                |  Plugin system   |
-| :------------------------------------------------------- | :----- | :------------ | :---------- | :------------------ | :--------------: |
-| **macrift**                                              | …      | visual TUI    | yes         | journal / manifest  | **yes**          |
-| [bkuhlmann/mac_os](https://github.com/bkuhlmann/mac_os)  | 509    | letter-keyed  | no          | restore from backup | —                |
-| [thoughtbot/laptop](https://github.com/thoughtbot/laptop) | ~8.5k  | flat script   | no          | —                   | —                |
-| [mathiasbynens/dotfiles](https://github.com/mathiasbynens/dotfiles) | ~31k   | flat script   | no          | —                   | —                |
-| [MikeMcQuaid/strap](https://github.com/MikeMcQuaid/strap) | ~3.3k  | flat script   | no          | —                   | —                |
-| [privacy.sexy](https://github.com/undergroundwires/privacy.sexy) | ~3k    | GUI / web     | preview     | per-toggle          | —                |
-| [nix-darwin](https://github.com/nix-darwin/nix-darwin)   | ~3k    | declarative   | (n/a)       | generations         | (Nix flakes)     |
+|                                                                     | UI           | Dry-run | Undo                | Plugin system |
+| :------------------------------------------------------------------ | :----------- | :------ | :------------------ | :-----------: |
+| **macrift**                                                         | visual TUI   | yes     | journal / manifest  |    **yes**    |
+| [bkuhlmann/mac_os](https://github.com/bkuhlmann/mac_os)             | letter-keyed | no      | restore from backup |       —       |
+| [thoughtbot/laptop](https://github.com/thoughtbot/laptop)           | flat script  | no      | —                   |       —       |
+| [mathiasbynens/dotfiles](https://github.com/mathiasbynens/dotfiles) | flat script  | no      | —                   |       —       |
+| [MikeMcQuaid/strap](https://github.com/MikeMcQuaid/strap)           | flat script  | no      | —                   |       —       |
+| [privacy.sexy](https://github.com/undergroundwires/privacy.sexy)    | GUI / web    | preview | per-toggle          |       —       |
+| [nix-darwin](https://github.com/nix-darwin/nix-darwin)              | declarative  | (n/a)   | generations         | (Nix flakes)  |
 
-macrift's slot: visual TUI + dry-run on every action + journaled undo + an opt-in plugin system. The other tools are either flat scripts you read top-to-bottom and hope, or declarative engines with steep learning curves.
+macrift's slot: a visual TUI with dry-run on every action, journaled undo, and an opt-in plugin system — for people who want to see and reverse each change. The other tools aim elsewhere: minimal scripts you run once, or fully declarative setups.
 
 ---
 
@@ -252,21 +267,6 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 
 **Extensions** — multi-select installer from `config/vscode/extensions.txt`; auto-detects `code`/`cursor`/`codium` CLI.
 
-### 🤖 Claude Code
-
-> Available as the **[claudemac](https://github.com/emylfy/claudemac)** plugin — `macrift plugin add github.com/emylfy/claudemac`. The bullets below describe what that plugin installs.
-
-Per-component installer for `~/.claude/` — pick what you want, skip the rest:
-
-- **Settings** — permissions, plugins, model (merge or overwrite)
-- **Statusline** — project / branch / model / context % / rate %
-- **Agents** — `debugger`, `reviewer`, `simplifier`, `explorer` (read-only codebase search)
-- **Slash commands** — `/debug`, `/review`, `/simplify`, `/explore`, `/refine`, `/canpush`, `/reflect`, `/mcp-context7`, `/doctor`
-- **Rules** — `code-style`, `git`, `security`, `workflow`, `communication`, `tgbot` — auto-imported into every session via `CLAUDE.md`
-- **Hooks** — format-on-edit, security gate, stop/wait notifications
-- **Environment** — `CLAUDE_CODE_*` vars in `.zshrc`
-- **Telegram bot** — choose engine: [supercharged](https://github.com/k1p1l0/claude-telegram-supercharged) drop-in plugin (server.ts patch + supervisor + Telegraph instant view) or [ccgram](https://github.com/alexei-led/ccgram) (tmux-bridge, parallel sessions per topic, forum group)
-
 <details>
 <summary>🗂️ Dock Layout</summary>
 
@@ -290,16 +290,6 @@ Organize Launchpad apps into folders by App Store category:
 </details>
 
 <details>
-<summary>🖼️ Wallpapers</summary>
-
-- [Catppuccin wallpapers](https://github.com/zhichaoh/catppuccin-wallpapers)
-- [Gruvbox wallpapers](https://github.com/AngelJumworworbo/gruvbox-wallpapers)
-- [wallhaven.cc](https://wallhaven.cc)
-- [Curated collection](https://raindrop.io/emalfai/wallpaper-69077386)
-
-</details>
-
-<details>
 <summary>📦 Profile Save & Restore</summary>
 
 Save your entire environment to Desktop, Documents, or iCloud Drive. Restore on another Mac or after a clean install with multiselect.
@@ -312,7 +302,7 @@ Includes: Brewfile, macOS defaults (Dock, Finder, Keyboard, Screenshots), dotfil
 
 <div align="center">
 
-[MIT License](LICENSE) · [Releases](https://github.com/emylfy/macrift/releases) · [Report a Bug](https://github.com/emylfy/macrift/issues)
+[MIT License](LICENSE) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/emylfy/macrift/releases) · [Report a Bug](https://github.com/emylfy/macrift/issues)
 
 <sub>If this saved you time, a star helps others find it</sub>
 
