@@ -754,17 +754,23 @@ quarantine_remove() {
             continue
         fi
 
-        # Try unprivileged first; fall back to sudo on permission error.
+        # Try unprivileged first; offer sudo on permission error.
         if xattr -dr com.apple.quarantine "$path" 2>/dev/null; then
             log_ok "Unquarantined: $name"
             cleaned=$((cleaned + 1))
         else
-            require_sudo
-            if sudo xattr -dr com.apple.quarantine "$path"; then
-                log_ok "Unquarantined: $name (sudo)"
-                cleaned=$((cleaned + 1))
+            log_warn "Permission denied: $name"
+            if confirm "Retry with sudo?" "y"; then
+                require_sudo
+                if sudo xattr -dr com.apple.quarantine "$path"; then
+                    log_ok "Unquarantined: $name (sudo)"
+                    cleaned=$((cleaned + 1))
+                else
+                    log_err "Failed: $path"
+                    failed=$((failed + 1))
+                fi
             else
-                log_err "Failed: $path"
+                log_skip "Skipped: $name"
                 failed=$((failed + 1))
             fi
         fi
