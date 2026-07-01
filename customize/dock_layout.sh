@@ -91,11 +91,16 @@ restore_dock_layout() {
 
         # Restore each app from saved layout
         local added=0 failed=0
-        while IFS=$'\t' read -r _label _ path; do
-            # dockutil --list format: "Label\ttype\tpath"
+        local url path
+        while IFS=$'\t' read -r _label url _rest; do
+            # dockutil --list format: "Label\tURL\tSection\tPlist\tBundleID"
+            # (fallback saves are label-only — no URL field, skipped here)
+            [[ "$url" == file://* ]] || continue
+            # file:// URL → percent-decoded filesystem path
+            path="${url#file://}"
+            path="${path%/}"
+            [[ "$path" == *%* ]] && path=$(printf '%b' "${path//\%/\\x}")
             [[ -z "$path" ]] && continue
-            # Strip file:// prefix if present
-            path="${path#file://}"
             if [[ -e "$path" ]]; then
                 dockutil --add "$path" --no-restart 2>/dev/null && added=$((added + 1)) || failed=$((failed + 1))
             else

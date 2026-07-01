@@ -4,6 +4,7 @@ Called by macrift/customize/launchpad.sh — not standalone."""
 
 import subprocess
 import sqlite3
+import shutil
 import os
 import uuid
 import sys
@@ -74,19 +75,19 @@ END;
 """
 
 def run(cmd):
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(cmd, capture_output=True, text=True).stdout.strip()
 
 def build_category_map():
     result = {}
     for entry in os.scandir("/Applications"):
         if entry.name.endswith(".app") and entry.is_dir(follow_symlinks=True):
-            bid = run(f'mdls -name kMDItemCFBundleIdentifier -raw "{entry.path}"')
+            bid = run(["mdls", "-name", "kMDItemCFBundleIdentifier", "-raw", entry.path])
             if not bid or bid == "(null)":
                 continue
             if bid in CATEGORY_OVERRIDES:
                 result[bid] = CATEGORY_OVERRIDES[bid]
             else:
-                cat = run(f'mdls -name kMDItemAppStoreCategory -raw "{entry.path}"')
+                cat = run(["mdls", "-name", "kMDItemAppStoreCategory", "-raw", entry.path])
                 if cat and cat != "(null)":
                     result[bid] = CATEGORY_ALIASES.get(cat, cat)
     return result
@@ -94,7 +95,7 @@ def build_category_map():
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "apply"
     selected_cats = set(sys.argv[2:]) if mode == "apply" and len(sys.argv) > 2 else None
-    darwin_dir = run("getconf DARWIN_USER_DIR")
+    darwin_dir = run(["getconf", "DARWIN_USER_DIR"])
     lp_db = os.path.join(darwin_dir, "com.apple.dock.launchpad", "db", "db")
 
     if not os.path.exists(lp_db):
@@ -169,6 +170,10 @@ def main():
 
     target_page = sort_pages[0]
 
+    # File backup before any schema/data change — trigger drop below auto-commits,
+    # so a crash between it and the data transaction is otherwise unrecoverable
+    shutil.copy2(lp_db, lp_db + ".bak")
+
     # Drop triggers (executescript auto-commits — safe, no data changes yet)
     drop_sql = "\n".join(f"DROP TRIGGER IF EXISTS {t};" for t in [
         "update_items_order", "update_items_order_backwards", "update_item_parent",
@@ -219,7 +224,7 @@ def main():
 
     conn.close()
 
-    run("killall Dock")
+    run(["killall", "Dock"])
     print(f"OK|{len(groups)}")
 
 if __name__ == "__main__":

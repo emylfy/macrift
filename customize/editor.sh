@@ -15,7 +15,9 @@ editor_menu() {
         # stay selectable — picking one still offers to install it via Homebrew.
         local menu=() pick=() e label
         for e in "${family[@]}"; do
-            label="$e"; _editor_installed "$e" || label+=$'\x1f'
+            # "VSCode" stays the internal key (case labels below); display differs
+            label="$e"; [[ "$e" == "VSCode" ]] && label="VS Code"
+            _editor_installed "$e" || label+=$'\x1f'
             menu+=("$label"); pick+=("$e")
         done
         menu+=("Install extensions"); pick+=("__install__")

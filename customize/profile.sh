@@ -114,6 +114,13 @@ restore_profile() {
 
 # --- Helpers ---
 
+# Newest *.rayconfig (by mtime) in Desktop/Downloads/Documents, or empty
+_raycast_find_config() {
+    find "$HOME/Desktop" "$HOME/Downloads" "$HOME/Documents" \
+        -maxdepth 1 -name "*.rayconfig" -print0 2>/dev/null \
+        | xargs -0 stat -f '%m|%N' 2>/dev/null | sort -rn | head -1 | cut -d'|' -f2-
+}
+
 # Show what's available to export
 _profile_detect() {
     printf '  %bDetected on this Mac:%b\n' "$BOLD" "$RESET"
@@ -140,9 +147,15 @@ _profile_detect() {
     defaults read com.googlecode.iterm2 &>/dev/null 2>&1 \
         && printf '  %b✓%b  iTerm2 settings\n' "$GREEN" "$RESET"
 
-    [[ -d "/Applications/Raycast.app" ]] \
-        && printf '  %b✓%b  Raycast extensions\n' "$GREEN" "$RESET" \
-        || printf '  %b-%b  Raycast (not installed)\n' "$DIM" "$RESET"
+    if [[ -d "/Applications/Raycast.app" ]]; then
+        if [[ -n "$(_raycast_find_config)" ]]; then
+            printf '  %b✓%b  Raycast config (.rayconfig export)\n' "$GREEN" "$RESET"
+        else
+            printf '  %b-%b  Raycast (no .rayconfig export found)\n' "$DIM" "$RESET"
+        fi
+    else
+        printf '  %b-%b  Raycast (not installed)\n' "$DIM" "$RESET"
+    fi
 
     printf '\n'
 }
@@ -210,10 +223,13 @@ _profile_export() {
     # 6. Raycast — copied as an artifact; imported manually (no reliable CLI import).
     if [[ -d "/Applications/Raycast.app" ]]; then
         local rc
-        rc=$(find "$HOME/Desktop" "$HOME/Downloads" "$HOME/Documents" \
-            -maxdepth 1 -name "*.rayconfig" 2>/dev/null | tail -1)
-        [[ -n "$rc" ]] && cp "$rc" "$target/raycast.rayconfig" 2>/dev/null \
-            && log_info "Raycast config copied — import it manually from Raycast"
+        rc=$(_raycast_find_config)
+        if [[ -n "$rc" ]]; then
+            cp "$rc" "$target/raycast.rayconfig" 2>/dev/null \
+                && log_info "Raycast config copied (${rc##*/}) — import it manually from Raycast"
+        else
+            log_info "Raycast: no .rayconfig found — export one first via Raycast → Settings → Advanced → Export"
+        fi
     fi
 
     printf '\n'

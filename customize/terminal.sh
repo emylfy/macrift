@@ -132,13 +132,23 @@ _iterm2_install_profile() {
     guid=$(grep -m1 '"Guid"' "$selected" | sed 's/.*"Guid"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/')
     if [[ -n "$guid" ]]; then
         defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
-        # Persist after iTerm2 quits (it overwrites defaults on exit)
-        (while pgrep -q "iTerm2"; do sleep 2; done
-         sleep 1
-         defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
+        # Persist after iTerm2 quits (it overwrites defaults on exit).
+        # Single watcher: kill any previous one via pidfile; give up after ~10 min.
+        local pidfile="${TMPDIR:-/tmp}/macrift-iterm2-guid.pid"
+        if [[ -f "$pidfile" ]]; then
+            kill "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null || true
+        fi
+        (
+            tries=0
+            while pgrep -q "iTerm2" && [[ $tries -lt 300 ]]; do sleep 2; tries=$((tries + 1)); done
+            sleep 1
+            pgrep -q "iTerm2" || defaults write "$ITERM2_DOMAIN" "Default Bookmark Guid" -string "$guid"
+            rm -f "$pidfile"
         ) &>/dev/null &
+        echo $! > "$pidfile"
         disown  # detach subprocess so it survives macrift's exit
         log_ok "'$selected_name' set as default — restart iTerm2 to apply"
+        log_info "A background watcher re-applies the default after iTerm2 quits (gives up after 10 min)"
     fi
 }
 
@@ -241,7 +251,7 @@ shell_menu() {
             "Full setup (Zinit + Starship + .zshrc)" \
             "---" \
             "Starship (install + preset)" \
-            "Shell theme (fzf / bat / eza / fsh)" \
+            "Shell theme (fzf / bat / eza / syntax highlighting)" \
             "Copy .zshrc only" \
             "Back")
 
@@ -378,7 +388,7 @@ setup_fastfetch() {
     clear
 
     if ! command -v fastfetch &>/dev/null; then
-        log_warn "FastFetch not found"
+        log_warn "fastfetch not found"
         if ! check_homebrew; then wait_enter; return; fi
         if ! brew_install "fastfetch"; then return; fi
     fi
@@ -418,7 +428,13 @@ _jsonc_strip() {
 # Rewrite a config's "logo" block to a builtin logo (or "none"), in place.
 # Strips comments first, so it works on the commented example presets too.
 _fastfetch_set_logo() {
-    local file="$1" logo="$2" tmp; tmp=$(mktemp)
+    local file="$1" logo="$2" tmp
+    if ! command -v jq &>/dev/null; then
+        log_err "jq required to rewrite the logo block"
+        log_hint "brew install jq"
+        return 1
+    fi
+    tmp=$(mktemp)
     local filter='.logo = {"type":"builtin","source":$s}'
     [[ "$logo" == "none" ]] && filter='.logo = {"type":"none"}'
     if _jsonc_strip "$file" | jq --arg s "$logo" "$filter" > "$tmp" 2>/dev/null \
@@ -595,7 +611,7 @@ fastfetch_gallery() {
             label="$label · logo: $logo_disp"
         fi
 
-        printf '\n  %bFastFetch%b  %b%d/%d · %s%b\n' \
+        printf '\n  %bfastfetch%b  %b%d/%d · %s%b\n' \
             "${BOLD}${ICE}" "$RESET" "$DIM" "$((sel + 1))" "$total" "$label" "$RESET"
         printf '  %b%s%b\n' "$GRAY" "$rule" "$RESET"
         if [[ -f "$_rc" ]]; then
@@ -751,6 +767,7 @@ apply_tokyo_night() {
 
         # Starship preset
         if command -v starship &>/dev/null; then
+            backup_file "$HOME/.config/starship.toml"
             if starship preset tokyo-night -o "$HOME/.config/starship.toml" 2>/dev/null; then
                 log_ok "Starship preset applied"
             else
@@ -794,6 +811,7 @@ apply_gruvbox() {
             copy_config "$theme_source" "$theme_target"
 
             if command -v starship &>/dev/null; then
+                backup_file "$HOME/.config/starship.toml"
                 if starship preset gruvbox-rainbow -o "$HOME/.config/starship.toml" 2>/dev/null; then
                     log_ok "Starship preset applied"
                 else
