@@ -9,7 +9,10 @@ on:
 jobs:
   lint:
     name: Lint & Validate
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        os: [macos-14, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -18,14 +21,18 @@ jobs:
 
       - name: ShellCheck
         run: |
-          find . -name "*.sh" -not -path "./.git/*" | while read -r file; do
+          # .githooks scripts have no .sh extension — list them explicitly so
+          # the release-critical scripts don't dodge the linter.
+          { find . -name "*.sh" -not -path "./.git/*"; \
+            printf '%s\n' .githooks/pre-push .githooks/publish; } | while read -r file; do
             echo "Checking $file"
             shellcheck -x -s bash -e SC2034,SC1091,SC2016,SC2024 "$file" || exit 1
           done
 
       - name: Bash syntax
         run: |
-          find . -name "*.sh" -not -path "./.git/*" | while read -r file; do
+          { find . -name "*.sh" -not -path "./.git/*"; \
+            printf '%s\n' .githooks/pre-push .githooks/publish; } | while read -r file; do
             echo "Validating $file"
             bash -n "$file" || exit 1
           done
