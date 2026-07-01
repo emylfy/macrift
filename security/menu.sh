@@ -4,7 +4,7 @@
 UPDATE_PROFILE_ID="dev.macrift.update-deferral"
 UPDATE_PROFILE_TEMPLATE="$MACRIFT_DIR/config/profiles/defer-updates.mobileconfig"
 
-privacy_menu() {
+security_menu() {
     crumb_push "Privacy & Security"
     while true; do
         clear
@@ -28,7 +28,7 @@ privacy_menu() {
         case "$choice" in
             1) show_security_status ;;
             2) privacy_shortcuts_menu ;;
-            3) set_hostname ;;
+            3) open_hostname_settings ;;
             4) dns_menu ;;
             5) update_control_menu ;;
             6) unquarantine_menu ;;
@@ -72,7 +72,7 @@ privacy_shortcuts_menu() {
         local url="${picked#*|}"
 
         if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-            log_info "Would open: $url"
+            log_info "Dry run — would open: $url"
             wait_enter
         else
             # Guard set -e: a stale/renamed System Settings pane id makes `open`
@@ -119,8 +119,15 @@ show_security_status() {
 
     printf "\n"
 
+    # Status screen — never auto-toggle Gatekeeper (confirm auto-answers yes under --no-confirm)
+    if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
+        wait_enter
+        return
+    fi
+
     if [[ "$gk_status" == "Enabled" ]]; then
-        if confirm "Disable Gatekeeper (allow apps from anywhere)?"; then
+        log_warn "Disabling Gatekeeper allows unsigned apps to run system-wide"
+        if confirm "Disable Gatekeeper (allow apps from anywhere)?" "n"; then
             require_sudo
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                 log_info "Would run: sudo spctl --master-disable"
@@ -174,7 +181,7 @@ remove_defender() {
     wait_enter
 }
 
-set_hostname() {
+open_hostname_settings() {
     clear
 
     local computer_name local_host
@@ -618,7 +625,7 @@ update_control_install() {
     choice=$(show_menu "Defer major updates for" \
         "30 days" \
         "60 days" \
-        "90 days (recommended)" \
+        "90 days" \
         "Back")
 
     local major_delay
@@ -722,7 +729,7 @@ _quarantine_diagnose() {
     log_info "Try one of:"
     log_info "  1) System Settings → Privacy & Security → 'Open Anyway'"
     log_info "  2) Ad-hoc resign:  codesign --force --deep --sign - \"$path\""
-    log_info "  3) Disable Gatekeeper globally (macrift → Security → Status)"
+    log_info "  3) Last resort — disable Gatekeeper globally (macrift → Privacy & Security → Security Status)"
 }
 
 # Core: remove com.apple.quarantine from one or more paths.

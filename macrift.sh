@@ -270,7 +270,7 @@ main_menu() {
             tweaks)    source "$MACRIFT_DIR/tweaks/menu.sh"    && tweaks_menu ;;
             apps)      source "$MACRIFT_DIR/apps/menu.sh"      && apps_menu ;;
             customize) source "$MACRIFT_DIR/customize/menu.sh" && customize_menu ;;
-            security)  source "$MACRIFT_DIR/security/menu.sh"  && privacy_menu ;;
+            security)  source "$MACRIFT_DIR/security/menu.sh"  && security_menu ;;
             cleanup)   source "$MACRIFT_DIR/cleanup/menu.sh"   && cleanup_menu ;;
             snapshots) source "$MACRIFT_DIR/snapshots/menu.sh" && snapshots_menu ;;
             update)
