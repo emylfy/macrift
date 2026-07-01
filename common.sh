@@ -2903,6 +2903,15 @@ macrift_update() {
         rm -rf "$MACRIFT_DIR.bak"
         mv "$MACRIFT_DIR" "$MACRIFT_DIR.bak"
         if mv "$tmp/macrift" "$MACRIFT_DIR"; then
+            # User data (undo journal, plugins, logs) lives inside ~/.macrift
+            # for curl installs — move it into the new tree instead of deleting
+            # it with the backup. Release tarballs never ship these paths.
+            local _keep
+            for _keep in state plugins plugins.lock.json macrift.log; do
+                if [[ -e "$MACRIFT_DIR.bak/$_keep" && ! -e "$MACRIFT_DIR/$_keep" ]]; then
+                    mv "$MACRIFT_DIR.bak/$_keep" "$MACRIFT_DIR/$_keep"
+                fi
+            done
             chmod +x "$MACRIFT_DIR/macrift.sh"
             find "$MACRIFT_DIR" -name "*.sh" -exec chmod +x {} +
             rm -rf "$MACRIFT_DIR.bak"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # macrift — one-line installer
 # Usage: bash <(curl -fsSL https://raw.githubusercontent.com/emylfy/macrift/main/install.sh)
-# Works on a fresh macOS — only needs curl (built-in). No git, no Xcode CLT.
+# The install itself works on a fresh macOS — needs only curl/tar/shasum (all
+# built-in). The optional extras plugin needs git and is skipped without it.
 
 set -euo pipefail
 
@@ -23,7 +24,13 @@ err()   { printf '  %b✗%b  %s\n' "$RED"    "$RESET" "$1"; }
 
 ask() {
     printf '  %b%s%b %b[y/n]%b ' "$YELLOW" "$1" "$RESET" "$DIM" "$RESET"
-    read -r answer </dev/tty
+    local answer=""
+    # No tty (CI, scripted install) → default no instead of dying under set -e
+    if [[ -r /dev/tty ]]; then
+        read -r answer </dev/tty || true
+    else
+        printf '%b[no tty: n]%b\n' "$DIM" "$RESET"
+    fi
     [[ "$answer" =~ ^[Yy]$ ]]
 }
 
@@ -96,9 +103,19 @@ printf '\n  %bmacrift installer%b\n\n' "$BOLD" "$RESET"
 # Download + verify
 tmp="$(mktemp -d)"
 if fetch_verified_macrift "$tmp"; then
-    # Atomic swap: backup old → move new → remove backup
+    # Atomic swap: backup old → move new → carry user data over → remove backup.
+    # Clear any stale .bak from a prior interrupted run first, or the backup mv
+    # would nest the old install inside it.
+    rm -rf "$INSTALL_DIR.bak"
     [[ -d "$INSTALL_DIR" ]] && mv "$INSTALL_DIR" "$INSTALL_DIR.bak"
     if mv "$tmp/macrift" "$INSTALL_DIR"; then
+        # User data (undo journal, plugins, logs) lives inside ~/.macrift —
+        # move it into the new install instead of deleting it with the backup.
+        for keep in state plugins plugins.lock.json macrift.log; do
+            if [[ -e "$INSTALL_DIR.bak/$keep" && ! -e "$INSTALL_DIR/$keep" ]]; then
+                mv "$INSTALL_DIR.bak/$keep" "$INSTALL_DIR/$keep"
+            fi
+        done
         rm -rf "$INSTALL_DIR.bak"
     else
         err "Failed to move files into place"
@@ -152,15 +169,21 @@ fi
 # Best-effort: a failed clone (offline / repo not published yet) just skips it.
 MISC_PLUGIN_DIR="$HOME/.macrift/plugins/misc"
 if [[ ! -d "$MISC_PLUGIN_DIR" ]]; then
-    info "Adding bundled extras plugin (Spotify SpotX + Spicetify)…"
-    if "$INSTALL_DIR/macrift.sh" plugin add github.com/emylfy/macrift-misc </dev/tty; then
-        ok "Extras installed"
+    if command -v git >/dev/null 2>&1 && [[ -r /dev/tty ]]; then
+        info "Adding bundled extras plugin (Spotify SpotX + Spicetify)…"
+        if "$INSTALL_DIR/macrift.sh" plugin add github.com/emylfy/macrift-misc </dev/tty; then
+            ok "Extras installed"
+        else
+            info "Skipped extras — add later with: macrift plugin add github.com/emylfy/macrift-misc"
+        fi
     else
-        info "Skipped extras — add later with: macrift plugin add github.com/emylfy/macrift-misc"
+        info "Skipped extras (needs git + a terminal) — add later with: macrift plugin add github.com/emylfy/macrift-misc"
     fi
 fi
 
 printf '\n  %bDone!%b Run %bmacrift%b to start.\n\n' "$GREEN" "$RESET" "$BOLD" "$RESET"
 
-# Launch
-"$INSTALL_DIR/macrift.sh"
+# Launch (interactive installs only — scripted runs stop here)
+if [[ -r /dev/tty ]]; then
+    "$INSTALL_DIR/macrift.sh"
+fi
