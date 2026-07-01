@@ -1,6 +1,6 @@
 # Source-of-truth template for the macrift Homebrew formula.
-# scripts/release.sh renders this into the tap (emylfy/homebrew-macrift) on
-# release: @URL@ and @SHA256@ are substituted with the published asset URL and
+# scripts/release-assets.sh renders this into the tap (emylfy/homebrew-macrift)
+# on release: @URL@ and @SHA256@ are substituted with the published asset URL and
 # its sha256. Do not hand-edit Formula/macrift.rb in the tap — edit this instead.
 class Macrift < Formula
   desc "Interactive macOS setup TUI with previewed, reversible changes"
@@ -9,9 +9,10 @@ class Macrift < Formula
   sha256 "@SHA256@"
   license "MIT"
 
-  # bash 4+ is a hard requirement (macrift.sh exits on 3.2); python3 backs the
-  # manifest/journal engine.
+  # bash 4.3+ is a hard requirement (macrift.sh exits on older); jq backs the
+  # plugin subsystem; python3 backs the manifest/journal engine.
   depends_on "bash"
+  depends_on "jq"
   depends_on :macos
   depends_on "python@3.13"
 
@@ -22,7 +23,7 @@ class Macrift < Formula
     # Wrapper puts Homebrew's bash 4+ first on PATH so `#!/usr/bin/env bash`
     # resolves to it, and keeps BASH_SOURCE pointing inside libexec.
     (bin/"macrift").write_env_script libexec/"macrift.sh",
-                                     PATH: "#{Formula["bash"].opt_bin}:$PATH"
+                                     PATH: "#{formula_opt_bin("bash")}:$PATH"
   end
 
   test do

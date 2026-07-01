@@ -18,6 +18,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     [[ "$local_ref" == "refs/heads/main" ]] || continue
     [[ "$local_sha" =~ ^0+$ ]] && continue
 
+    # Don't tag/release a push that will be rejected as non-fast-forward — the
+    # pushed tag (and GitHub Release) would point at a commit that never lands
+    # on main. The push itself still runs and reports the rejection.
+    if [[ ! "$remote_sha" =~ ^0+$ ]] && git cat-file -e "$remote_sha" 2>/dev/null \
+        && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        printf '[pre-push] push of main is not fast-forward — skipping tag/release\n' >&2
+        continue
+    fi
+
     v=$(git show "$local_sha:VERSION" 2>/dev/null || true)
     [[ -z "$v" ]] && continue
 

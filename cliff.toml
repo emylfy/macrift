@@ -43,7 +43,8 @@ filter_unconventional = true     # only consider conventional commits
 split_commits = false
 protect_breaking_commits = true
 filter_commits = false
-tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+# Two- or three-component calver: monthly tags are vYY.MM, patches vYY.MM.N.
+tag_pattern = "v[0-9]+\\.[0-9]+(\\.[0-9]+)?"
 sort_commits = "newest"
 topo_order = false
 
