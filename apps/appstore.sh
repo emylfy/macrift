@@ -33,7 +33,11 @@ _ensure_mas() {
         return 1
     fi
     if confirm "Install mas via Homebrew?"; then
-        brew install mas
+        if ! brew install mas; then
+            log_err "Failed to install mas"
+            log_hint "try: brew install mas"
+            return 1
+        fi
         return 0
     fi
     return 1
@@ -98,7 +102,7 @@ install_appstore() {
         return 0
     fi
 
-    log_warn "VPN must be disabled for App Store downloads to work"
+    log_hint "if downloads hang, try disabling VPN"
     printf "\n"
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would install from App Store:"
@@ -115,10 +119,12 @@ install_appstore() {
             if echo "$selected" | grep -qxF "${new_labels[$i]}"; then
                 as_idx=$((as_idx + 1))
                 show_progress "$as_idx" "$as_total" "${new_labels[$i]}"
-                if mas install "${new_ids[$i]}" &>/dev/null; then
+                local mas_out
+                if mas_out=$(mas install "${new_ids[$i]}" 2>&1); then
                     log_ok "${new_labels[$i]} installed"
                 else
                     log_warn "Failed: ${new_labels[$i]}"
+                    [[ -n "$mas_out" ]] && log_hint "$(printf '%s\n' "$mas_out" | tail -1)"
                     if confirm "Open App Store page?"; then
                         open "macappstore://apps.apple.com/app/id${new_ids[$i]}"
                     fi

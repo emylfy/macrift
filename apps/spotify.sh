@@ -43,7 +43,7 @@ spotify_menu() {
 
         local choice
         choice=$(show_menu "Spotify" \
-            "SpotX — ad blocker (macOS)" \
+            "SpotX — ad blocker" \
             "Spicetify — customization framework" \
             "---" \
             "Restore marketplace settings" \
@@ -67,6 +67,11 @@ SPOTX_REPO="https://github.com/SpotX-Official/SpotX-Bash"
 
 install_spotx() {
     clear
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install SpotX"
+        wait_enter
+        return 0
+    fi
     log_info "SpotX — Spotify ad blocker"
     printf '  %bSource: %s%b\n\n' "$DIM" "$SPOTX_REPO" "$RESET"
 
@@ -84,6 +89,12 @@ install_spotx() {
 }
 
 install_spicetify() {
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install Spicetify + Marketplace"
+        wait_enter
+        return 0
+    fi
+
     # Check Spotify is installed
     if [[ ! -d "/Applications/Spotify.app" ]]; then
         log_err "Spotify not found — install it first"
@@ -106,22 +117,31 @@ install_spicetify() {
     _ensure_spotify_prefs || return 0
 
     log_info "Applying Spicetify..."
+    local apply_ok=true mp_ok=true
     spicetify restore 2>/dev/null || true
     if ! spicetify backup apply 2>/dev/null; then
         log_warn "Spicetify backup apply failed — retrying..."
-        spicetify apply 2>/dev/null || true
+        spicetify apply 2>/dev/null || apply_ok=false
     fi
 
     # Install Marketplace if not present.
-    # Installer calls `spicetify apply` internally — guard with `|| true` so
-    # a benign installer failure doesn't kill macrift via set -e + pipefail.
+    # Installer calls `spicetify apply` internally — track failure instead of
+    # letting set -e + pipefail kill macrift.
     local mp_dir="$HOME/.config/spicetify/CustomApps/marketplace"
     if [[ ! -d "$mp_dir" ]]; then
         log_info "Installing Marketplace..."
-        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh || true
+        curl -fsSL https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.sh | sh || mp_ok=false
+        [[ -d "$mp_dir" ]] || mp_ok=false
     fi
-    spicetify config custom_apps marketplace 2>/dev/null || true
-    spicetify apply 2>/dev/null || true
-    log_ok "Spicetify + Marketplace applied"
+    spicetify config custom_apps marketplace 2>/dev/null || mp_ok=false
+    spicetify apply 2>/dev/null || apply_ok=false
+
+    if $apply_ok && $mp_ok; then
+        log_ok "Spicetify + Marketplace applied"
+    else
+        $mp_ok || log_warn "Marketplace install failed"
+        $apply_ok || log_err "Spicetify apply failed"
+        log_hint "try 'spicetify backup apply' manually, or re-run this step"
+    fi
     wait_enter
 }

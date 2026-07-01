@@ -49,7 +49,7 @@ run_brew_cleanup() {
     fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would run: brew cleanup --prune=all && brew autoremove"
+        log_info "Dry run — would run: brew cleanup --prune=all && brew autoremove"
         wait_enter
         return
     fi
@@ -85,6 +85,15 @@ run_brew_cleanup() {
 
 run_mole_cleanup() {
     clear
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        if command -v mole &>/dev/null; then
+            log_info "Dry run — would run: mole clean"
+        else
+            log_info "Dry run — would install Mole and run cleanup"
+        fi
+        wait_enter
+        return 0
+    fi
     if command -v mole &>/dev/null; then
         mole clean
         wait_enter

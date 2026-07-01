@@ -44,7 +44,7 @@ _resolve_marketplace_backup() {
     done
 
     local choice
-    choice=$(show_menu "Pick marketplace backup" "${labels[@]}" "Cancel")
+    choice=$(show_menu "Pick marketplace backup" "${labels[@]}" "Back")
     if [[ -z "$choice" || "$choice" == "0" ]]; then
         return 1
     fi
@@ -65,6 +65,12 @@ _spicetify_ensure_baseline() {
 
 restore_marketplace() {
     clear
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would restore marketplace settings"
+        wait_enter
+        return 0
+    fi
 
     if ! command -v spicetify &>/dev/null; then
         log_err "Spicetify not installed — install it from Apps > Spotify first"
@@ -104,38 +110,50 @@ restore_marketplace() {
     mkdir -p "$SPICETIFY_EXT_DIR"
     local ext_file="$SPICETIFY_EXT_DIR/$RESTORE_EXT"
 
-    # Skip regeneration if extension already exists with same config
-    if [[ -f "$ext_file" ]] && _ext_config_unchanged "$ext_file"; then
-        log_info "Extension already up to date — re-applying"
-    else
-        log_info "Generating restore extension..."
-        _generate_restore_ext "$ext_file"
-        log_ok "Extension generated"
-    fi
+    # Per-run token: keeps the extension one-shot per Spotify launch, but lets
+    # subsequent macrift runs re-trigger by embedding a fresh ID.
+    local session_id
+    session_id=$(date +%s)-$$
+
+    log_info "Generating restore extension..."
+    _generate_restore_ext "$ext_file" "$session_id"
+    log_ok "Extension generated"
 
     log_info "Adding extension to Spicetify..."
     spicetify config extensions "$RESTORE_EXT" &>/dev/null || true
     if spicetify apply &>/dev/null; then
-        log_ok "Applied — open Spotify to restore settings"
+        log_ok "Applied"
     elif spicetify restore backup apply &>/dev/null; then
-        log_ok "Applied (after restore) — open Spotify to restore settings"
+        log_ok "Applied (after restore)"
     else
         log_warn "Spicetify apply failed — try running 'spicetify apply' manually"
         wait_enter
         return
     fi
 
-    log_ok "Open Spotify — settings will be restored once automatically"
-    log_info "Extension will self-clean on next spicetify apply"
+    log_info "Opening Spotify..."
+    open -a Spotify
 
-    # Remove from config now (file stays until next apply)
-    spicetify config extensions "$RESTORE_EXT-" &>/dev/null || true
+    log_info "Wait for the 'settings restored' notification in Spotify, then press Enter"
+    wait_enter
+
+    _cleanup_restore_ext "$ext_file"
+    log_ok "Restore extension cleaned up"
 
     wait_enter
 }
 
-_generate_restore_ext() {
+_cleanup_restore_ext() {
     local ext_file="$1"
+    spicetify config extensions "$RESTORE_EXT-" &>/dev/null || true
+    rm -f "$ext_file"
+    # Re-apply so the extension is actually removed from Spotify's xpui too
+    # (next Spotify launch starts clean — no re-injection, no stale state)
+    spicetify apply &>/dev/null || true
+}
+
+_generate_restore_ext() {
+    local ext_file="$1" session_id="$2"
     {
         cat <<'JSHEAD'
 (function macriftRestore() {
@@ -146,30 +164,28 @@ _generate_restore_ext() {
     const data =
 JSHEAD
         cat "$MARKETPLACE_BACKUP"
-        cat <<'JSTAIL'
+        cat <<JSTAIL
 ;
-    if (Spicetify.LocalStorage.get("macrift-restore-done")) return;
+    const SESSION = "$session_id";
+    if (Spicetify.LocalStorage.get("macrift-restore-done") === SESSION) return;
     for (const [key, value] of Object.entries(data)) {
         Spicetify.LocalStorage.set(key, value);
     }
-    Spicetify.LocalStorage.set("macrift-restore-done", "1");
-    Spicetify.showNotification("macrift: Marketplace settings restored! Restart Spotify to clean up.");
+    Spicetify.LocalStorage.set("macrift-restore-done", SESSION);
+    Spicetify.showNotification("macrift: Marketplace settings restored!");
 })();
 JSTAIL
     } > "$ext_file"
 }
 
-# Compare embedded JSON in existing extension with current config file
-_ext_config_unchanged() {
-    local ext_file="$1"
-    local embedded
-    # Extract JSON between "const data =" and the closing ";"
-    embedded=$(sed -n '/^    const data =/,/^;$/{ /^    const data =/d; /^;$/d; p; }' "$ext_file" 2>/dev/null)
-    [[ -n "$embedded" ]] && diff -q <(printf '%s' "$embedded") "$MARKETPLACE_BACKUP" &>/dev/null
-}
-
 save_marketplace() {
     clear
+
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would save marketplace settings"
+        wait_enter
+        return 0
+    fi
 
     if ! command -v spicetify &>/dev/null; then
         log_err "Spicetify not installed — install it from Apps > Spotify first"

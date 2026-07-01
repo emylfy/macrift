@@ -1,3 +1,3 @@
 # Nerd Fonts (patched with icons for terminal/editor use)
 cask "font-fira-code-nerd-font"
-cask "font-maple-mono"
+cask "font-maple-mono-nf"

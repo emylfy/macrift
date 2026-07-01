@@ -345,8 +345,8 @@ brew_menu() {
             "Games" \
             "Fonts (Nerd Fonts)" \
             "---" \
-            "Install ALL bundles" \
-            "Backup (.brewbak) ›" \
+            "Install all bundles" \
+            "Backup & restore ›" \
             "Back")
 
         case "$choice" in
@@ -763,9 +763,10 @@ import_brewbak() {
 
     clear
 
-    # Get installed packages
+    # Get installed packages (strip @version from formulae, e.g. python@3.14 → python)
     local installed
-    installed=$(brew list --formula -1 2>/dev/null; brew list --cask -1 2>/dev/null)
+    installed=$(brew list --formula -1 2>/dev/null | sed 's/@.*//')
+    installed+=$'\n'$(brew list --cask -1 2>/dev/null)
 
     # Warm cask cache from backup file
     local -a _prewarm_list=()

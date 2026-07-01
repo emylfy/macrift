@@ -23,7 +23,7 @@ cask "soundsource"
 cask "betterdisplay"
 
 # Passwords & Security
-cask "proton-pass"
+cask "proton-pass"      # optional
 cask "1password"
 
 # Remote & Peripherals
