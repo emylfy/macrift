@@ -42,7 +42,7 @@ Discriminated on `kind`. This is the canonical thing — `apply`, `undo`, and
 | Field                     | Required    | Notes                                                                                                                                                                                       |
 | :------------------------ | :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `kind`                    | yes         | one of: `default` `finder_sort` `nvram` `chflags` `brew` `dotfile` `plist` `command`                                                                                                        |
-| `id`                      | recommended | stable slug, e.g. `dock.autohide`. New concept — today tweaks are keyed only by `label`. Lets manifest, journal, and drift reference the same logical change even if the label is reworded. |
+| `id`                      | optional (reserved) | stable slug, e.g. `dock.autohide`. Reserved for future use — nothing consumes it yet (see the deferred note at the end); journal/manifest/drift key on `domain`/`key`/`dest` today. |
 | `label`                   | optional    | human text shown in the audit table (existing behavior). Defaults to `key`/`name`/`id`.                                                                                                     |
 | `min_macos` / `max_macos` | optional    | version guard. Unit is skipped (status `skipped`, reason `version`) if the running macOS is out of range. Closes the "key valid on Sonoma, no-op on Tahoe" gap.                             |
 

@@ -103,6 +103,8 @@ Skip the menu and run a single action directly:
 | `save [<file.json>]`           | Snapshot current settings + packages to a manifest          |
 | `plugin <subcommand>`          | Manage plugins (see `macrift plugin help`)                   |
 
+`undo` and `drift` cover journaled changes: system tweaks and `macrift apply` manifests. Package installs and cleanup actions are not journaled — reverse those from their own menus (or `brew uninstall`).
+
 Pair with the one-shot install above to inspect someone else's Mac without leaving anything behind.
 
 </details>
@@ -174,7 +176,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 
 Export/import your packages with `.brewbak` backup files.
 
-**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace settings save/restore. Ships as the bundled [`misc`](https://github.com/emylfy/macrift-misc) plugin (installed by default; remove with `macrift plugin remove misc`).
+**Spotify** — [SpotX](https://github.com/SpotX-Official/SpotX-Bash) ad blocker + [Spicetify](https://spicetify.app) customization framework + marketplace settings save/restore. Ships as the bundled [`misc`](https://github.com/emylfy/macrift-misc) plugin (offered during install; remove with `macrift plugin remove misc`).
 
 **Xcode Command Line Tools** — one-shot install (git, clang, make, headers); offered only when not already present.
 
@@ -313,7 +315,7 @@ Includes: Brewfile, macOS defaults (Dock, Finder, Keyboard, Screenshots), dotfil
 
 <div align="center">
 
-[MIT License](LICENSE) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/emylfy/macrift/releases) · [Report a Bug](https://github.com/emylfy/macrift/issues)
+[MIT License](LICENSE) · [Contributing](CONTRIBUTING.md) · [Releases](https://github.com/emylfy/macrift/releases) · [Report a Bug](https://github.com/emylfy/macrift/issues)
 
 <sub>If this saved you time, a star helps others find it</sub>
 

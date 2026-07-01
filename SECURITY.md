@@ -29,6 +29,17 @@ credentials, not a CI secret. The release tarball is built with `git archive`
 from the tag (deterministic), and macrift ships and verifies **its own** built
 asset rather than GitHub's auto-generated archive (whose checksum can change).
 
+**What the checksum does — and doesn't — buy.** The `.sha256` is generated on
+the same machine and published to the same GitHub release as the tarball. So
+verification protects against transport corruption and against the old
+floating-`main` failure mode; it does **not** protect against a compromised
+GitHub account or maintainer machine, which could replace the tarball, its
+checksum, and the formula together (release assets are replaceable after
+publication). There is no artifact signing or third-party provenance today.
+The `curl | bash` installer itself is fetched from `main` unverified — if that
+matters for your threat model, use the download-and-inspect flow in the README
+or install via Homebrew.
+
 ## Reporting a vulnerability
 
 If you find a security issue in macrift itself — for example, an unsafe
@@ -82,13 +93,15 @@ sandboxing arbitrary bash on macOS is essentially impossible.
    - raw `defaults write` outside `audit_default` (breaks undo, and lets a
      plugin make changes invisible to the journal)
    - raw `launchctl bootstrap` outside the provided helpers (same reason)
-   - writes outside `~/.macrift/plugins/<name>/` and `$HOME`-rooted paths the
-     plugin owns
    - `curl | bash` at runtime (un-pinnable, un-auditable)
-   - re-defining macrift's public API functions
+
+   Planned but not yet implemented: flagging writes outside the plugin's own
+   directory, mutation of `MACRIFT_*` globals, and re-definition of macrift's
+   public API functions. Lint is a pattern grep, not a parser — it can be
+   evaded and is a smoke alarm, not a gate.
 
    A plugin can still install despite lint warnings — we can't enforce them at
-   runtime — but `macrift plugin info` will surface the findings to the user.
+   runtime — but `macrift plugin info` surfaces the findings to the user.
 
 4. **Trusted-list mechanism _(planned)._** A curated set of plugins maintained
    by the macrift team. `macrift plugin add --trusted <name>` will skip the
@@ -143,19 +156,3 @@ attention:
    skips anything now depended on). Treat a manifest from an untrusted source like
    a shell script — read its `command` section before applying.
 
-## Hooks shipped with the Claude Code section
-
-`config/claude-code/hooks/security-gate.sh` is a `PreToolUse(Bash)` hook for
-Claude Code that blocks dangerous shell patterns (piped remote execution,
-`eval`/`exec` with command substitution, `git push --force/-f`, secret
-exfiltration via `curl`/`wget` interpolating env vars named
-`*TOKEN`/`*SECRET`/`*KEY`/`*PASSWORD`).
-
-The hook is a **defence-in-depth backstop**, not a guarantee. Regex-based
-command filtering cannot block every variant of a dangerous command
-(`bash -c "$(curl …)"`, base64-encoded payloads, file-then-execute). The
-permission allow-/deny-list in `settings/user.json` is the primary control;
-the hook closes a few common holes the prefix-matched list cannot see.
-
-If you find a bypass that should be blocked, the reporting flow at the top of
-this file applies.

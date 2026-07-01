@@ -146,9 +146,11 @@ rule violation (see below).
 
 ## What plugins must not do
 
-These rules are enforced by `macrift plugin lint`. A plugin that violates them
-can still install (we can't sandbox bash), but the linter will warn loudly and
-`macrift plugin info` will display the lint findings to the user.
+Rules 1, 2, and 5 are checked by `macrift plugin lint` (a pattern grep — it can
+be evaded and is a smoke alarm, not a gate); rules 3, 4, and 6 are contract-only
+for now, with lint checks planned. A plugin that violates them can still install
+(we can't sandbox bash), but the linter warns loudly and `macrift plugin info`
+displays the lint findings to the user.
 
 1. **No raw `defaults write`** outside `audit_default`. The journal can't undo
    what it didn't see.
@@ -169,6 +171,7 @@ can still install (we can't sandbox bash), but the linter will warn loudly and
 ```
 macrift plugin add github.com/x/y[@<ref>]
   → git clone --depth=1 to ~/.macrift/plugins/<name>/
+    (a commit-SHA ref falls back to a full clone + checkout)
   → parse plugin.json, validate against schema
   → check compat.{macrift_min, macrift_api, macos_min}
   → show README + the list of menu entries that will appear → confirm
@@ -190,7 +193,8 @@ plugin only deletes its files. (Per-plugin auto-undo is future work: the journal
 currently groups by session, not by plugin.)
 
 `macrift plugin update [<name>]` re-runs the `git pull → validate compat` flow and
-bumps the lockfile.
+bumps the lockfile. Pinned installs (added with `@<ref>`) are skipped — re-add
+with a newer ref to update.
 
 ## Security and threat model
 
@@ -215,7 +219,7 @@ What macrift provides:
 2. **Pre-install review**: macrift shows the plugin's README and the last 10
    commits of the plugin's repo, and explicitly prompts before running any code.
 3. **Lint warnings** for the risky patterns listed above (raw `defaults write`,
-   `curl | bash` at runtime, writes outside the sandbox).
+   raw `launchctl bootstrap`, `curl | bash` at runtime).
 4. **Trusted list** _(future)_: a curated set of plugins maintained by the
    macrift team. `macrift plugin add --trusted <name>` will skip the
    pre-install prompts for entries on that list.
@@ -250,6 +254,8 @@ isn't on the trusted list, read `menu.sh` and `handlers/` before installing.
 3. Open a PR to
    [awesome-macrift-plugins](https://github.com/emylfy/awesome-macrift-plugins)
    adding your plugin to the relevant section. Mention `@emylfy` for review.
+4. Optionally, PR `catalog.json` in the macrift repo — that's the list the
+   in-app plugin browser shows; the awesome list is the wider, lower-bar index.
 
 The macrift team reviews `plugin.json` validity, `menu.sh` for obvious red
 flags, and the README before merging. We do not audit handler logic — the
@@ -265,7 +271,7 @@ trusted-list mechanism above is the only audited tier.
 	"description": "Daily wallpaper from a chosen Unsplash collection",
 	"compat": { "macrift_min": "26.06", "macrift_api": 1 },
 	"menu": {
-		"section": "Customize",
+		"parent": "customize",
 		"entry": "Daily wallpaper",
 		"function": "wallpaper_daily_menu"
 	}

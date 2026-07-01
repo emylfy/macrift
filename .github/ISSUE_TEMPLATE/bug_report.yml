@@ -33,6 +33,23 @@ body:
       placeholder: Apple Silicon (arm64) or Intel (x86_64)
     validations:
       required: true
+  - type: input
+    id: macrift-version
+    attributes:
+      label: macrift version
+      placeholder: e.g. 26.06.1 (menu footer, or cat ~/.macrift/VERSION)
+    validations:
+      required: true
+  - type: dropdown
+    id: install-channel
+    attributes:
+      label: Install channel
+      options:
+        - Homebrew
+        - curl installer
+        - git clone
+    validations:
+      required: true
   - type: textarea
     id: logs
     attributes:
