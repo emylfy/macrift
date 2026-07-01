@@ -9,7 +9,7 @@
     {
       "name": "misc",
       "source": "github.com/emylfy/macrift-misc",
-      "description": "Spotify SpotX ad-blocker + Spicetify customization (bundled extras, installed by default)"
+      "description": "Spotify SpotX ad-blocker + Spicetify customization (bundled extras, offered during install)"
     }
   ]
 }

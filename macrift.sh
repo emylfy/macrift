@@ -5,14 +5,14 @@
 # Usage: macrift [--dry-run] [--no-confirm] [--log]
 
 # Apple ships bash 3.2.57 — empty array expansions under `set -u` are unbound
-# variable errors there. macrift uses arrays widely, so we require bash 4+.
-# Re-exec under Homebrew bash if available, otherwise offer to install it.
-if [[ "${BASH_VERSION%%.*}" -lt 4 ]]; then
+# variable errors there, and plugins.sh uses namerefs (bash 4.3+). So the floor
+# is 4.3. Re-exec under Homebrew bash if available, otherwise offer to install it.
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )); then
     for _newer in /opt/homebrew/bin/bash /usr/local/bin/bash; do
         [[ -x "$_newer" ]] && exec "$_newer" "$0" "$@"
     done
 
-    printf '\n  \033[1;33mmacrift requires bash 4+\033[0m (you have %s)\n\n' "$BASH_VERSION" >&2
+    printf '\n  \033[1;33mmacrift requires bash 4.3+\033[0m (you have %s)\n\n' "$BASH_VERSION" >&2
 
     if ! command -v brew >/dev/null 2>&1; then
         printf '  Install Homebrew first, then re-run macrift:\n' >&2
