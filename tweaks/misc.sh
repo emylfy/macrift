@@ -2,14 +2,14 @@
 # macrift — Misc system tweaks
 
 misc_tweaks() {
-    audit_default "com.apple.LaunchServices" "LSQuarantine" "-bool" "false" "App open warning"
+    audit_default_optional "com.apple.LaunchServices" "LSQuarantine" "-bool" "false" "App quarantine dialog~Also disables Gatekeeper checks for new downloads"
 
     audit_sep
 
     audit_default "NSGlobalDomain" "NSNavPanelExpandedStateForSaveMode" "-bool" "true" "Expand save panel"
-    audit_default "NSGlobalDomain" "NSNavPanelExpandedStateForSaveMode2" "-bool" "true" "Expand save panel 2"
+    audit_default "NSGlobalDomain" "NSNavPanelExpandedStateForSaveMode2" "-bool" "true" "Expand save panel (older apps)"
     audit_default "NSGlobalDomain" "PMPrintingExpandedStateForPrint" "-bool" "true" "Expand print panel"
-    audit_default "NSGlobalDomain" "PMPrintingExpandedStateForPrint2" "-bool" "true" "Expand print panel 2"
+    audit_default "NSGlobalDomain" "PMPrintingExpandedStateForPrint2" "-bool" "true" "Expand print panel (older apps)"
 
     audit_sep
 
@@ -31,5 +31,5 @@ misc_tweaks() {
     if nvram StartupMute 2>/dev/null | grep -q '%01'; then
         boot_current="false"
     fi
-    AUDIT_ENTRIES+=("Startup sound|${boot_current}|false|nvram|StartupMute|-bool")
+    AUDIT_ENTRIES+=("Startup sound~needs sudo|${boot_current}|false|nvram|StartupMute|-bool")
 }

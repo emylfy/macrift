@@ -11,6 +11,14 @@ SPACE_PLIST="$HOME/Library/LaunchAgents/$SPACE_LABEL.plist"
 SPACE_LOG_DIR="$HOME/Library/Logs/macrift"
 SPACE_LOG="$SPACE_LOG_DIR/space-switcher.log"
 
+_space_check_arch() {
+    if [[ "$ARCH" != "arm64" ]]; then
+        log_err "Space switcher requires Apple Silicon (M1+)"
+        log_info "The binary is compiled arm64-only and cannot run on Intel"
+        return 1
+    fi
+}
+
 _space_check_clang() {
     if ! xcrun --find clang &>/dev/null; then
         log_warn "Xcode Command Line Tools not found"
@@ -98,6 +106,7 @@ space_install() {
     clear
     crumb_push "Install"
 
+    _space_check_arch  || { wait_enter; crumb_pop; return; }
     _space_check_clang || { wait_enter; crumb_pop; return; }
 
     log_info "Installs the space-switcher CLI"
@@ -147,7 +156,7 @@ space_uninstall() {
     fi
 
     _space_unload
-    rm -f "$SPACE_PLIST" "$SPACE_BIN"
+    rm -f "$SPACE_PLIST" "$SPACE_BIN" "$SPACE_LOG"
     log_ok "Removed"
     log_info "Accessibility entry remains in System Settings — remove manually if desired"
     wait_enter
@@ -226,9 +235,9 @@ space_switcher_menu() {
         if [[ -x "$SPACE_BIN" ]]; then
             local toggle_label
             if _space_is_loaded; then
-                toggle_label="Native Ctrl+←/→ daemon: on"
+                toggle_label="Intercept Ctrl+←/→: on"
             else
-                toggle_label="Native Ctrl+←/→ daemon: off"
+                toggle_label="Intercept Ctrl+←/→: off"
             fi
             items+=("$toggle_label" "Show usage" "Status" "---" "Uninstall" "Back")
         else

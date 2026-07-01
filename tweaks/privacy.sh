@@ -6,13 +6,13 @@ privacy_recommended() {
     audit_default "com.apple.AdLib" "allowIdentifierForAdvertising" "-bool" "false" "Ad identifier tracking"
     audit_default "com.apple.AdLib" "allowApplePersonalizedAdvertising" "-bool" "false" "Personalized ads"
     audit_default "com.apple.AdLib" "forceLimitAdTracking" "-bool" "true" "Limit ad tracking"
-    audit_default "com.apple.CrashReporter" "DialogType" "-string" "none" "Share Mac analytics"
+    audit_default "com.apple.CrashReporter" "DialogType" "-string" "none" "Crash report dialog"
 
     audit_sep
 
     # Guest access
-    audit_default "/Library/Preferences/com.apple.loginwindow" "GuestEnabled" "-bool" "false" "Guest account login"
-    audit_default "/Library/Preferences/SystemConfiguration/com.apple.smb.server" "AllowGuestAccess" "-bool" "false" "Guest sharing (SMB)"
+    audit_default "/Library/Preferences/com.apple.loginwindow" "GuestEnabled" "-bool" "false" "Guest account login~needs sudo"
+    audit_default "/Library/Preferences/SystemConfiguration/com.apple.smb.server" "AllowGuestAccess" "-bool" "false" "Guest sharing (SMB)~needs sudo"
 
     # App telemetry — only if Office is installed
     if [[ -d "/Applications/Microsoft Word.app" || -d "/Applications/Microsoft Excel.app" \
@@ -24,8 +24,8 @@ privacy_recommended() {
     audit_sep
 
     # Screen lock
-    audit_default "/Library/Preferences/com.apple.screensaver" "askForPassword" "-bool" "true" "Password after screensaver"
-    audit_default "/Library/Preferences/com.apple.screensaver" "askForPasswordDelay" "-int" "5" "Lock delay (sec)"
+    audit_default "/Library/Preferences/com.apple.screensaver" "askForPassword" "-bool" "true" "Password after screensaver~needs sudo"
+    audit_default "/Library/Preferences/com.apple.screensaver" "askForPasswordDelay" "-int" "5" "Lock delay (sec)~needs sudo"
 
     audit_sep
 
@@ -45,5 +45,5 @@ privacy_strict() {
     audit_sep
 
     # Gatekeeper
-    audit_default "/Library/Preferences/com.apple.security" "GKAutoRearm" "-bool" "true" "Gatekeeper auto-rearm~Prevents macOS from re-enabling Gatekeeper after 30 days"
+    audit_default "/Library/Preferences/com.apple.security" "GKAutoRearm" "-bool" "false" "Gatekeeper auto-rearm~Prevents macOS from re-enabling Gatekeeper after 30 days; needs sudo"
 }

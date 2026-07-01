@@ -380,7 +380,9 @@ select_tweaks() {
         local domain
         for domain in "${MACRIFT_CHANGED_DOMAINS[@]:+${MACRIFT_CHANGED_DOMAINS[@]}}"; do
             [[ "$domain" == *"dock"* ]]                                       && need_dock=true
-            [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* ]] && need_finder=true
+            # NSGlobalDomain hosts Finder tweaks too (AppleShowAllExtensions, springing)
+            [[ "$domain" == *"finder"* || "$domain" == *"desktopservices"* \
+               || "$domain" == "NSGlobalDomain" ]]                            && need_finder=true
         done
         MACRIFT_CHANGED_DOMAINS=()
 
@@ -410,7 +412,7 @@ tweaks_menu() {
         local -a items=(
             "Browse & Apply ›"
             "Hot Corners… ↗"
-            "Spotlight Hotkey… ↗"
+            "Disable Spotlight ⌘Space…"
             "---"
             "Dithering ›"
             "Space Switcher ›"
@@ -438,15 +440,18 @@ tweaks_menu() {
                fi
                wait_enter ;;
             3) # Disable Spotlight ⌘Space directly via prefs — no UI needed
-               local plist="$HOME/Library/Preferences/com.apple.symbolichotkeys.plist"
-               if /usr/libexec/PlistBuddy \
-                    -c "Set :AppleSymbolicHotKeys:64:enabled false" "$plist" 2>/dev/null; then
-                 killall SystemUIServer 2>/dev/null
-                 log_ok "⌘Space Spotlight shortcut disabled — ⌘Space is now free"
-               else
-                 log_err "Failed to modify shortcut — try System Settings → Keyboard → Keyboard Shortcuts → Spotlight"
-               fi
-               wait_enter ;;
+               clear
+               if confirm "Disable the Spotlight ⌘Space shortcut?"; then
+                 # defaults (not PlistBuddy) so the write goes through cfprefsd
+                 if defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64 \
+                      '<dict><key>enabled</key><false/></dict>' 2>/dev/null; then
+                   killall SystemUIServer 2>/dev/null
+                   log_ok "⌘Space Spotlight shortcut disabled — ⌘Space is now free"
+                 else
+                   log_err "Failed to modify shortcut — try System Settings → Keyboard → Keyboard Shortcuts → Spotlight"
+                 fi
+                 wait_enter
+               fi ;;
             4) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
             5) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
             0) break ;;

@@ -167,6 +167,7 @@ dithering_uninstall() {
         log_info "Would bootout: gui/$UID/$DITHERING_LABEL"
         log_info "Would remove: $DITHERING_PLIST"
         log_info "Would remove: $DITHERING_BIN"
+        log_info "Would remove: $DITHERING_LOG"
         log_info "Would run: stillcolord --enable"
         wait_enter
         crumb_pop
@@ -181,7 +182,7 @@ dithering_uninstall() {
         log_ok "Dithering re-enabled (effective immediately)"
     fi
 
-    rm -f "$DITHERING_PLIST" "$DITHERING_BIN"
+    rm -f "$DITHERING_PLIST" "$DITHERING_BIN" "$DITHERING_LOG"
     log_ok "Removed daemon and LaunchAgent"
     log_info "Reboot for full reset of all display properties"
 
@@ -241,7 +242,7 @@ dithering_menu() {
         else
             items+=("Disable Dithering")
         fi
-        items+=("Status / Verify" "Back")
+        items+=("Status" "Back")
 
         local choice
         choice=$(show_menu "Dithering" "${items[@]}")

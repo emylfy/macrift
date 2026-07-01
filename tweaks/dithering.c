@@ -2,10 +2,11 @@
 // Headless daemon port of Stillcolor (https://github.com/aiaf/Stillcolor)
 //
 // Usage:
-//   stillcolord            # daemon: apply + watch for display reconfig
-//   stillcolord --apply    # one-shot disable, exit
-//   stillcolord --enable   # one-shot re-enable, exit
-//   stillcolord --status   # print enableDither value(s) and exit
+//   stillcolord [--daemon]  # daemon: apply + watch for display reconfig
+//                           # (the LaunchAgent passes --daemon)
+//   stillcolord --apply     # one-shot disable, exit
+//   stillcolord --enable    # one-shot re-enable, exit
+//   stillcolord --status    # print enableDither value(s) and exit
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>

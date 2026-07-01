@@ -7,6 +7,6 @@ screenshots_tweaks() {
 
     audit_sep
 
-    audit_default "com.apple.screencapture" "disable-shadow" "-bool" "true" "Window shadow"
+    audit_default "com.apple.screencapture" "disable-shadow" "-bool" "true" "Disable window shadow"
     audit_default "com.apple.screencapture" "include-date" "-bool" "false" "Date in filename"
 }
