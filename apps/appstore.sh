@@ -23,26 +23,6 @@ appstore_menu() {
     crumb_pop
 }
 
-_ensure_mas() {
-    if command -v mas &>/dev/null; then
-        return 0
-    fi
-    log_warn "mas (Mac App Store CLI) not found"
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install mas"
-        return 1
-    fi
-    if confirm "Install mas via Homebrew?"; then
-        if ! brew install mas; then
-            log_err "Failed to install mas"
-            log_hint "try: brew install mas"
-            return 1
-        fi
-        return 0
-    fi
-    return 1
-}
-
 install_appstore() {
     clear
 

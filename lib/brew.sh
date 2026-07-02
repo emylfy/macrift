@@ -62,3 +62,26 @@ _capture_brew_list() {
         mas list 2>/dev/null | awk 'NF{id=$1; $1=""; sub(/^ +/,""); sub(/ \([^)]*\)$/,""); print $0"\tmas\t"id}'
     fi
 }
+
+# Ensure the mas CLI is present (offer a brew install). Lives here, not in
+# apps/appstore.sh, because _manifest_apply_brew needs it when `macrift apply`
+# runs as a bare subcommand with no menu files sourced.
+_ensure_mas() {
+    if command -v mas &>/dev/null; then
+        return 0
+    fi
+    log_warn "mas (Mac App Store CLI) not found"
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — would install mas"
+        return 1
+    fi
+    if confirm "Install mas via Homebrew?"; then
+        if ! brew install mas; then
+            log_err "Failed to install mas"
+            log_hint "try: brew install mas"
+            return 1
+        fi
+        return 0
+    fi
+    return 1
+}
