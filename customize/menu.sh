@@ -21,7 +21,7 @@ customize_menu() {
             "## Terminal"
             "Terminal Emulator ›"
             "Shell ›"
-            "fastfetch"
+            "FastFetch"
             "---"
             "## Editors"
             "Code Editor ›"
