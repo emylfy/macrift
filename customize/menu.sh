@@ -28,6 +28,13 @@ customize_menu() {
             "---"
             "## Desktop"
             "Dock Layout ›"
+            "---"
+            "## Window Management"
+            "AeroSpace ›"
+            "tmux ›"
+            "---"
+            "## Tools"
+            "television ›"
         )
         $is_tahoe || items+=("Launchpad ›")
 
@@ -51,7 +58,10 @@ customize_menu() {
             4) source "$MACRIFT_DIR/customize/terminal.sh"    && setup_fastfetch ;;
             5) source "$MACRIFT_DIR/customize/editor.sh"      && editor_menu ;;
             6) source "$MACRIFT_DIR/customize/dock_layout.sh" && dock_layout_menu ;;
-            7) # Launchpad — only present on non-Tahoe (Apple removed Launchpad.app in macOS 26)
+            7) source "$MACRIFT_DIR/customize/aerospace.sh"   && aerospace_menu ;;
+            8) source "$MACRIFT_DIR/customize/tmux.sh"        && tmux_menu ;;
+            9) source "$MACRIFT_DIR/customize/television.sh"  && television_menu ;;
+            10) # Launchpad — only present on non-Tahoe (Apple removed Launchpad.app in macOS 26)
                source "$MACRIFT_DIR/customize/launchpad.sh"   && launchpad_menu ;;
             0) break ;;
             *) ;;

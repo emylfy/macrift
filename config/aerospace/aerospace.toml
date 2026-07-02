@@ -1,0 +1,101 @@
+# macrift — AeroSpace tiling window manager config
+# Reference: https://nikitabobko.github.io/AeroSpace/guide
+# Generic defaults — adjust workspaces, gaps, and app rules to taste.
+
+# Start AeroSpace at login (macrift leaves this off; enable when you're ready)
+start-at-login = false
+
+# Normalizations — keep the window tree tidy
+enable-normalization-flatten-containers = true
+enable-normalization-opposite-orientation-for-nested-containers = true
+
+# Layout
+accordion-padding = 30
+default-root-container-layout = 'tiles'
+default-root-container-orientation = 'auto'
+
+# Mouse follows focus when the focused monitor changes
+on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
+
+# Don't hide apps on cmd-h (too easy to hit by accident)
+automatically-unhide-macos-hidden-apps = false
+
+[key-mapping]
+preset = 'qwerty'
+
+# Gaps between windows (inner) and screen edges (outer)
+[gaps]
+inner.horizontal = 8
+inner.vertical   = 8
+outer.left       = 8
+outer.right      = 8
+outer.top        = 8
+outer.bottom     = 8
+
+# 'main' binding mode — alt (⌥) as the modifier, i3-style
+[mode.main.binding]
+
+# Layout
+alt-slash = 'layout tiles horizontal vertical'
+alt-comma = 'layout accordion horizontal vertical'
+
+# Focus (Vim hjkl)
+alt-h = 'focus left'
+alt-j = 'focus down'
+alt-k = 'focus up'
+alt-l = 'focus right'
+
+# Move the focused window
+alt-shift-h = 'move left'
+alt-shift-j = 'move down'
+alt-shift-k = 'move up'
+alt-shift-l = 'move right'
+
+# Resize
+alt-shift-minus = 'resize smart -50'
+alt-shift-equal = 'resize smart +50'
+
+# Switch to workspace 1–9
+alt-1 = 'workspace 1'
+alt-2 = 'workspace 2'
+alt-3 = 'workspace 3'
+alt-4 = 'workspace 4'
+alt-5 = 'workspace 5'
+alt-6 = 'workspace 6'
+alt-7 = 'workspace 7'
+alt-8 = 'workspace 8'
+alt-9 = 'workspace 9'
+
+# Move the focused window to a workspace
+alt-shift-1 = 'move-node-to-workspace 1 --focus-follows-window'
+alt-shift-2 = 'move-node-to-workspace 2 --focus-follows-window'
+alt-shift-3 = 'move-node-to-workspace 3 --focus-follows-window'
+alt-shift-4 = 'move-node-to-workspace 4 --focus-follows-window'
+alt-shift-5 = 'move-node-to-workspace 5 --focus-follows-window'
+alt-shift-6 = 'move-node-to-workspace 6 --focus-follows-window'
+alt-shift-7 = 'move-node-to-workspace 7 --focus-follows-window'
+alt-shift-8 = 'move-node-to-workspace 8 --focus-follows-window'
+alt-shift-9 = 'move-node-to-workspace 9 --focus-follows-window'
+
+alt-tab       = 'workspace-back-and-forth'
+alt-shift-tab = 'move-workspace-to-monitor --wrap-around next'
+
+alt-shift-f = 'fullscreen'
+
+# Enter service mode for reload / layout reset
+alt-shift-semicolon = 'mode service'
+
+# Example: open your terminal with alt-enter (uncomment and set your app)
+# alt-enter = 'exec-and-forget open -a Ghostty'
+
+# 'service' binding mode — esc returns to main
+[mode.service.binding]
+esc       = ['reload-config', 'mode main']
+r         = ['flatten-workspace-tree', 'mode main']   # reset layout
+f         = ['layout floating tiling', 'mode main']   # toggle floating/tiling
+backspace = ['close-all-windows-but-current', 'mode main']
+
+# Example floating rules — uncomment to float specific apps
+# [[on-window-detected]]
+# if.app-name-regex-substring = 'finder'
+# run = 'layout floating'

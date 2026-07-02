@@ -280,6 +280,12 @@ Fira Code, format on save, ligatures, sidebar left, telemetry off.
 
 **Extensions** — multi-select installer from `config/vscode/extensions.txt`; auto-detects `code`/`cursor`/`codium` CLI.
 
+### 🪟 Window Management & Tools
+
+- **[AeroSpace](https://github.com/nikitabobko/AeroSpace)** — tiling window manager; installs the cask and applies the bundled `aerospace.toml`
+- **[tmux](https://github.com/tmux/tmux)** — config + [TPM](https://github.com/tmux-plugins/tpm), plugins installed without leaving the menu
+- **[television](https://github.com/alexpasmantier/television)** — fuzzy picker with 18 curated cable channels and Ctrl-T shell integration
+
 <details>
 <summary>🗂️ Dock Layout</summary>
 
