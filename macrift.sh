@@ -261,7 +261,14 @@ main_menu() {
         choice=$(show_menu "$title" "${items[@]}")
 
         if [[ "$choice" == "0" ]]; then
-            printf '\n  %bbye%b\n\n' "$DIM" "$RESET"
+            # Parting line doubles as an undo reminder when this session changed anything
+            local _jn=0
+            [[ -f "$MACRIFT_JOURNAL" ]] && _jn=$(grep -c "\"session\":\"$MACRIFT_SESSION\"" "$MACRIFT_JOURNAL" 2>/dev/null || true)
+            if [[ "$_jn" -gt 0 ]]; then
+                printf '\n  %b%s change(s) journaled this session%b\n\n' "$DIM" "$_jn" "$RESET"
+            else
+                printf '\n  %bbye%b\n\n' "$DIM" "$RESET"
+            fi
             exit 0
         fi
 
