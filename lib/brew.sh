@@ -104,6 +104,7 @@ _ensure_mas() {
             log_hint "try: brew install mas"
             return 1
         fi
+        _journal_append_brew "mas" "formula" "" "absent"
         return 0
     fi
     return 1

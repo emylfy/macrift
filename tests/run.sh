@@ -798,6 +798,35 @@ eq "dns journal: id"                 "$(jq -r 'select(.kind=="command").id' "$MA
 eq "dns journal: undo restores DHCP" "$(jq -r 'select(.kind=="command").undo' "$MACRIFT_JOURNAL")" "networksetup -setdnsservers Wi-Fi Empty"
 unset -f networksetup _active_service
 
+# --- apps: brew bundle journals newly installed packages (stubbed brew) ---
+: > "$MACRIFT_JOURNAL"
+source "$ROOT/apps/brew.sh"
+BB_PHASE=before
+brew() {
+    case "$1 $2" in
+        "list --formula") if [[ "$BB_PHASE" == before ]]; then echo jq; else printf 'jq\nripgrep\n'; fi ;;
+        "list --cask")    if [[ "$BB_PHASE" == after ]]; then echo raycast; fi ;;
+        "bundle --quiet") BB_PHASE=after ;;
+    esac
+}
+_brew_bundle_install /dev/null >/dev/null 2>&1
+eq "bundle journal: new formula" "$(jq -r 'select(.kind=="brew" and .source=="formula").name' "$MACRIFT_JOURNAL")" "ripgrep"
+eq "bundle journal: new cask"    "$(jq -r 'select(.kind=="brew" and .source=="cask").name' "$MACRIFT_JOURNAL")" "raycast"
+unset -f brew
+
+# --- launchd: agent install journals a removal undo ---
+: > "$MACRIFT_JOURNAL"
+LA_TMP="$(mktemp -d)"
+# shellcheck disable=SC2329  # invoked indirectly via write_launch_agent
+launchctl() { :; }
+write_launch_agent "$LA_TMP/test.plist" com.macrift.test /bin/echo "$LA_TMP/test.log" Background --daemon
+if [[ -f "$LA_TMP/test.plist" ]]; then ok "launchd: plist written"; else no "launchd: plist written"; fi
+eq "launchd journal: undo removes agent" \
+   "$(jq -r 'select(.id=="launchd:com.macrift.test").undo' "$MACRIFT_JOURNAL")" \
+   "launchctl bootout gui/\$UID/com.macrift.test 2>/dev/null; rm -f $LA_TMP/test.plist"
+unset -f launchctl
+rm -rf "$LA_TMP"
+
 # --- dry-run journals nothing ---
 : > "$MACRIFT_JOURNAL"
 MACRIFT_DRY_RUN=true _journal_append default "x" com.apple.dock tilesize -int 48 36

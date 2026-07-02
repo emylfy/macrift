@@ -105,7 +105,7 @@ install_spicetify() {
     if command -v spicetify &>/dev/null; then
         run_with_spinner "Checking Spicetify for updates..." spicetify update || true
     else
-        brew_install "spicetify-cli"
+        brew_install "spicetify-cli" && _journal_append_brew "spicetify-cli" "formula" "" "absent"
         if ! command -v spicetify &>/dev/null; then
             log_err "Spicetify not found after install"
             wait_enter

@@ -96,6 +96,7 @@ install_appstore() {
                 show_progress "$as_idx" "$as_total" "${new_labels[$i]}"
                 local mas_out
                 if mas_out=$(mas install "${new_ids[$i]}" 2>&1); then
+                    _journal_append_brew "${new_labels[$i]}" "mas" "${new_ids[$i]}" "absent"
                     log_ok "${new_labels[$i]} installed"
                 else
                     log_warn "Failed: ${new_labels[$i]}"

@@ -206,6 +206,27 @@ _prewarm_casks() {
     rm -f "$cache_tmp"
 }
 
+# Run `brew bundle --no-upgrade` on <file> and journal every package it newly
+# installed (brew list diff before/after) so `macrift undo` can remove them
+# under MACRIFT_ALLOW_UNINSTALL. Returns brew bundle's exit status.
+_brew_bundle_install() {
+    local file="$1"
+    local before after pkg status=0
+    before=$({ brew list --formula -1; brew list --cask -1; } 2>/dev/null)
+    brew bundle --quiet --no-upgrade --file="$file" || status=$?
+    after=$(brew list --formula -1 2>/dev/null)
+    while IFS= read -r pkg; do
+        [[ -n "$pkg" ]] || continue
+        grep -qxF "$pkg" <<< "$before" || _journal_append_brew "$pkg" "formula" "" "absent"
+    done <<< "$after"
+    after=$(brew list --cask -1 2>/dev/null)
+    while IFS= read -r pkg; do
+        [[ -n "$pkg" ]] || continue
+        grep -qxF "$pkg" <<< "$before" || _journal_append_brew "$pkg" "cask" "" "absent"
+    done <<< "$after"
+    return $status
+}
+
 # Collect cask tokens from one or more Brewfile-format files
 _collect_casks() {
     local f line
@@ -308,7 +329,7 @@ fzf_search_packages() {
     fi
 
     log_info "Installing $count packages..."
-    if brew bundle --quiet --no-upgrade --file="$tmp"; then
+    if _brew_bundle_install "$tmp"; then
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
@@ -575,7 +596,7 @@ install_bundle() {
 
     if [[ -s "$tmp" ]]; then
         log_info "Installing selected packages..."
-        brew bundle --quiet --no-upgrade --file="$tmp" || all_ok=false
+        _brew_bundle_install "$tmp" || all_ok=false
     fi
     rm -f "$tmp"
 
@@ -709,7 +730,7 @@ install_all_bundles() {
     fi
 
     log_info "Installing selected packages..."
-    if brew bundle --quiet --no-upgrade --file="$tmp"; then
+    if _brew_bundle_install "$tmp"; then
         log_ok "All packages installed"
     else
         log_warn "Some packages failed to install"
@@ -811,7 +832,7 @@ import_brewbak() {
     done
 
     log_info "Installing selected packages..."
-    if brew bundle --quiet --no-upgrade --file="$tmp"; then
+    if _brew_bundle_install "$tmp"; then
         log_ok "Import complete"
     else
         log_warn "Some packages failed to install"

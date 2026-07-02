@@ -36,6 +36,9 @@ ${args_xml}    </array>
 </dict>
 </plist>
 PLIST
+    local undo
+    printf -v undo 'launchctl bootout gui/$UID/%s 2>/dev/null; rm -f %q' "$label" "$plist"
+    _journal_append_command "launchd:$label" "install LaunchAgent $label" "$undo"
 }
 
 launchd_is_loaded() { launchctl print "gui/$UID/$1" &>/dev/null; }
