@@ -103,7 +103,7 @@ Skip the menu and run a single action directly:
 | `save [<file.json>]`           | Snapshot current settings + packages to a manifest          |
 | `plugin <subcommand>`          | Manage plugins (see `macrift plugin help`)                   |
 
-`undo` and `drift` cover journaled changes: system tweaks and `macrift apply` manifests. Package installs and cleanup actions are not journaled — reverse those from their own menus (or `brew uninstall`).
+`undo` and `drift` cover journaled changes: system tweaks, `macrift apply` manifests, Gatekeeper/DNS switches, package installs from the Apps menus (`brew`/`mas`) and LaunchAgent installs. Cleanup deletions and in-place patches (SpotX) have no inverse and are not journaled. `undo` uninstalls packages only with `MACRIFT_ALLOW_UNINSTALL=true`; App Store apps are recorded but left for manual removal.
 
 Pair with the one-shot install above to inspect someone else's Mac without leaving anything behind.
 

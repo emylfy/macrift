@@ -122,8 +122,9 @@ rely on macrift's internal state.
 | `copy_config <src> <dst>`                     | Copy with automatic `.bak` backup of any existing file. Journaled.                    |
 | `backup_file <path>`                          | Standalone backup helper.                                                             |
 | `_journal_append_dotfile <path>`              | Manually record a dotfile change for undo.                                            |
-| `_journal_append_launchd <label>`             | Manually record a launchd bootstrap for undo.                                         |
-| `_journal_append_marker <file> <id>`          | Record a marker-block insert in an rc file.                                           |
+| `_journal_append_command <id> <run> <undo>`   | Record any change with its inverse shell command — `macrift undo` runs `<undo>`.      |
+| `write_launch_agent <plist> <label> <bin> <log> <type> [args…]` | Write a KeepAlive user LaunchAgent; journals its own removal for undo. |
+| `launchd_load / launchd_unload / launchd_is_loaded <label>` | launchctl lifecycle for the agent above.                                  |
 
 ### Read-only helpers
 

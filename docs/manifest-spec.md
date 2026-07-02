@@ -6,7 +6,7 @@ Status: implemented. The defaults family (`default`, `finder_sort`, `nvram`,
 installed packages; the interactive Profile export writes a full bundle (defaults
 + brew + dotfiles + iTerm2 plist) and restores it through `apply` — so restore is
 previewed and journaled like every other change. This describes the data model
-behind those features, layered on the audit/apply engine in `common.sh`.
+behind those features, layered on the audit/apply engine in `lib/engine.sh`.
 
 ## Why this exists
 
@@ -35,7 +35,7 @@ union.
 
 Discriminated on `kind`. This is the canonical thing — `apply`, `undo`, and
 `restore` all build a list of these and run it through the existing
-`show_audit_table` and `apply_audited_defaults` (both in `common.sh`).
+`show_audit_table` and `apply_audited_defaults` (both in `lib/engine.sh`).
 
 ### Common fields (any kind)
 
@@ -142,7 +142,7 @@ Escape hatch for user-defined tweaks (`~/.config/macrift/custom.sh` territory).
 Path: `~/.macrift/state/journal.jsonl`. Append-only, one JSON object per line.
 JSONL because records are heterogeneous (fields vary by `kind`) — a fixed-column
 TSV breaks down here, and python3 is already a dependency
-(`customize/launchpad_sort.py`, the changelog parser in `common.sh`).
+(`customize/launchpad_sort.py`, `lib/engine.py`).
 
 A journal entry = change-unit + capture/metadata fields:
 
@@ -259,8 +259,8 @@ load — surface and internal model stay deliberately different.
 Sugar covers only the handful of well-known pseudo-domains. Anything else goes
 through explicit `defaults[]` elements — no magic.
 
-**Implemented:** `manifest_apply_cli` (common.sh) parses the JSON via a stdlib
-`json` heredoc, desugars the defaults family into `AUDIT_ENTRIES` (reading live
+**Implemented:** `manifest_apply_cli` (`lib/engine.sh`) parses the JSON via
+`lib/engine.py manifest-parse` (stdlib `json`), desugars the defaults family into `AUDIT_ENTRIES` (reading live
 current via `_journal_live_value`), previews through `show_audit_table`, and
 applies via `apply_audited_defaults` — so every applied change is journaled for
 free. `dotfile[]` units are previewed in a separate section and copied via
@@ -276,11 +276,11 @@ The payoff: restore-with-preview is nearly free because the diff already exists.
 
 1. **Build** — `apply`, `restore`, and the interactive wizard each produce a list
    of change-units (from a JSON file, a saved profile, or the menu).
-2. **Diff** — feed them through `show_audit_table` (`common.sh`). It already
+2. **Diff** — feed them through `show_audit_table` (`lib/engine.sh`). It already
    does per-key `old → value` comparison, `(no change)` detection, and red/green
    rendering. `restore` stops _bypassing_ this diff (its current defect) instead
    of needing a new one.
-3. **Apply** — `apply_audited_defaults` (`common.sh`) routes the defaults family
+3. **Apply** — `apply_audited_defaults` (`lib/engine.sh`) routes the defaults family
    by domain; `dotfile`/`brew`/`plist`/`command` units apply in their own
    sections (`_manifest_apply_*`), each appending to `journal.jsonl`.
 4. **Undo / drift** — read the journal back. No new diff logic.
