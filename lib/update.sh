@@ -79,36 +79,10 @@ _fetch_update_changelog() {
     local current_tag="v$MACRIFT_VERSION"
     local commits
 
-    # Emits two prefixes for the caller to split on:
-    #   - <subject>       regular changelog line
-    #   M: <action>       Manual-Action trailer (rendered yellow above changelog)
-    local parse_script='
-import sys, json
-def emit(commits):
-    for c in commits:
-        msg = c["commit"]["message"]
-        lines = msg.splitlines()
-        print("- " + lines[0])
-        for line in lines[1:]:
-            if line.startswith("Manual-Action:"):
-                action = line.split(":", 1)[1].strip()
-                if action:
-                    print("M: " + action)
-try:
-    d = json.load(sys.stdin)
-    if isinstance(d, dict):
-        if "commits" not in d: sys.exit(1)
-        emit(d["commits"])
-    else:
-        emit(d)
-except Exception:
-    sys.exit(1)
-'
-
     # Precise path: requires `v<VERSION>` tag pushed for the current release
     commits=$(curl -fsSL --max-time 5 \
         "https://api.github.com/repos/${MACRIFT_REPO}/compare/${current_tag}...main" 2>/dev/null \
-        | python3 -c "$parse_script" 2>/dev/null)
+        | python3 "$MACRIFT_DIR/lib/engine.py" changelog 2>/dev/null)
 
     if [[ -n "$commits" ]]; then
         printf '%s\n' "$commits"
@@ -118,7 +92,7 @@ except Exception:
     # Fallback: last 10 commits (may include ones the user already has)
     commits=$(curl -fsSL --max-time 5 \
         "https://api.github.com/repos/${MACRIFT_REPO}/commits?per_page=10" 2>/dev/null \
-        | python3 -c "$parse_script" 2>/dev/null)
+        | python3 "$MACRIFT_DIR/lib/engine.py" changelog 2>/dev/null)
     [[ -n "$commits" ]] && printf '%s\n' "$commits"
     return 1   # signals 'imprecise' (caller may note this)
 }

@@ -306,58 +306,7 @@ journal_drift_cli() {
 
     # Dedup to the latest journaled entry per (kind, domain, key)
     local rows
-    rows=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
-import json, sys, collections, os
-def ident(d):
-    # dotfile keys on dest; brew on name+source; plist on domain; command on
-    # id (or run); the defaults family on (domain, key).
-    k = d.get("kind")
-    if k == "dotfile":
-        return ("dotfile", d.get("dest"))
-    if k == "brew":
-        return ("brew", d.get("name"), d.get("source"))
-    if k == "plist":
-        return ("plist", d.get("domain"))
-    if k == "command":
-        return ("command", d.get("id") or d.get("run"))
-    return (k, d.get("domain"), d.get("key"))
-def label_of(d):
-    k = d.get("kind")
-    if k == "dotfile":
-        return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
-    if k == "brew":
-        return d.get("name", "")
-    if k == "plist":
-        return d.get("domain", "")
-    if k == "command":
-        return d.get("id") or d.get("run", "")[:24]
-    return d.get("label", "") or d.get("key", "")
-latest = collections.OrderedDict()
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except Exception:
-        continue
-    latest[ident(d)] = d
-for d in latest.values():
-    old = d.get("old")
-    # Join on US (\x1f), not tab: tab is IFS whitespace in bash and would
-    # collapse the empty old field, shifting later columns.
-    print("\x1f".join([
-        d.get("kind", ""), d.get("domain", ""), d.get("key", ""),
-        d.get("type", ""), str(d.get("value", "")),
-        "" if old is None else str(old),
-        "1" if old is None else "0",
-        label_of(d),
-        d.get("dest", ""), d.get("src", ""),
-        d.get("name", ""), d.get("source", ""), str(d.get("id", "")),
-        d.get("undo") or "",
-    ]))
-PY
-)
+    rows=$(python3 "$MACRIFT_DIR/lib/engine.py" journal-latest "$MACRIFT_JOURNAL")
     if [[ -z "$rows" ]]; then
         log_info "Journal is empty"
         return 0
@@ -440,24 +389,7 @@ _journal_list_sessions() {
     printf "\n"
     log_info "Recorded sessions (newest last):"
     printf '\n'
-    python3 - "$MACRIFT_JOURNAL" <<'PY'
-import json, sys, collections
-agg = collections.OrderedDict()
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except Exception:
-        continue
-    s = d.get("session", "?")
-    if s not in agg:
-        agg[s] = {"n": 0, "ts": d.get("ts", ""), "macos": d.get("macos", "")}
-    agg[s]["n"] += 1
-for s, v in agg.items():
-    print(f"    {s}   {v['n']:>3} changes   {v['ts']}   macOS {v['macos']}")
-PY
+    python3 "$MACRIFT_DIR/lib/engine.py" journal-sessions "$MACRIFT_JOURNAL"
 }
 
 # `macrift undo [<session>|list]` — revert a journaled session to its
@@ -478,20 +410,7 @@ journal_undo_cli() {
     # Resolve target session (last recorded if none given)
     local target="$arg"
     if [[ -z "$target" ]]; then
-        target=$(python3 - "$MACRIFT_JOURNAL" <<'PY'
-import json, sys
-last = ""
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        last = json.loads(line).get("session", last)
-    except Exception:
-        pass
-print(last)
-PY
-)
+        target=$(python3 "$MACRIFT_DIR/lib/engine.py" journal-last-session "$MACRIFT_JOURNAL")
     fi
     if [[ -z "$target" ]]; then
         log_warn "Could not determine a session to undo"
@@ -500,60 +419,7 @@ PY
 
     # First entry per (kind, domain, key) in the session = pre-session state
     local rows
-    rows=$(python3 - "$MACRIFT_JOURNAL" "$target" <<'PY'
-import json, sys, collections, os
-target = sys.argv[2]
-def ident(d):
-    k = d.get("kind")
-    if k == "dotfile":
-        return ("dotfile", d.get("dest"))
-    if k == "brew":
-        return ("brew", d.get("name"), d.get("source"))
-    if k == "plist":
-        return ("plist", d.get("domain"))
-    if k == "command":
-        return ("command", d.get("id") or d.get("run"))
-    return (k, d.get("domain"), d.get("key"))
-def label_of(d):
-    k = d.get("kind")
-    if k == "dotfile":
-        return d.get("label") or os.path.basename(d.get("dest", "")) or d.get("dest", "")
-    if k == "brew":
-        return d.get("name", "")
-    if k == "plist":
-        return d.get("domain", "")
-    if k == "command":
-        return d.get("id") or d.get("run", "")[:24]
-    return d.get("label", "") or d.get("key", "")
-first = collections.OrderedDict()
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except Exception:
-        continue
-    if d.get("session") != target:
-        continue
-    k = ident(d)
-    if k in first:
-        continue
-    first[k] = d
-for d in first.values():
-    old = d.get("old")
-    print("\x1f".join([
-        d.get("kind", ""), d.get("domain", ""), d.get("key", ""),
-        d.get("type", ""), str(d.get("value", "")),
-        "" if old is None else str(old),
-        "1" if old is None else "0",
-        label_of(d),
-        d.get("dest", ""), d.get("src", ""),
-        d.get("name", ""), d.get("source", ""), str(d.get("id", "")),
-        d.get("undo") or "",
-    ]))
-PY
-)
+    rows=$(python3 "$MACRIFT_DIR/lib/engine.py" journal-first "$MACRIFT_JOURNAL" "$target")
     if [[ -z "$rows" ]]; then
         log_warn "No changes recorded for session $target"
         return 1
@@ -767,137 +633,7 @@ manifest_apply_cli() {
     fi
 
     local out
-    out=$(python3 - "$manifest" "$MACRIFT_OS_VER" <<'PY'
-import json, sys, os
-SEP = "\x1f"
-TYPE_MAP = {"bool": "-bool", "int": "-int", "float": "-float", "string": "-string"}
-
-def os_major(v):
-    try:
-        return int(str(v).split(".")[0])
-    except Exception:
-        return None
-
-run_major = os_major(sys.argv[2]) if len(sys.argv) > 2 else None
-
-def nval(v):
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    return str(v)
-
-def version_ok(u):
-    if run_major is None:
-        return True
-    mn, mx = u.get("min_macos"), u.get("max_macos")
-    if mn is not None and (m := os_major(mn)) is not None and run_major < m:
-        return False
-    if mx is not None and (m := os_major(mx)) is not None and run_major > m:
-        return False
-    return True
-
-try:
-    with open(sys.argv[1]) as f:
-        m = json.load(f)
-except Exception as e:
-    sys.stderr.write("parse error: %s\n" % e)
-    sys.exit(2)
-
-units = []
-skipped_version = 0
-
-def add(kind, domain, key, vtype, value, label, unit=None):
-    global skipped_version
-    if unit is not None and not version_ok(unit):
-        skipped_version += 1
-        return
-    units.append((kind, domain, key, vtype, value, label))
-
-for d in m.get("defaults", []):
-    add("default", d["domain"], d["key"],
-        TYPE_MAP.get(d.get("type", "string"), "-string"),
-        nval(d["value"]), d.get("label") or d.get("id") or d["key"], d)
-
-fin = m.get("finder", {})
-if "sort" in fin:
-    add("finder_sort", "finder_sort", "sort", "", str(fin["sort"]), "Finder sort")
-if "hidden_files" in fin:
-    add("default", "com.apple.finder", "AppleShowAllFiles", "-bool",
-        nval(fin["hidden_files"]), "Show hidden files")
-
-boot = m.get("boot", {})
-if "startup_sound" in boot:
-    add("nvram", "nvram", "StartupMute", "-bool", nval(boot["startup_sound"]), "Startup sound")
-
-lib = m.get("library", {})
-if "visible" in lib:
-    add("chflags", "chflags", "nohidden", "-bool", nval(lib["visible"]), "Show Library folder")
-
-# dotfile units are file copies, not audit-table entries — emit on a separate
-# channel (__DOTFILE__ marker) and let the bash side route them to copy_config.
-dots = []
-for df in m.get("dotfile", []):
-    if not version_ok(df):
-        skipped_version += 1
-        continue
-    src, dest = df.get("src", ""), df.get("dest", "")
-    if not src or not dest:
-        continue
-    label = df.get("label") or df.get("id") or os.path.basename(dest) or dest
-    dots.append(("__DOTFILE__", src, dest, str(df.get("mode") or ""), label))
-
-# brew units (formula/cask/mas) — installed outside the audit table, on their
-# own channel like dotfiles. Columns reused: domain=name, key=source, vtype=id.
-brews = []
-for b in m.get("brew", []):
-    if not version_ok(b):
-        skipped_version += 1
-        continue
-    name = b.get("name", "")
-    if not name:
-        continue
-    brews.append(("__BREW__", name, b.get("source", "formula"), str(b.get("id") or "")))
-
-# plist units (whole-domain defaults import) — opaque third-party domains, own
-# channel. Columns reused: domain=domain, key=file.
-plists = []
-for pl in m.get("plist", []):
-    if not version_ok(pl):
-        skipped_version += 1
-        continue
-    dom, fil = pl.get("domain", ""), pl.get("file", "")
-    if not dom or not fil:
-        continue
-    plists.append(("__PLIST__", dom, fil))
-
-# command units (arbitrary shell escape hatch) — own channel. Columns reused:
-# domain=id, key=run, vtype=undo, value=label.
-commands = []
-for c in m.get("command", []):
-    if not version_ok(c):
-        skipped_version += 1
-        continue
-    run = c.get("run", "")
-    if not run:
-        continue
-    cid = c.get("id", "") or ""
-    commands.append(("__COMMAND__", cid, run, c.get("undo", "") or "", c.get("label") or cid or "command"))
-
-# Every kind is now applied; nothing is reported as unsupported.
-unsupported = []
-
-for u in units:
-    print(SEP.join(u))
-for d in dots:
-    print(SEP.join(d))
-for b in brews:
-    print(SEP.join(b))
-for pl in plists:
-    print(SEP.join(pl))
-for c in commands:
-    print(SEP.join(c))
-print("__META__" + SEP + str(skipped_version) + SEP + ",".join(unsupported))
-PY
-) || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
+    out=$(python3 "$MACRIFT_DIR/lib/engine.py" manifest-parse "$manifest" "$MACRIFT_OS_VER") || { log_err "Could not parse manifest (invalid JSON?)"; return 1; }
 
     audit_reset
     DOTFILE_UNITS=()
@@ -1232,83 +968,7 @@ _manifest_apply_command() {
 # can't drift apart. Usage: _manifest_build_json <name> <entries> <brew> <dotfile> <plist> <command>
 _manifest_build_json() {
     local name="$1" entries="$2" brewf="$3" dotf="$4" plistf="$5" cmdf="$6"
-    python3 - "$name" "$MACRIFT_VERSION" "$MACRIFT_OS_VER" "$entries" "$brewf" "$dotf" "$plistf" "$cmdf" <<'PY'
-import sys, json
-name, ver, osv = sys.argv[1], sys.argv[2], sys.argv[3]
-entries_p, brew_p, dot_p, plist_p, cmd_p = sys.argv[4:9]
-TYPE = {"-bool": "bool", "-int": "int", "-float": "float", "-string": "string"}
-
-def conv(t, v):
-    # Only bool becomes a JSON boolean; others keep the raw `defaults read` string
-    # so a save→apply round-trip compares byte-identical.
-    return (v == "true") if t == "-bool" else v
-
-def rows(p):
-    if not p:
-        return []
-    try:
-        return [l.rstrip("\n") for l in open(p) if l.strip()]
-    except Exception:
-        return []
-
-defaults, finder, boot, library = [], {}, {}, {}
-for line in rows(entries_p):
-    p = line.split("|")
-    if len(p) < 6:
-        continue
-    label, current, new_val, domain, key, vtype = p[:6]
-    label = label.split("~", 1)[0]
-    if label == "---" or current == "default":
-        continue
-    if domain == "finder_sort":
-        finder["sort"] = current
-    elif domain == "nvram" and key == "StartupMute":
-        boot["startup_sound"] = (current == "true")
-    elif domain == "chflags":
-        library["visible"] = (current == "true")
-    else:
-        defaults.append({"label": label, "domain": domain, "key": key,
-                         "type": TYPE.get(vtype, "string"), "value": conv(vtype, current)})
-
-brew = []
-for line in rows(brew_p):
-    p = line.split("\t")
-    if len(p) < 2 or not p[0]:
-        continue
-    e = {"name": p[0], "source": p[1]}
-    if p[1] == "mas" and len(p) > 2 and p[2]:
-        e["id"] = p[2]
-    brew.append(e)
-
-dotfile = [{"src": p[0], "dest": p[1]}
-           for p in (l.split("\t") for l in rows(dot_p)) if len(p) >= 2]
-plist = [{"domain": p[0], "file": p[1]}
-         for p in (l.split("\t") for l in rows(plist_p)) if len(p) >= 2]
-
-command = []
-for line in rows(cmd_p):
-    p = line.split("\t")
-    if len(p) < 2:
-        continue
-    c = {"run": p[1]}
-    if p[0]:
-        c["id"] = p[0]
-    if len(p) > 2 and p[2]:
-        c["undo"] = p[2]
-    if len(p) > 3 and p[3]:
-        c["label"] = p[3]
-    command.append(c)
-
-m = {"meta": {"name": name, "macrift": ver, "source_macos": osv}, "defaults": defaults}
-if finder:  m["finder"] = finder
-if boot:    m["boot"] = boot
-if library: m["library"] = library
-if brew:    m["brew"] = brew
-if dotfile: m["dotfile"] = dotfile
-if plist:   m["plist"] = plist
-if command: m["command"] = command
-print(json.dumps(m, indent=2))
-PY
+    python3 "$MACRIFT_DIR/lib/engine.py" manifest-build "$name" "$MACRIFT_VERSION" "$MACRIFT_OS_VER" "$entries" "$brewf" "$dotf" "$plistf" "$cmdf"
 }
 
 # `macrift save [<file.json>]` — snapshot the tweaks macrift knows about (granular,
