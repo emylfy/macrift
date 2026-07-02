@@ -45,19 +45,14 @@ install_appstore() {
     local installed_count=0
 
     while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-        if [[ "$line" =~ ^mas[[:space:]]+\"([^\"]+)\".*id:[[:space:]]*([0-9]+) ]]; then
-            local name="${BASH_REMATCH[1]}"
-            local id="${BASH_REMATCH[2]}"
-            local optional=0
-            [[ "$line" == *"# optional"* ]] && optional=1
-            if echo "$installed_ids" | grep -qxF "$id"; then
-                installed_count=$((installed_count + 1))
-            else
-                new_labels+=("$name")
-                new_ids+=("$id")
-                new_optional+=("$optional")
-            fi
+        _brewfile_parse_line "$line" || continue
+        [[ "$BF_KIND" == "mas" ]] || continue
+        if echo "$installed_ids" | grep -qxF "$BF_ID"; then
+            installed_count=$((installed_count + 1))
+        else
+            new_labels+=("$BF_NAME")
+            new_ids+=("$BF_ID")
+            new_optional+=("$BF_OPTIONAL")
         fi
     done < "$path"
 

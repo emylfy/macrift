@@ -51,6 +51,29 @@ brew_install() {
     fi
 }
 
+# Tokenize one Brewfile line into BF_KIND (formula|cask|mas|tap), BF_NAME,
+# BF_ID (mas only) and BF_OPTIONAL (1 when tagged "# optional"). Returns 1 for
+# comments, blanks and unrecognized lines. Installed/broken/section policy
+# stays with the callers — this only parses.
+_brewfile_parse_line() {
+    local line="$1"
+    BF_KIND="" BF_NAME="" BF_ID="" BF_OPTIONAL=0
+    [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && return 1
+    if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
+        BF_KIND="formula"; BF_NAME="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
+        BF_KIND="cask"; BF_NAME="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ ^mas[[:space:]]+\"([^\"]+)\".*id:[[:space:]]*([0-9]+) ]]; then
+        BF_KIND="mas"; BF_NAME="${BASH_REMATCH[1]}"; BF_ID="${BASH_REMATCH[2]}"
+    elif [[ "$line" =~ ^tap[[:space:]]+\"([^\"]+)\" ]]; then
+        BF_KIND="tap"; BF_NAME="${BASH_REMATCH[1]}"
+    else
+        return 1
+    fi
+    [[ "$line" == *"# optional"* ]] && BF_OPTIONAL=1
+    return 0
+}
+
 # Emit installed packages as "name<TAB>source<TAB>id" lines: top-level brew
 # formulae (leaves), casks, and Mac App Store apps (id last).
 _capture_brew_list() {

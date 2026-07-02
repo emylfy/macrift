@@ -212,7 +212,8 @@ _collect_casks() {
     for f in "$@"; do
         [[ -f "$f" ]] || continue
         while IFS= read -r line; do
-            [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]] && echo "${BASH_REMATCH[1]}"
+            _brewfile_parse_line "$line" || continue
+            [[ "$BF_KIND" == "cask" ]] && echo "$BF_NAME"
         done < "$f"
     done
 }
@@ -248,20 +249,11 @@ fzf_search_packages() {
         category=$(_bundle_label "$bname")
 
         while IFS= read -r line; do
-            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-            local name="" kind=""
-            if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
-                name="${BASH_REMATCH[1]}"
-                kind="formula"
-            elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
-                name="${BASH_REMATCH[1]}"
-                kind="cask"
-            else
-                continue
-            fi
+            _brewfile_parse_line "$line" || continue
+            [[ "$BF_KIND" == "formula" || "$BF_KIND" == "cask" ]] || continue
             # Skip already installed (via brew or externally)
-            _is_installed "$name" "$kind" "$installed" && continue
-            fzf_lines+=("$name  [$category]")
+            _is_installed "$BF_NAME" "$BF_KIND" "$installed" && continue
+            fzf_lines+=("$BF_NAME  [$category]")
             brew_lines+=("$line")
         done < "$brewfile"
     done
@@ -456,18 +448,9 @@ install_bundle() {
             continue
         fi
         had_items=true
-        local name="" kind=""
-        if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
-            name="${BASH_REMATCH[1]}"
-            kind="formula"
-        elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
-            name="${BASH_REMATCH[1]}"
-            kind="cask"
-        else
-            continue
-        fi
-        local optional=0
-        [[ "$line" == *"# optional"* ]] && optional=1
+        _brewfile_parse_line "$line" || continue
+        [[ "$BF_KIND" == "formula" || "$BF_KIND" == "cask" ]] || continue
+        local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL"
         if grep -qxF "$name" <<< "$installed"; then
             if [[ "$kind" == "cask" ]] && _is_cask_broken "$name"; then
                 broken_casks+=("$name")
@@ -646,19 +629,9 @@ install_all_bundles() {
 
         local section_lines=() section_labels=() section_optional=()
         while IFS= read -r line; do
-            [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-            local name="" kind=""
-            if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
-                name="${BASH_REMATCH[1]}"
-                kind="formula"
-            elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
-                name="${BASH_REMATCH[1]}"
-                kind="cask"
-            else
-                continue
-            fi
-            local optional=0
-            [[ "$line" == *"# optional"* ]] && optional=1
+            _brewfile_parse_line "$line" || continue
+            [[ "$BF_KIND" == "formula" || "$BF_KIND" == "cask" ]] || continue
+            local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL"
             if grep -qxF "$name" <<< "$installed"; then
                 installed_count=$((installed_count + 1))
                 installed_view+=("$name [brew · $section_label]")
@@ -781,25 +754,14 @@ import_brewbak() {
     local installed_view=()
     local installed_count=0
     while IFS= read -r line; do
-        [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && continue
-        local name="" label="" kind=""
-        if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
-            name="${BASH_REMATCH[1]}"
-            label="$name"
-            kind="formula"
-        elif [[ "$line" =~ ^cask[[:space:]]+\"([^\"]+)\" ]]; then
-            name="${BASH_REMATCH[1]}"
-            label="$name"
-            kind="cask"
-        elif [[ "$line" =~ ^tap[[:space:]]+\"([^\"]+)\" ]]; then
-            name="${BASH_REMATCH[1]}"
-            label="$name (tap)"
+        _brewfile_parse_line "$line" || continue
+        local name="$BF_NAME" label="$BF_NAME" kind="$BF_KIND"
+        if [[ "$kind" == "tap" ]]; then
             new_lines+=("$line")
-            new_labels+=("$label")
-            continue
-        else
+            new_labels+=("$name (tap)")
             continue
         fi
+        [[ "$kind" == "formula" || "$kind" == "cask" ]] || continue
         if grep -qxF "$name" <<< "$installed"; then
             if [[ "$kind" == "cask" ]] && _is_cask_broken "$name"; then
                 new_lines+=("$line")
