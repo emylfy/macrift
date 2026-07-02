@@ -139,6 +139,8 @@ show_security_status() {
                     log_info "System Settings > Privacy & Security > Allow apps from Anywhere"
                     open "x-apple.systempreferences:com.apple.preference.security?General"
                 else
+                    _journal_append_command "gatekeeper" \
+                        "sudo spctl --master-disable" "sudo spctl --master-enable"
                     log_ok "Gatekeeper disabled"
                 fi
             fi
@@ -150,6 +152,8 @@ show_security_status() {
                 log_info "Would run: sudo spctl --master-enable"
             else
                 sudo spctl --master-enable
+                _journal_append_command "gatekeeper" \
+                    "sudo spctl --master-enable" "sudo spctl --master-disable"
                 log_ok "Gatekeeper enabled"
             fi
         fi
@@ -238,17 +242,30 @@ _current_dns() {
     networksetup -getdnsservers "$svc" 2>/dev/null | paste -sd ', ' - || echo "unknown"
 }
 
+# Usage: _apply_dns <label> <primary> [secondary]
 _apply_dns() {
-    local label="$1" primary="$2" secondary="$3"
-    local svc
+    local label="$1" svc prev run undo
+    shift
     svc=$(_active_service)
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would run: networksetup -setdnsservers $svc $primary $secondary"
+        log_info "Would run: networksetup -setdnsservers $svc $*"
         return
     fi
-    networksetup -setdnsservers "$svc" "$primary" "$secondary"
-    log_ok "DNS set to $label ($primary, $secondary)"
+    # Capture the pre-change servers for undo; no servers set (DHCP) means
+    # networksetup prints a sentence, which maps back to the literal "Empty".
+    prev=$(networksetup -getdnsservers "$svc" 2>/dev/null | paste -sd ' ' -)
+    [[ -z "$prev" || "$prev" == *"DNS Servers"* ]] && prev="Empty"
+    if networksetup -setdnsservers "$svc" "$@"; then
+        printf -v run 'networksetup -setdnsservers %q %s' "$svc" "$*"
+        printf -v undo 'networksetup -setdnsservers %q %s' "$svc" "$prev"
+        _journal_append_command "dns:$svc" "$run" "$undo"
+        local joined="$1"
+        [[ $# -gt 1 ]] && joined="$1, $2"
+        log_ok "DNS set to $label ($joined)"
+    else
+        log_err "Failed to set DNS on $svc"
+    fi
 }
 
 _has_dnspyre() { command -v dnspyre &>/dev/null; }
@@ -530,17 +547,10 @@ dns_custom() {
     local secondary
     if ! read -r secondary; then return; fi
 
-    local svc
-    svc=$(_active_service)
-
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would run: networksetup -setdnsservers $svc $primary $secondary"
-    elif [[ -n "$secondary" ]]; then
-        networksetup -setdnsservers "$svc" "$primary" "$secondary"
-        log_ok "DNS set to $primary, $secondary"
+    if [[ -n "$secondary" ]]; then
+        _apply_dns "custom" "$primary" "$secondary"
     else
-        networksetup -setdnsservers "$svc" "$primary"
-        log_ok "DNS set to $primary"
+        _apply_dns "custom" "$primary"
     fi
 
     wait_enter
@@ -666,6 +676,9 @@ update_control_install() {
     rm -f "$dl_profile"
 
     if /usr/bin/profiles show -type configuration 2>/dev/null | grep -q "$UPDATE_PROFILE_ID"; then
+        _journal_append_command "update-deferral-profile" \
+            "open macrift-defer-updates.mobileconfig (deferral ${major_delay}d, GUI-approved)" \
+            "sudo /usr/bin/profiles remove -identifier $UPDATE_PROFILE_ID"
         log_ok "Deferral profile installed (major: ${major_delay}d)"
     else
         log_warn "Profile not detected — check System Settings > Profiles"
@@ -882,6 +895,8 @@ gatekeeper_cli() {
             fi
             require_sudo
             if sudo spctl --master-enable 2>/dev/null; then
+                _journal_append_command "gatekeeper" \
+                    "sudo spctl --master-enable" "sudo spctl --master-disable"
                 log_ok "Gatekeeper enabled"
             else
                 log_err "Failed to enable Gatekeeper"
@@ -910,6 +925,8 @@ gatekeeper_cli() {
                 log_info "System Settings → Privacy & Security → 'Allow apps from: Anywhere'"
                 open "x-apple.systempreferences:com.apple.preference.security?General" 2>/dev/null || true
             else
+                _journal_append_command "gatekeeper" \
+                    "sudo spctl --master-disable" "sudo spctl --master-enable"
                 log_ok "Gatekeeper disabled"
             fi
             ;;

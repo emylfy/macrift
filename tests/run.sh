@@ -783,6 +783,21 @@ MACRIFT_NO_CONFIRM=true MACRIFT_ALLOW_COMMANDS=true journal_undo_cli "2606-cr" >
 if [[ -e "$CMD_MARK" ]]; then no "command undo: runs inverse (removes marker)"; else ok "command undo: runs inverse (removes marker)"; fi
 rm -rf "$CMD_DIR"; rm -f "$CMD_MARK"
 
+# --- security: DNS change journals a command entry (stubbed networksetup) ---
+: > "$MACRIFT_JOURNAL"
+source "$ROOT/security/menu.sh"
+_active_service() { echo "Wi-Fi"; }
+networksetup() {
+    case "$1" in
+        -getdnsservers) echo "There aren't any DNS Servers set on Wi-Fi." ;;
+        -setdnsservers) : ;;
+    esac
+}
+MACRIFT_DRY_RUN=false _apply_dns "Cloudflare" 1.1.1.1 1.0.0.1 >/dev/null 2>&1
+eq "dns journal: id"                 "$(jq -r 'select(.kind=="command").id' "$MACRIFT_JOURNAL")"   "dns:Wi-Fi"
+eq "dns journal: undo restores DHCP" "$(jq -r 'select(.kind=="command").undo' "$MACRIFT_JOURNAL")" "networksetup -setdnsservers Wi-Fi Empty"
+unset -f networksetup _active_service
+
 # --- dry-run journals nothing ---
 : > "$MACRIFT_JOURNAL"
 MACRIFT_DRY_RUN=true _journal_append default "x" com.apple.dock tilesize -int 48 36
