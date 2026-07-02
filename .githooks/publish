@@ -23,6 +23,16 @@ fi
 
 # Calver bump: YY.MM → YY.MM.1 → YY.MM.2 … ; a new month resets (26.05.7 → 26.06).
 current=$(cat VERSION 2>/dev/null || echo "")
+
+# A prepared-but-unreleased VERSION (bumped by hand, no tag yet) must not be
+# bumped again — push it as-is; the pre-push hook tags and releases it.
+if [[ -n "$current" ]] && ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
+    printf 'publish: v%s not yet released — pushing without a new bump\n' "$current"
+    git push origin main
+    printf 'publish: released v%s\n' "$current"
+    exit 0
+fi
+
 today_major=$(date +%y.%m)
 if [[ "$current" =~ ^([0-9]+\.[0-9]+)(\.([0-9]+))?$ ]]; then
     cur_major="${BASH_REMATCH[1]}"
