@@ -1,7 +1,7 @@
 # Messengers
-cask "ayugram"   # optional
-cask "telegram"
+cask "ayugram"   # optional — Telegram fork with extras
+cask "telegram"  # Telegram Desktop
 
 # Voice & Teams
-cask "discord"
-cask "vesktop"   # optional
+cask "discord"   # voice and text for communities
+cask "vesktop"   # optional — lighter Discord client

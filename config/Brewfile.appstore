@@ -1,6 +1,6 @@
 # Mac App Store (requires: brew install mas)
-mas "Happ", id: 6746188973            # optional
-mas "v2RayTun", id: 6476628951        # optional
-mas "New File Menu Lite", id: 1066302071
-mas "Telegram", id: 747648890
-mas "TestFlight", id: 899247664       # optional
+mas "Happ", id: 6746188973            # optional — proxy client
+mas "v2RayTun", id: 6476628951        # optional — VPN client
+mas "New File Menu Lite", id: 1066302071  # right-click "New File" in Finder
+mas "Telegram", id: 747648890         # native App Store build
+mas "TestFlight", id: 899247664       # optional — beta apps

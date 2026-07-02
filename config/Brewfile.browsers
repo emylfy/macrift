@@ -1,6 +1,6 @@
 # Browsers — all default-off, pick what you want
-cask "google-chrome"      # optional
-cask "arc"                # optional
-cask "zen"                # optional
-cask "ungoogled-chromium" # optional
-cask "helium-browser"     # optional
+cask "google-chrome"      # optional — Chrome
+cask "arc"                # optional — Chromium with sidebar workspaces
+cask "zen"                # optional — Firefox-based, Arc-like UI
+cask "ungoogled-chromium" # optional — Chromium without Google services
+cask "helium-browser"     # optional — lightweight privacy Chromium fork

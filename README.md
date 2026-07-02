@@ -131,7 +131,7 @@ Pair with the one-shot install above to inspect someone else's Mac without leavi
 |     | Feature                | What it does                                                           |
 | :-- | :--------------------- | :--------------------------------------------------------------------- |
 | ⚙️  | **System Tweaks**      | Dock, Finder, Keyboard, Trackpad, Screenshots, Misc, Privacy           |
-| 📦  | **Apps & Packages**    | 7 Homebrew bundles, Mac App Store, Spotify, Xcode CLT, .brewbak backup |
+| 📦  | **Apps & Packages**    | 8 Homebrew bundles, Mac App Store, Spotify, Xcode CLT, .brewbak backup |
 | 🎨  | **Customize**          | Profile, Terminal, Shell, FastFetch, Editor, Dock Layout, Launchpad    |
 | 🛡️  | **Security & Privacy** | Security status, hostname, DNS benchmark, update control               |
 | 🧹  | **Cleanup**            | System cleanup via Mole — caches, logs, leftovers                      |
@@ -157,12 +157,13 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 
 ### 📦 Apps & Packages
 
-**Homebrew Bundles** — multi-select installer with 7 curated Brewfiles + fzf search across all packages.
+**Homebrew Bundles** — multi-select installer with 8 curated Brewfiles + fzf search across all packages. Every package shows a one-line description in the picker.
 
 <details>
 <summary>What's in each bundle</summary>
 
-- **Development** — git, gh, lazygit, node, python, go, rust, docker, fzf, ripgrep, plus editors (VS Code, Cursor, Zed) and terminals (iTerm2, Ghostty, Warp) — 35 packages
+- **Development** — CLI only: git, gh, lazygit, node, python, go, rust, docker, fzf, ripgrep, zoxide, atuin, television, and more — 31 packages
+- **Apps** — dev GUI: editors (VS Code, Cursor, Zed), terminals (Ghostty, Warp, iTerm2), Claude, Docker Desktop — 10 apps
 - **Utilities** — Raycast, Alfred, AltTab, AeroSpace, 1Password, BetterDisplay, Keka, and more — 17 packages
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium, Helium
 - **Communication** — Ayugram, Telegram, Discord, Vesktop

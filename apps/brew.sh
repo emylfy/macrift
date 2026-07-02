@@ -349,7 +349,8 @@ brew_menu() {
         choice=$(show_menu "Homebrew" \
             "Search packages" \
             "---" \
-            "Development" \
+            "Dev Tools" \
+            "Dev Apps" \
             "Utilities" \
             "Browsers" \
             "---" \
@@ -364,15 +365,16 @@ brew_menu() {
 
         case "$choice" in
             1) fzf_search_packages ;;
-            2) install_bundle "Brewfile.dev" "Development" ;;
-            3) install_bundle "Brewfile.utils" "Utilities" ;;
-            4) install_bundle "Brewfile.browsers" "Browsers" ;;
-            5) install_bundle "Brewfile.comm" "Communication" ;;
-            6) install_bundle "Brewfile.media" "Media" ;;
-            7) install_bundle "Brewfile.games" "Games" ;;
-            8) install_bundle "Brewfile.fonts" "Fonts" ;;
-            9) install_all_bundles ;;
-            10) brewbak_menu ;;
+            2) install_bundle "Brewfile.dev" "Dev Tools" ;;
+            3) install_bundle "Brewfile.apps" "Dev Apps" ;;
+            4) install_bundle "Brewfile.utils" "Utilities" ;;
+            5) install_bundle "Brewfile.browsers" "Browsers" ;;
+            6) install_bundle "Brewfile.comm" "Communication" ;;
+            7) install_bundle "Brewfile.media" "Media" ;;
+            8) install_bundle "Brewfile.games" "Games" ;;
+            9) install_bundle "Brewfile.fonts" "Fonts" ;;
+            10) install_all_bundles ;;
+            11) brewbak_menu ;;
             0) break ;;
             *) ;;
         esac
@@ -613,7 +615,8 @@ install_bundle() {
 
 _bundle_label() {
     case "$1" in
-        Brewfile.dev)      echo "Development" ;;
+        Brewfile.dev)      echo "Dev Tools" ;;
+        Brewfile.apps)     echo "Dev Apps" ;;
         Brewfile.utils)    echo "Utilities" ;;
         Brewfile.browsers) echo "Browsers" ;;
         Brewfile.comm)     echo "Communication" ;;

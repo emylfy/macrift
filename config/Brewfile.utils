@@ -2,34 +2,34 @@
 tap "nikitabobko/tap"   # aerospace tiling WM
 
 # Homebrew GUI
-cask "cork"
+cask "cork"             # menu bar GUI for Homebrew
 
 # Launchers
-cask "raycast"
-cask "alfred"           # optional
+cask "raycast"          # launcher + clipboard history + window snapping
+cask "alfred"           # optional — classic launcher
 
 # Menu bar & Window management
-cask "hiddenbar"
-cask "alt-tab"
-cask "keyboard-cowboy"  # optional
-cask "aerospace"        # optional — from nikitabobko/tap (taps above)
+cask "hiddenbar"        # hide menu bar icons
+cask "alt-tab"          # Windows-style Cmd-Tab with window previews
+cask "keyboard-cowboy"  # optional — keyboard automation
+cask "aerospace"        # optional — tiling WM from nikitabobko/tap (taps above)
 
 # Files & Downloads
-cask "keka"
-cask "motrix"           # optional
+cask "keka"             # archiver — 7z, rar, zip
+cask "motrix"           # optional — download manager
 
 # Audio & Display
-cask "soundsource"
-cask "betterdisplay"
+cask "soundsource"      # per-app volume and audio routing
+cask "betterdisplay"    # display resolutions, HiDPI, brightness
 
 # Passwords & Security
-cask "proton-pass"      # optional
-cask "1password"
+cask "proton-pass"      # optional — Proton password manager
+cask "1password"        # password manager
 
 # Remote & Peripherals
-cask "rustdesk"
-cask "logi-options+"    # optional
-cask "macs-fan-control" # optional
+cask "rustdesk"         # open-source remote desktop
+cask "logi-options+"    # optional — Logitech mouse/keyboard driver
+cask "macs-fan-control" # optional — manual fan control
 
 # Productivity
-cask "todoist"
+cask "todoist"          # todo lists and projects

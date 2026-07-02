@@ -1,0 +1,17 @@
+# AI
+cask "claude"               # optional — Claude desktop app
+
+# Editors
+cask "visual-studio-code"   # VS Code
+cask "cursor"               # optional — AI-first VS Code fork
+cask "zed"                  # optional — fast native editor
+cask "github"               # optional — GitHub Desktop
+
+# Terminals
+cask "ghostty"              # GPU terminal (see Customize › Terminal)
+cask "warp"                 # optional — AI terminal
+cask "iterm2"               # optional — classic macOS terminal
+
+# Desktop apps
+cask "docker-desktop"       # optional — Docker GUI + engine
+cask "android-platform-tools" # optional — adb and fastboot

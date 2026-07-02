@@ -1,10 +1,10 @@
 # Video & Streaming
-cask "iina"
-cask "obs"       # optional
+cask "iina"      # modern macOS video player
+cask "obs"       # optional — streaming and screen recording
 
 # Music
-cask "spotify"
+cask "spotify"   # Spotify
 
 # Design
-cask "figma"
-cask "affinity"  # optional
+cask "figma"     # Figma desktop
+cask "affinity"  # optional — Photoshop/Illustrator alternative, one-time buy

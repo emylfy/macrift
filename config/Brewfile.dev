@@ -1,55 +1,42 @@
 # Shell & Git
-brew "bash"
-brew "git"
-brew "gh"
-brew "lazygit"
+brew "bash"                 # modern bash (macOS ships 3.2 from 2007)
+brew "git"                  # up-to-date git
+brew "gh"                   # GitHub CLI — PRs and issues from the terminal
+brew "lazygit"              # terminal UI for git
 
 # Languages & Runtimes
-brew "node"                 # optional
-brew "python"               # optional
-brew "go"                   # optional
-brew "rust"                 # optional
+brew "node"                 # optional — Node.js runtime + npm
+brew "python"               # optional — Python 3
+brew "go"                   # optional — Go toolchain
+brew "rust"                 # optional — Rust toolchain
 
 # Containers
-brew "docker"               # optional
-brew "docker-compose"       # optional
+brew "docker"               # optional — Docker CLI
+brew "docker-compose"       # optional — multi-container orchestration
 
 # Terminal tools
-brew "tmux"                 # optional
-brew "fzf"
-brew "ripgrep"
-brew "fd"
-brew "bat"
-brew "eza"
-brew "jq"
-brew "tlrc"                 # optional
+brew "tmux"                 # optional — terminal multiplexer (see Customize › tmux)
+brew "fzf"                  # fuzzy finder for files, history, anything
+brew "ripgrep"              # grep, but fast (rg)
+brew "fd"                   # find, but simple and fast
+brew "bat"                  # cat with syntax highlighting
+brew "eza"                  # ls with icons and tree view
+brew "zoxide"               # smarter cd — `z <dir>` jumps to frecent dirs
+brew "atuin"                # shell history in a searchable DB (Ctrl-R)
+brew "television"           # fuzzy picker with channels (see Customize › television)
+brew "jq"                   # JSON processor
+brew "tlrc"                 # optional — tldr pages, man with examples
 
 # Network & Media
-brew "httpie"               # optional
-brew "wget"
-brew "ffmpeg"               # optional
-brew "scrcpy"               # optional
+brew "httpie"               # optional — curl for humans
+brew "wget"                 # file downloader
+brew "sshs"                 # TUI ssh connection manager
+brew "ffmpeg"               # optional — audio/video swiss army knife
+brew "scrcpy"               # optional — mirror and control Android devices
 
 # System utilities
-brew "tree"
-brew "fastfetch"
-brew "macmon"               # optional
-brew "mole"
-
-# AI
-cask "claude"               # optional
-
-# Editors
-cask "visual-studio-code"
-cask "cursor"               # optional
-cask "zed"                  # optional
-cask "github"               # optional
-
-# Terminals
-cask "ghostty"
-cask "warp"                 # optional
-cask "iterm2"               # optional
-
-# Desktop apps
-cask "docker-desktop"       # optional
-cask "android-platform-tools" # optional
+brew "tree"                 # directory trees in the terminal
+brew "fastfetch"            # system info at a glance
+brew "glow"                 # render markdown in the terminal
+brew "macmon"               # optional — Apple Silicon power/temp monitor
+brew "mole"                 # deep-clean caches and leftovers (used by Cleanup)

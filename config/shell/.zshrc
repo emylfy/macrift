@@ -98,6 +98,15 @@ alias ports="lsof -i -P -n | grep LISTEN"
 # FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
+# Zoxide — smarter cd (`z <dir>` jumps to frecent dirs; `zi` for interactive pick)
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh)"
+
+# Television — fuzzy picker shell integration (Ctrl-T)
+command -v tv &>/dev/null && eval "$(tv init zsh)"
+
+# Atuin — searchable shell history; loaded after tv so it keeps Ctrl-R
+command -v atuin &>/dev/null && eval "$(atuin init zsh)"
+
 # Starship prompt
 eval "$(starship init zsh)" 2>/dev/null
 
