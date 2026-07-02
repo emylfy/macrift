@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# macrift — Homebrew helpers
+
+# Ensure Homebrew is available; install if missing, load shellenv for current session
+check_homebrew() {
+    if ! command -v brew &>/dev/null; then
+        # Try to load brew from known paths before declaring missing
+        if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [[ -f /usr/local/bin/brew ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
+    fi
+
+    if ! command -v brew &>/dev/null; then
+        log_warn "Homebrew not found"
+        if confirm "Install Homebrew?"; then
+            if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty; then
+                if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
+                    eval "$(/opt/homebrew/bin/brew shellenv)"
+                elif [[ -f /usr/local/bin/brew ]]; then
+                    eval "$(/usr/local/bin/brew shellenv)"
+                fi
+            else
+                log_err "Homebrew installation failed"
+                return 1
+            fi
+        else
+            log_warn "Some features require Homebrew"
+            return 1
+        fi
+    fi
+}
+
+brew_install() {
+    local package="$1"
+    local type="${2:-formula}" # formula or cask
+    local -a flag=(); [[ "$type" == "cask" ]] && flag=("--cask")
+
+    # bash 3.2-safe array expansion — empty arrays under set -u explode otherwise
+    if brew list ${flag[@]+"${flag[@]}"} "$package" &>/dev/null; then
+        log_skip "$package already installed"
+        return 0
+    fi
+    log_info "Installing $package..."
+    if brew install ${flag[@]+"${flag[@]}"} "$package"; then
+        log_ok "$package installed"
+    else
+        log_err "Failed to install $package"
+        return 1
+    fi
+}
+
+# Emit installed packages as "name<TAB>source<TAB>id" lines: top-level brew
+# formulae (leaves), casks, and Mac App Store apps (id last).
+_capture_brew_list() {
+    if command -v brew &>/dev/null; then
+        brew leaves 2>/dev/null      | while IFS= read -r n; do [[ -n "$n" ]] && printf '%s\tformula\t\n' "$n"; done
+        brew list --cask 2>/dev/null | while IFS= read -r n; do [[ -n "$n" ]] && printf '%s\tcask\t\n' "$n"; done
+    fi
+    if command -v mas &>/dev/null; then
+        mas list 2>/dev/null | awk 'NF{id=$1; $1=""; sub(/^ +/,""); sub(/ \([^)]*\)$/,""); print $0"\tmas\t"id}'
+    fi
+}

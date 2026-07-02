@@ -41,7 +41,7 @@ eq() { # name actual expected
 
 # == plugin loader (plugins.sh) ==
 # Hermetic unit tests — mock common.sh helpers so we don't drag in its set -e
-# + log-file side effects. _macrift_version_gt copied verbatim from common.sh.
+# + log-file side effects. _macrift_version_gt copied verbatim from lib/update.sh.
 printf '== plugin loader (plugins.sh) ==\n'
 # Stubs emit just the message text (no styling) — tests grep stdout/stderr for it.
 log_warn() { printf '%s\n' "${1:-}" >&2; }
