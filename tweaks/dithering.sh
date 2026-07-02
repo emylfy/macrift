@@ -47,7 +47,7 @@ _dithering_compile() {
         -framework CoreFoundation \
         -o "$DITHERING_BIN" \
         "$DITHERING_SRC" 2>&1; then
-        log_ok "Compiled → ${DITHERING_BIN/#$HOME/~}"
+        log_ok "Compiled → ~${DITHERING_BIN#"$HOME"}"
     else
         log_err "Compile failed"
         return 1
@@ -81,7 +81,7 @@ dithering_install() {
 
     _dithering_compile || { wait_enter; crumb_pop; return; }
     write_launch_agent "$DITHERING_PLIST" "$DITHERING_LABEL" "$DITHERING_BIN" "$DITHERING_LOG" Background --daemon
-    log_ok "Wrote LaunchAgent → ${DITHERING_PLIST/#$HOME/~}"
+    log_ok "Wrote LaunchAgent → ~${DITHERING_PLIST#"$HOME"}"
 
     launchd_load "$DITHERING_LABEL" "$DITHERING_PLIST"
     sleep 1
@@ -95,7 +95,7 @@ dithering_install() {
     fi
 
     printf '\n  %bVerify with:%b ioreg -lw0 | grep enableDither\n' "$DIM" "$RESET"
-    printf '  %bLog:%b %s\n' "$DIM" "$RESET" "${DITHERING_LOG/#$HOME/~}"
+    printf '  %bLog:%b %s\n' "$DIM" "$RESET" "~${DITHERING_LOG#"$HOME"}"
 
     wait_enter
     crumb_pop
@@ -170,11 +170,12 @@ dithering_status() {
     on_count=$(/usr/sbin/ioreg -lw0 2>/dev/null | grep -c '"enableDither" = Yes' || true)
 
     show_info_box "Dithering Status" \
-        "Daemon:           $daemon_status" \
-        "Displays · off:   $off_count" \
-        "Displays · on:    $on_count"
+        "Daemon:               $daemon_status" \
+        "Dithering disabled:   $off_count display(s)" \
+        "Dithering active:     $on_count display(s)"
 
-    if [[ -f "$DITHERING_LOG" ]]; then
+    # A leftover log with no daemon is stale — showing it only misleads
+    if [[ -f "$DITHERING_LOG" && "$daemon_status" != "not installed" ]]; then
         printf '\n  %bRecent log:%b\n' "$DIM" "$RESET"
         tail -n 5 "$DITHERING_LOG" 2>/dev/null | sed 's/^/    /'
     fi

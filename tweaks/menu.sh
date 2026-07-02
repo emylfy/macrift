@@ -404,6 +404,12 @@ select_tweaks() {
     audit_reset
 }
 
+# The ⌘Space Spotlight shortcut is symbolic hotkey 64; "enabled = 0" once off
+_spotlight_hotkey_disabled() {
+    defaults read com.apple.symbolichotkeys AppleSymbolicHotKeys 2>/dev/null |
+        sed -n '/ 64 =/,/};/p' | grep -q 'enabled = 0'
+}
+
 tweaks_menu() {
     crumb_push "System Tweaks"
     while true; do
@@ -412,7 +418,14 @@ tweaks_menu() {
         local -a items=(
             "Browse & Apply ›"
             "Hot Corners… ↗"
-            "Disable Spotlight ⌘Space…"
+        )
+        # One-shot action — hide it once the shortcut is already off
+        local spotlight_shown=false
+        if ! _spotlight_hotkey_disabled; then
+            items+=("Disable Spotlight ⌘Space…")
+            spotlight_shown=true
+        fi
+        items+=(
             "---"
             "Dithering ›"
             "Space Switcher ›"
@@ -431,6 +444,8 @@ tweaks_menu() {
             "${_pf[$((choice - _nb - 1))]}" || true
             continue
         fi
+        # Normalize to full numbering when the Spotlight item is hidden
+        $spotlight_shown || (( choice < 3 )) || choice=$((choice + 1))
         case "$choice" in
             1) select_tweaks ;;
             2) if open "x-apple.systempreferences:com.apple.Desktop-Settings.extension?HotCorners" 2>/dev/null; then

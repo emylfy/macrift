@@ -43,7 +43,7 @@ _space_compile() {
     if xcrun cc -O2 -arch arm64 \
         -framework CoreGraphics -framework CoreFoundation \
         -o "$SPACE_BIN" "$SPACE_SRC" 2>&1; then
-        log_ok "Compiled → ${SPACE_BIN/#$HOME/~}"
+        log_ok "Compiled → ~${SPACE_BIN#"$HOME"}"
     else
         log_err "Compile failed"
         return 1
@@ -51,7 +51,9 @@ _space_compile() {
 }
 
 _space_show_usage() {
-    local bin="${SPACE_BIN/#$HOME/~}"
+    # ~"..." keeps the tilde expandable while quoting the space in the path,
+    # so the printed command is copy-pasteable as-is
+    local bin="~\"${SPACE_BIN#"$HOME"}\""
     printf '\n  %bCLI usage:%b\n' "$BOLD" "$RESET"
     printf '    %b%s left%b     # one-shot: switch one space left\n'  "$CYAN" "$bin" "$RESET"
     printf '    %b%s right%b    # one-shot: switch one space right\n\n' "$CYAN" "$bin" "$RESET"
@@ -69,7 +71,7 @@ space_install() {
     _space_check_clang || { wait_enter; crumb_pop; return; }
 
     log_info "Installs the space-switcher CLI"
-    log_info "  • CLI works one-shot: ${SPACE_BIN/#$HOME/~} left|right"
+    log_info "  • CLI works one-shot: ~${SPACE_BIN#"$HOME"} left|right"
     log_info "  • Daemon (toggle separately) intercepts native Ctrl+←/→"
     printf '\n'
     if ! confirm "Continue?"; then crumb_pop; return; fi
@@ -87,7 +89,7 @@ space_install() {
     log_info "First call triggers an Accessibility prompt"
     if open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility" 2>/dev/null; then
         log_ok "Opened System Settings → Privacy & Security → Accessibility"
-        log_info "Add ${SPACE_BIN/#$HOME/~} to the list and toggle it on"
+        log_info "Add ~${SPACE_BIN#"$HOME"} to the list and toggle it on"
     else
         log_info "  System Settings → Privacy & Security → Accessibility"
     fi
@@ -161,7 +163,7 @@ space_toggle_daemon() {
         log_ok "Daemon running — try Ctrl+←/→ now"
     else
         log_warn "Daemon failed to start — check $SPACE_LOG"
-        log_info "Likely missing Accessibility permission for ${SPACE_BIN/#$HOME/~}"
+        log_info "Likely missing Accessibility permission for ~${SPACE_BIN#"$HOME"}"
     fi
     wait_enter
 }
