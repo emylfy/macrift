@@ -16,6 +16,12 @@
 
 set -euo pipefail
 
+# The pre-push hook exports an absolute GIT_DIR (notably under git worktrees),
+# and environment beats `git -C`: every git call below — including the
+# `git -C "$TAP_DIR"` ones — would silently operate on THIS repo and push the
+# formula commit to macrift's main instead of the tap. Rediscover from cwd.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 DRY=false
 TAG=""
 for arg in "$@"; do
