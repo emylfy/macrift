@@ -94,26 +94,7 @@ _snapshot_undo() {
     while IFS=$'\t' read -r sid lbl; do
         [[ -z "$sid" ]] && continue
         sessions+=("$sid"); labels+=("$lbl")
-    done < <(python3 - "$MACRIFT_JOURNAL" <<'PY'
-import json, sys, collections
-agg = collections.OrderedDict()
-for line in open(sys.argv[1]):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except Exception:
-        continue
-    s = d.get("session", "?")
-    if s not in agg:
-        agg[s] = {"n": 0, "ts": d.get("ts", "")}
-    agg[s]["n"] += 1
-for s, v in reversed(agg.items()):
-    ts = v["ts"].replace("T", " ").replace("Z", "")
-    print(f"{s}\t{s}  ·  {v['n']} change(s)  ·  {ts}")
-PY
-)
+    done < <(python3 "$MACRIFT_DIR/lib/engine.py" journal-sessions-tsv "$MACRIFT_JOURNAL")
 
     if [[ ${#sessions[@]} -eq 0 ]]; then
         log_info "No sessions to undo"

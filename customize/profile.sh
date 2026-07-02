@@ -283,16 +283,7 @@ _profile_import() {
     # Filter the manifest to the chosen sections, then hand it to the engine.
     # Written inside the profile dir so relative src/file paths resolve against it.
     local filtered="$source/.macrift-apply.json"
-    python3 - "$manifest" "${keys[@]}" > "$filtered" <<'PY'
-import json, sys
-m = json.load(open(sys.argv[1]))
-keep = set(sys.argv[2:])
-out = {"meta": m.get("meta", {})}
-for k in keep:
-    if k in m:
-        out[k] = m[k]
-print(json.dumps(out, indent=2))
-PY
+    python3 "$MACRIFT_DIR/lib/engine.py" manifest-filter "$manifest" "${keys[@]}" > "$filtered"
     printf '\n'
     manifest_apply_cli "$filtered"
     rm -f "$filtered"
