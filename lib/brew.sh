@@ -14,7 +14,7 @@ check_homebrew() {
 
     if ! command -v brew &>/dev/null; then
         log_warn "Homebrew not found"
-        if confirm "Install Homebrew?"; then
+        if confirm "Install Homebrew?" "y"; then
             if /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty; then
                 if [[ "$ARCH" == "arm64" && -f /opt/homebrew/bin/brew ]]; then
                     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -111,7 +111,7 @@ _ensure_mas() {
         log_info "Dry run — would install mas"
         return 1
     fi
-    if confirm "Install mas via Homebrew?"; then
+    if confirm "Install mas via Homebrew?" "y"; then
         if ! brew install mas; then
             log_err "Failed to install mas"
             log_hint "try: brew install mas"

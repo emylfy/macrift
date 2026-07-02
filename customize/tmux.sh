@@ -40,7 +40,7 @@ setup_tmux() {
         return
     fi
 
-    if confirm "Copy tmux config?"; then
+    if confirm "Copy tmux config?" "y"; then
         copy_config "$conf_source" "$conf_target"
         [[ -f "$reset_source" ]] && copy_config "$reset_source" "$reset_target"
         tmux_install_tpm

@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # macrift — terminal theme detection + ANSI palette
 
-# ANSI colors — adjusted for dark/light theme below
+# ANSI colors — adjusted for dark/light theme below.
+# Role map (keep colors on one semantic role each):
+#   CYAN   — selection/affordance: cursor bar, spinner, progress, info glyph
+#   ICE    — box/section titles
+#   GREEN  — success, checked, applied
+#   YELLOW — genuine warnings and destructive-action text only
+#   RED    — errors
+#   DIM    — all secondary text (hints, subtitles, notes, headings)
+#   GRAY   — box borders
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 
 _detect_theme() {
     # 1. Explicit override
@@ -62,8 +67,15 @@ if [[ "$(_detect_theme)" == "dark" ]]; then
     GRAY='\033[38;5;240m'
     CYAN='\033[38;5;39m'
     ICE='\033[38;5;195m'
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
 else
     GRAY='\033[38;5;245m'
     CYAN='\033[38;5;25m'
     ICE='\033[38;5;24m'
+    # Darker variants — plain ANSI green/yellow wash out on light backgrounds
+    RED='\033[38;5;124m'
+    GREEN='\033[38;5;28m'
+    YELLOW='\033[38;5;130m'
 fi

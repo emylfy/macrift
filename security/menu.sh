@@ -9,7 +9,15 @@ security_menu() {
     while true; do
         clear
 
-        local items=("Security Status" "Privacy Shortcuts ›" "Hostname" "DNS ›" "Update Control ›" "Unquarantine App")
+        # Gatekeeper is its own item — toggling a system-wide security setting
+        # must not hide inside the read-only status screen. Verb label (like
+        # the Spotlight toggle) so it reads as an action, not another status.
+        local gk_label="Gatekeeper"
+        case "$(spctl --status 2>/dev/null)" in
+            *"assessments enabled"*)  gk_label="Disable Gatekeeper" ;;
+            *"assessments disabled"*) gk_label="Enable Gatekeeper" ;;
+        esac
+        local items=("Security Status" "$gk_label" "Privacy Shortcuts ›" "Hostname ↗" "DNS ›" "Update Control ›" "Unquarantine App")
         [[ -d "/Applications/Microsoft Defender Shim.app" ]] && items+=("Remove Microsoft Defender")
 
         # Plugins targeting menu.parent=security append below the built-ins.
@@ -27,12 +35,13 @@ security_menu() {
         fi
         case "$choice" in
             1) show_security_status ;;
-            2) privacy_shortcuts_menu ;;
-            3) open_hostname_settings ;;
-            4) dns_menu ;;
-            5) update_control_menu ;;
-            6) unquarantine_menu ;;
-            7) remove_defender ;;
+            2) gatekeeper_menu ;;
+            3) privacy_shortcuts_menu ;;
+            4) open_hostname_settings ;;
+            5) dns_menu ;;
+            6) update_control_menu ;;
+            7) unquarantine_menu ;;
+            8) remove_defender ;;
             0) break ;;
             *) ;;
         esac
@@ -117,10 +126,21 @@ show_security_status() {
         "SIP:         $sip_status" \
         "Gatekeeper:  $gk_status"
 
-    printf "\n"
+    wait_enter
+}
 
-    # Status screen — never auto-toggle Gatekeeper (confirm auto-answers yes under --no-confirm)
+# Gatekeeper toggle — its own menu item, kept out of the read-only status screen
+gatekeeper_menu() {
+    clear
+
+    local gk_status
+    gk_status=$(_match_status "$(spctl --status 2>/dev/null)" "assessments enabled" "assessments disabled" "Enabled" "Disabled")
+    log_info "Gatekeeper: $gk_status"
+    printf '\n'
+
+    # Never auto-toggle (confirm auto-answers yes under --no-confirm)
     if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
+        log_skip "Toggle skipped under --no-confirm — run interactively to change it"
         wait_enter
         return
     fi
@@ -130,13 +150,13 @@ show_security_status() {
         if confirm "Disable Gatekeeper (allow apps from anywhere)?" "n"; then
             require_sudo
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Would run: sudo spctl --master-disable"
+                log_info "Dry run — would run: sudo spctl --master-disable"
             else
                 sudo spctl --master-disable 2>&1 || true
                 # On macOS 15+ (Sequoia) this requires manual confirmation
                 if spctl --status 2>/dev/null | grep -qi "assessments enabled"; then
                     log_warn "Gatekeeper requires manual confirmation"
-                    log_info "System Settings > Privacy & Security > Allow apps from Anywhere"
+                    log_info "System Settings → Privacy & Security → Allow apps from Anywhere"
                     open "x-apple.systempreferences:com.apple.preference.security?General"
                 else
                     _journal_append_command "gatekeeper" \
@@ -146,10 +166,10 @@ show_security_status() {
             fi
         fi
     elif [[ "$gk_status" == "Disabled" ]]; then
-        if confirm "Re-enable Gatekeeper?"; then
+        if confirm "Re-enable Gatekeeper?" "y"; then
             require_sudo
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Would run: sudo spctl --master-enable"
+                log_info "Dry run — would run: sudo spctl --master-enable"
             else
                 sudo spctl --master-enable
                 _journal_append_command "gatekeeper" \
@@ -157,6 +177,9 @@ show_security_status() {
                 log_ok "Gatekeeper enabled"
             fi
         fi
+    else
+        log_err "Could not determine Gatekeeper status"
+        log_hint "check manually: spctl --status"
     fi
 
     wait_enter
@@ -173,10 +196,10 @@ remove_defender() {
     fi
 
     log_info "Found: /Applications/Microsoft Defender Shim.app"
-    if confirm "Remove Microsoft Defender Shim?"; then
+    if confirm "Remove Microsoft Defender Shim?" "n"; then
         require_sudo
         if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-            log_info "Would run: sudo rm -rf /Applications/Microsoft Defender Shim.app"
+            log_info "Dry run — would run: sudo rm -rf /Applications/Microsoft Defender Shim.app"
         else
             sudo rm -rf "/Applications/Microsoft Defender Shim.app"
             log_ok "Microsoft Defender Shim removed"
@@ -249,7 +272,7 @@ _apply_dns() {
     svc=$(_active_service)
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would run: networksetup -setdnsservers $svc $*"
+        log_info "Dry run — would run: networksetup -setdnsservers $svc $*"
         return
     fi
     # Capture the pre-change servers for undo; no servers set (DHCP) means
@@ -476,13 +499,13 @@ _dns_offer_apply() {
     done
 
     if [[ -n "$best_entry" ]]; then
-        if confirm "Apply $best_label?"; then
+        if confirm "Apply $best_label?" "y"; then
             _apply_dns "$best_label" "$(_dns_primary "$best_entry")" "$(_dns_secondary "$best_entry")"
             return
         fi
     fi
 
-    if ! confirm "Pick a different provider?"; then
+    if ! confirm "Pick a different provider?" "n"; then
         return
     fi
 
@@ -520,12 +543,16 @@ dns_pick_provider() {
     menu_items+=("Back")
 
     local choice
-    choice=$(show_menu "Pick DNS Provider" "${menu_items[@]}")
+    choice=$(show_menu "Pick DNS provider" "${menu_items[@]}")
 
     [[ "$choice" == "0" || -z "$choice" ]] && return
     local picked="${DNS_PROVIDERS[$((choice - 1))]}"
     if [[ -n "$picked" ]]; then
-        _apply_dns "$(_dns_label "$picked")" "$(_dns_primary "$picked")" "$(_dns_secondary "$picked")"
+        local plabel; plabel=$(_dns_label "$picked")
+        # The benchmark path confirms before applying — mirror that here
+        if confirm "Apply $plabel DNS?" "y"; then
+            _apply_dns "$plabel" "$(_dns_primary "$picked")" "$(_dns_secondary "$picked")"
+        fi
         wait_enter
     fi
 }
@@ -647,10 +674,10 @@ update_control_install() {
     esac
 
     log_info "Major updates: ${major_delay}d · Minor/other: 30d"
-    if ! confirm "Install deferral profile?"; then return; fi
+    if ! confirm "Install deferral profile?" "y"; then return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would install update deferral profile (major: ${major_delay}d)"
+        log_info "Dry run — would install update deferral profile (major: ${major_delay}d)"
         wait_enter
         return
     fi
@@ -669,7 +696,7 @@ update_control_install() {
     open "$dl_profile"
     sleep 1
     open "x-apple.systempreferences:com.apple.preferences.configurationprofiles"
-    log_info "Approve the profile in System Settings > General > Device Management"
+    log_info "Approve the profile in System Settings → General → Device Management"
     printf '\n  %bPress Enter after approving or declining%b ' "$DIM" "$RESET"
     read -r </dev/tty
 
@@ -681,7 +708,7 @@ update_control_install() {
             "sudo /usr/bin/profiles remove -identifier $UPDATE_PROFILE_ID"
         log_ok "Deferral profile installed (major: ${major_delay}d)"
     else
-        log_warn "Profile not detected — check System Settings > Profiles"
+        log_warn "Profile not detected — check System Settings → Profiles"
     fi
 
     wait_enter
@@ -696,10 +723,10 @@ update_control_remove() {
         return
     fi
 
-    if ! confirm "Remove update deferral profile?"; then return; fi
+    if ! confirm "Remove update deferral profile?" "y"; then return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would run: profiles remove -identifier $UPDATE_PROFILE_ID"
+        log_info "Dry run — would run: profiles remove -identifier $UPDATE_PROFILE_ID"
         wait_enter
         return
     fi
@@ -709,7 +736,7 @@ update_control_remove() {
         log_ok "Deferral profile removed"
     else
         log_warn "Could not remove via CLI"
-        log_info "Remove manually: System Settings > General > Device Management"
+        log_info "Remove manually: System Settings → General → Device Management"
         open "x-apple.systempreferences:com.apple.preferences.configurationprofiles"
     fi
 
@@ -742,7 +769,7 @@ _quarantine_diagnose() {
     log_info "Try one of:"
     log_info "  1) System Settings → Privacy & Security → 'Open Anyway'"
     log_info "  2) Ad-hoc resign:  codesign --force --deep --sign - \"$path\""
-    log_info "  3) Last resort — disable Gatekeeper globally (macrift → Privacy & Security → Security Status)"
+    log_info "  3) Last resort — disable Gatekeeper globally (macrift → Privacy & Security → Gatekeeper)"
 }
 
 # Core: remove com.apple.quarantine from one or more paths.
@@ -770,7 +797,7 @@ quarantine_remove() {
         fi
 
         if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-            log_info "Would run: xattr -dr com.apple.quarantine \"$path\""
+            log_info "Dry run — would run: xattr -dr com.apple.quarantine \"$path\""
             continue
         fi
 
@@ -890,7 +917,7 @@ gatekeeper_cli() {
                 confirm "Enable Gatekeeper?" "y" || { log_info "Cancelled"; return 0; }
             fi
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Would run: sudo spctl --master-enable"
+                log_info "Dry run — would run: sudo spctl --master-enable"
                 return 0
             fi
             require_sudo
@@ -914,7 +941,7 @@ gatekeeper_cli() {
                 confirm "Disable Gatekeeper?" "n" || { log_info "Cancelled"; return 0; }
             fi
             if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-                log_info "Would run: sudo spctl --master-disable"
+                log_info "Dry run — would run: sudo spctl --master-disable"
                 return 0
             fi
             require_sudo

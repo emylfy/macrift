@@ -30,7 +30,7 @@ save_profile() {
 
     _profile_detect
 
-    if ! confirm "Save all detected items?"; then return; fi
+    if ! confirm "Save all detected items?" "y"; then return; fi
 
     local icloud_dir="$HOME/Library/Mobile Documents/com~apple~CloudDocs"
     local dest_name="macrift-profile"
@@ -271,7 +271,7 @@ _profile_import() {
     printf '\n'
     printf '  %bSelect what to restore:%b\n\n' "$DIM" "$RESET"
     local selected
-    selected=$(show_multiselect "Restore" "${cats[@]}")
+    selected=$(show_multiselect "What to restore" "${cats[@]}")
     [[ -z "$selected" ]] && return
 
     local -a keys=()

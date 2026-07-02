@@ -7,7 +7,7 @@ _ensure_spotify_prefs() {
     local prefs_path="$HOME/Library/Application Support/Spotify/prefs"
     if [[ ! -f "$prefs_path" ]]; then
         log_warn "Spotify prefs not found — need to launch it once"
-        if confirm "Launch Spotify now?"; then
+        if confirm "Launch Spotify now?" "y"; then
             open -a Spotify
             log_info "Waiting for Spotify to initialize..."
             local w=0
@@ -75,7 +75,7 @@ install_spotx() {
     log_info "SpotX — Spotify ad blocker"
     printf '  %bSource: %s%b\n\n' "$DIM" "$SPOTX_REPO" "$RESET"
 
-    if confirm "Install SpotX?"; then
+    if confirm "Install SpotX?" "y"; then
         log_info "Running SpotX..."
         # Guard set -e: SpotX exits non-zero on network failure / unsupported
         # Spotify version, which would otherwise abort the whole menu.
@@ -83,6 +83,7 @@ install_spotx() {
             log_ok "SpotX applied"
         else
             log_warn "SpotX exited with an error"
+            log_hint "make sure Spotify is up to date, then re-run — or see github.com/SpotX-Official/SpotX-Bash"
         fi
     fi
     wait_enter

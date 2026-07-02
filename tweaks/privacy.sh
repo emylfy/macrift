@@ -38,9 +38,9 @@ privacy_recommended() {
 privacy_strict() {
     # Siri
     audit_default "com.apple.assistant.support" "Assistant Enabled" "-bool" "false" "Ask Siri"
-    audit_default "com.apple.SetupAssistant" "DidSeeSiriSetup" "-bool" "true" "Siri setup popup"
+    audit_default "com.apple.SetupAssistant" "DidSeeSiriSetup" "-bool" "true" "Siri setup popup~Marks first-run Siri setup as already seen"
     audit_default "com.apple.Siri" "StatusMenuVisible" "-bool" "false" "Siri in menu bar"
-    audit_default "com.apple.Siri" "UserHasDeclinedEnable" "-bool" "true" "Siri opt-out flag"
+    audit_default "com.apple.Siri" "UserHasDeclinedEnable" "-bool" "true" "Siri opt-out flag~Records 'declined Siri' so macOS stops asking"
 
     audit_sep
 

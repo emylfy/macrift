@@ -851,5 +851,66 @@ eq "journal: dry-run writes nothing" "$(wc -l < "$MACRIFT_JOURNAL" | tr -d ' ')"
 rm -rf "$ENG_STATE"
 unset MACRIFT_NO_INIT MACRIFT_STATE_DIR MACRIFT_JOURNAL MACRIFT_SESSION MACRIFT_DRY_RUN
 
+# == tui frame geometry ==
+# Every interactive widget repositions with \033[NA between frames; N must
+# equal the number of lines the frame paints, or redraws smear. These render
+# each widget headlessly (stubbed _read_key) and compare the reposition count
+# against the lines actually painted in frame 1 — so a chrome line added
+# without updating total_lines/redraw_lines fails here instead of on screen.
+printf '\n== tui frame geometry ==\n'
+TFG="$(mktemp -d)"
+cat > "$TFG/driver.sh" <<'DRIVER'
+source "$MACRIFT_DIR/common.sh"
+MENU_STATE_FILE="$TFG/menu-state"
+_ui_start() { :; }
+_ui_end()   { :; }
+confirm()    { return 1; }
+wait_enter() { :; }
+_read_key() {
+    local k
+    k=$(head -1 "$TFG/keys" 2>/dev/null)
+    if [[ -n "$k" ]]; then
+        tail -n +2 "$TFG/keys" > "$TFG/keys.t" && mv "$TFG/keys.t" "$TFG/keys"
+        printf '%s\n' "$k"
+    else
+        printf 'enter\n'
+    fi
+}
+MACRIFT_CRUMBS=()
+for ((i = 0; i < ${TFG_DEPTH:-1}; i++)); do MACRIFT_CRUMBS+=("crumb$i"); done
+# A menu that pushed its own crumb has itself as the last element
+[[ -n "${TFG_TITLE:-}" && ${#MACRIFT_CRUMBS[@]} -gt 0 ]] && \
+    MACRIFT_CRUMBS[$(( ${#MACRIFT_CRUMBS[@]} - 1 ))]="$TFG_TITLE"
+source "$MACRIFT_DIR/tweaks/menu.sh"
+AUDIT_ENTRIES=("Item A|true|false|x" "Item B|false|true|x" "---|||" "Item C~warn|true|false|x" "Item D|true|false|x")
+AUDIT_OPTIONAL=" "
+"$@"
+DRIVER
+_frame_geom() { # name depth title keys widget-and-args...
+    local name="$1" depth="$2" wtitle="$3" keys="$4"; shift 4
+    # shellcheck disable=SC2086  # keys is a space-separated list on purpose
+    printf '%s\n' $keys > "$TFG/keys"
+    local out
+    out=$(MACRIFT_NO_INIT=1 MACRIFT_THEME=dark TERM=xterm-256color \
+          MACRIFT_DIR="$ROOT" TFG="$TFG" TFG_DEPTH="$depth" TFG_TITLE="$wtitle" \
+          "$BASH" "$TFG/driver.sh" "$@" 2>&1 >/dev/null)
+    local n painted frame1
+    n=$(printf '%s' "$out" | LC_ALL=C grep -oa $'\033\[[0-9]*A' | head -1 | tr -dc '0-9')
+    frame1="${out%%$'\033[?2026l'*}"
+    painted=$(printf '%s' "$frame1" | wc -l | tr -d ' ')
+    if [[ -n "$n" && "$painted" == "$n" ]]; then
+        ok "$name"
+    else
+        no "$name" "frame paints $painted lines, reposition says ${n:-none}"
+    fi
+}
+_frame_geom "geometry: menu, hidden Back"     2 "T" "down"  show_menu "T" "A" "B" "C" "Back"
+_frame_geom "geometry: menu, Exit + subtitle" 1 "m" "down"  show_menu "m"$'\x1f'"sub" "A" "B" "Exit"
+_frame_geom "geometry: menu, crumb path"      4 "T" "down"  show_menu "T" "A" "B" "Back"
+_frame_geom "geometry: menu, scrolling"       2 "T" "down"  show_menu "T" Item{1..30} "Back"
+_frame_geom "geometry: multiselect"           2 ""  "space" show_multiselect "MS" "one~note" "## H" "two" "three"
+_frame_geom "geometry: wizard"                2 ""  "down"  _tweak_wizard "Cat:0:5"
+rm -rf "$TFG"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ $fail -eq 0 ]]

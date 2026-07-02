@@ -74,39 +74,7 @@ for arg in "$@"; do
         --dry-run)     export MACRIFT_DRY_RUN=true ;;
         --no-confirm)  export MACRIFT_NO_CONFIRM=true ;;
         --log)         export MACRIFT_LOG="$HOME/.macrift/macrift.log" ;;
-        --uninstall)
-            # A Homebrew install is owned by brew — delegate to it (rm -rf'ing the
-            # Cellar would leave brew's records dangling). common.sh isn't sourced
-            # yet, so detect brew from the path; exec so brew runs after this script
-            # exits and can safely remove the Cellar files out from under it.
-            if [[ "${BASH_SOURCE[0]}" == */Cellar/macrift/* || "${BASH_SOURCE[0]}" == */opt/macrift/* ]]; then
-                printf '\n  Uninstall macrift (installed via Homebrew)?\n\n'
-                printf '  Runs: brew uninstall macrift\n'
-                printf '  Your data in ~/.macrift (journal, plugins) is left untouched.\n\n'
-                printf '  [y/n] '
-                read -r answer
-                [[ "$answer" =~ ^[Yy]$ ]] && exec brew uninstall macrift
-                exit 0
-            fi
-            printf '\n  Uninstall macrift?\n\n'
-            printf '  This will remove:\n'
-            printf '    ~/.macrift\n'
-            printf '    ~/.local/bin/macrift\n'
-            printf '    /usr/local/bin/macrift (if exists)\n'
-            printf '    PATH line from ~/.zshrc\n\n'
-            printf '  [y/n] '
-            read -r answer
-            if [[ "$answer" =~ ^[Yy]$ ]]; then
-                rm -rf "$HOME/.macrift"
-                rm -f "$HOME/.local/bin/macrift"
-                [[ -L "/usr/local/bin/macrift" ]] && sudo rm -f "/usr/local/bin/macrift"
-                if [[ -f "$HOME/.zshrc" ]]; then
-                    sed -i '' '/# added by macrift/d' "$HOME/.zshrc" 2>/dev/null || true
-                fi
-                printf '  Done. macrift removed.\n\n'
-            fi
-            exit 0
-            ;;
+        --uninstall)   MACRIFT_DO_UNINSTALL=true ;;
         --help|-h)
             _print_help
             exit 0
@@ -130,6 +98,45 @@ done
 source "$(cd "$(dirname "$MACRIFT_ENTRY")" && pwd)/common.sh"
 # shellcheck source=plugins.sh
 source "$MACRIFT_DIR/plugins.sh"
+
+# --uninstall — handled after sourcing so it can use confirm/log_* and honor --dry-run
+if [[ "${MACRIFT_DO_UNINSTALL:-false}" == true ]]; then
+    # A Homebrew install is owned by brew — delegate to it (rm -rf'ing the
+    # Cellar would leave brew's records dangling); exec so brew runs after this
+    # script exits and can safely remove the Cellar files out from under it.
+    if [[ "${BASH_SOURCE[0]}" == */Cellar/macrift/* || "${BASH_SOURCE[0]}" == */opt/macrift/* ]]; then
+        printf '\n'
+        log_info "macrift is installed via Homebrew — this runs: brew uninstall macrift"
+        log_info "Your data in ~/.macrift (undo journal, plugins) is left untouched"
+        printf '\n'
+        if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+            log_info "Dry run — would run: brew uninstall macrift"
+            exit 0
+        fi
+        confirm "Uninstall macrift?" "n" && exec brew uninstall macrift
+        exit 0
+    fi
+    printf '\n'
+    log_warn "This removes macrift and all its data:"
+    printf '    ~/.macrift — including your undo journal and installed plugins\n'
+    printf '    ~/.local/bin/macrift\n'
+    printf '    /usr/local/bin/macrift (if present)\n'
+    printf '    PATH line from ~/.zshrc\n\n'
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+        log_info "Dry run — nothing removed"
+        exit 0
+    fi
+    if confirm "Uninstall macrift? This cannot be undone" "n"; then
+        rm -rf "$HOME/.macrift"
+        rm -f "$HOME/.local/bin/macrift"
+        [[ -L "/usr/local/bin/macrift" ]] && sudo rm -f "/usr/local/bin/macrift"
+        if [[ -f "$HOME/.zshrc" ]]; then
+            sed -i '' '/# added by macrift/d' "$HOME/.zshrc" 2>/dev/null || true
+        fi
+        log_ok "macrift removed"
+    fi
+    exit 0
+fi
 
 # Init log file
 if [[ -n "$MACRIFT_LOG" ]]; then
@@ -208,7 +215,7 @@ main_menu() {
             [[ "$update_short" != "$MACRIFT_VERSION_SHORT" ]] && title+=" → $update_short"
         fi
         local update_label="Update"
-        [[ -n "$MACRIFT_UPDATE" ]] && update_label="Update → $MACRIFT_UPDATE"
+        [[ -n "$MACRIFT_UPDATE" ]] && update_label="Update ($MACRIFT_UPDATE available)"
 
         # Build items + a parallel actions array.
         # When no plugins are installed this yields exactly the menu shape we
@@ -217,7 +224,7 @@ main_menu() {
             "System Tweaks ›"
             "Apps & Packages ›"
             "Customize ›"
-            "Security & Privacy ›"
+            "Privacy & Security ›"
             "Cleanup ›"
         )
         local -a actions=(tweaks apps customize security cleanup)

@@ -103,7 +103,7 @@ run_mole_cleanup() {
     log_info "Mole — system cleanup tool"
     printf '  %bSource: %s%b\n\n' "$DIM" "$MOLE_REPO" "$RESET"
 
-    if confirm "Install & run Mole?"; then
+    if confirm "Download and run Mole installer (github.com/tw93/mole)?" "n"; then
         log_info "Installing Mole..."
         if curl -fsSL "$MOLE_INSTALL" | bash; then
             log_ok "Mole installed"

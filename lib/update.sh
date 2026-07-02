@@ -114,6 +114,14 @@ macrift_update() {
         return 1
     fi
 
+    # No update pending — don't silently re-download the current version
+    if [[ -z "$MACRIFT_UPDATE" ]]; then
+        log_ok "Already up to date (v$MACRIFT_VERSION)"
+        if ! confirm "Reinstall anyway?" "n"; then
+            return 1
+        fi
+    fi
+
     # Show changelog first, then ask
     if [[ -n "$MACRIFT_UPDATE" ]]; then
         printf '\n'
@@ -151,12 +159,11 @@ macrift_update() {
         fi
     fi
 
-    log_info "Downloading latest release..."
     local tmp
     tmp="$(mktemp -d)"
     # Pinned + sha256-verified release tarball (never floating main). The helper
     # logs the specific failure; here we just clean up and report.
-    if _macrift_fetch_release "$tmp"; then
+    if run_with_spinner "Downloading latest release..." _macrift_fetch_release "$tmp"; then
         # Atomic swap: backup old → move new → remove backup.
         # Clear any stale .bak from a prior interrupted run first, or the backup
         # mv would nest the install inside it and the restore path would be wrong.
@@ -185,6 +192,7 @@ macrift_update() {
     else
         # Don't fall through to `return 0` — the caller treats success as "update
         # applied" and re-execs, so a failed download must report failure.
+        log_info "Update aborted — nothing changed"
         rm -rf "$tmp"
         return 1
     fi

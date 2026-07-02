@@ -7,7 +7,7 @@ finder_tweaks() {
     audit_default "com.apple.finder" "ShowPathbar" "-bool" "true" "Path bar"
     audit_default "com.apple.finder" "ShowStatusBar" "-bool" "true" "Status bar"
     audit_default "com.apple.finder" "_FXShowPosixPathInTitle" "-bool" "true" "Full path in title"
-    audit_default "com.apple.finder" "ShowRecentTags" "-bool" "false" "Show Recent Tags"
+    audit_default "com.apple.finder" "ShowRecentTags" "-bool" "false" "Show recent tags"
 
     audit_sep
 

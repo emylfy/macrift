@@ -21,7 +21,7 @@ copy_config() {
     local target="$2"
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would copy → $target"
+        log_info "Dry run — would copy → $target"
         return 0
     fi
 

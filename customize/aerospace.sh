@@ -36,7 +36,7 @@ setup_aerospace() {
         return
     fi
 
-    if confirm "Copy AeroSpace config?"; then
+    if confirm "Copy AeroSpace config?" "y"; then
         copy_config "$config_source" "$config_target"
         log_ok "AeroSpace configured"
         log_hint "Launch AeroSpace, then use ⌥+hjkl to focus and ⌥+1-9 for workspaces"

@@ -26,7 +26,7 @@ FNLANG_FN_KEY="AppleFnUsageType"   # 0 = Do Nothing, 1 = picker (macOS default)
 _fnlang_check_swift() {
     if ! xcrun --find swiftc &>/dev/null; then
         log_warn "Xcode Command Line Tools not found"
-        if confirm "Install Xcode Command Line Tools? (opens system installer)"; then
+        if confirm "Install Xcode Command Line Tools? (opens system installer)" "y"; then
             xcode-select --install 2>/dev/null || true
             log_info "Re-run after the installer finishes"
         fi
@@ -70,7 +70,7 @@ _fnlang_compile() {
     fi
     log_info "Compiling fnlangswitchd..."
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile to $FNLANG_BIN (inside ~${FNLANG_APP#"$HOME"})"
+        log_info "Dry run — would compile to $FNLANG_BIN (inside ~${FNLANG_APP#"$HOME"})"
         return 0
     fi
     if xcrun swiftc \
@@ -89,6 +89,7 @@ _fnlang_compile() {
         log_ok "Built → ~${FNLANG_APP#"$HOME"}"
     else
         log_err "Compile failed"
+        log_hint "clang comes with Xcode CLT — run 'xcode-select --install' and retry"
         return 1
     fi
 }
@@ -146,14 +147,14 @@ fn_lang_switch_install() {
     log_info "This installs a small headless daemon (hidden, no dock icon, not in /Applications)"
     log_info "Tap FN to switch keyboard layout; FN in a shortcut is left untouched"
     printf '\n'
-    if ! confirm "Continue?"; then crumb_pop; return; fi
+    if ! confirm "Continue?" "y"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile $FNLANG_SRC → $FNLANG_BIN"
-        log_info "Would write LaunchAgent: $FNLANG_PLIST"
-        log_info "Would bootstrap: gui/$UID/$FNLANG_LABEL"
-        log_info "Would open Keyboard settings (Globe → 'Do Nothing' is set by hand there)"
-        log_info "Would open Input Monitoring settings pane"
+        log_info "Dry run — would compile $FNLANG_SRC → $FNLANG_BIN"
+        log_info "Dry run — would write LaunchAgent: $FNLANG_PLIST"
+        log_info "Dry run — would bootstrap: gui/$UID/$FNLANG_LABEL"
+        log_info "Dry run — would open Keyboard settings (Globe → 'Do Nothing' is set by hand there)"
+        log_info "Dry run — would open Input Monitoring settings pane"
         wait_enter
         crumb_pop
         return
@@ -199,14 +200,14 @@ fn_lang_switch_uninstall() {
 
     log_info "This stops and removes the FN Lang Switch daemon"
     printf '\n'
-    if ! confirm "Continue?"; then crumb_pop; return; fi
+    if ! confirm "Continue?" "y"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would bootout: gui/$UID/$FNLANG_LABEL"
-        log_info "Would remove: $FNLANG_PLIST"
-        log_info "Would remove: $FNLANG_APP"
-        log_info "Would remove: $FNLANG_LOG"
-        log_info "Would reset the Input Monitoring grant: tccutil reset ListenEvent $FNLANG_LABEL"
+        log_info "Dry run — would bootout: gui/$UID/$FNLANG_LABEL"
+        log_info "Dry run — would remove: $FNLANG_PLIST"
+        log_info "Dry run — would remove: $FNLANG_APP"
+        log_info "Dry run — would remove: $FNLANG_LOG"
+        log_info "Dry run — would reset the Input Monitoring grant: tccutil reset ListenEvent $FNLANG_LABEL"
         wait_enter
         crumb_pop
         return

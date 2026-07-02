@@ -17,7 +17,7 @@ default-root-container-orientation = 'auto'
 # Mouse follows focus when the focused monitor changes
 on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 
-# Don't hide apps on cmd-h (too easy to hit by accident)
+# Leave apps hidden with cmd-h alone (true would force-unhide them on detection)
 automatically-unhide-macos-hidden-apps = false
 
 [key-mapping]
@@ -78,6 +78,7 @@ alt-shift-8 = 'move-node-to-workspace 8 --focus-follows-window'
 alt-shift-9 = 'move-node-to-workspace 9 --focus-follows-window'
 
 alt-tab       = 'workspace-back-and-forth'
+# Not a shift-pair with alt-tab: this moves the whole workspace to the next monitor
 alt-shift-tab = 'move-workspace-to-monitor --wrap-around next'
 
 alt-shift-f = 'fullscreen'

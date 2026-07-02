@@ -70,8 +70,11 @@ install_appstore() {
     for ((i=0; i<${#new_optional[@]}; i++)); do
         [[ "${new_optional[$i]}" == "1" ]] && MULTISELECT_OPTIONAL+="$i "
     done
+    # Mirror the brew pickers: carry the live installed count in the title
+    local ms_title="App Store"
+    [[ $installed_count -gt 0 ]] && ms_title="App Store · $installed_count installed"
     local selected
-    selected=$(show_multiselect "App Store" "${new_labels[@]}")
+    selected=$(show_multiselect "$ms_title" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
         return 0
@@ -101,7 +104,7 @@ install_appstore() {
                 else
                     log_warn "Failed: ${new_labels[$i]}"
                     [[ -n "$mas_out" ]] && log_hint "$(printf '%s\n' "$mas_out" | tail -1)"
-                    if confirm "Open App Store page?"; then
+                    if confirm "Open App Store page?" "y"; then
                         open "macappstore://apps.apple.com/app/id${new_ids[$i]}"
                     fi
                 fi
@@ -117,9 +120,15 @@ show_installed_apps() {
 
     _ensure_mas || return 0
 
-    mas list 2>/dev/null | while IFS= read -r line; do
-        printf '  %b%s%b\n' "$DIM" "$line" "$RESET"
-    done
+    local listing
+    listing=$(mas list 2>/dev/null)
+    if [[ -z "$listing" ]]; then
+        log_skip "No App Store apps installed"
+    else
+        printf '%s\n' "$listing" | while IFS= read -r line; do
+            printf '  %b%s%b\n' "$DIM" "$line" "$RESET"
+        done
+    fi
 
     wait_enter
 }

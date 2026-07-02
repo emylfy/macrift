@@ -22,15 +22,17 @@ prompt_path() { printf '  %bpath:%b ' "$CYAN" "$RESET"; }
 confirm() {
     local msg="${1:-Continue?}"
     local default="${2:-}"
+    # Bold, not yellow — yellow is reserved for warnings; a routine question
+    # shouldn't read as caution
     if [[ "$MACRIFT_NO_CONFIRM" == true ]]; then
-        printf '  %b%s%b %b[auto: y]%b\n' "$YELLOW" "$msg" "$RESET" "$DIM" "$RESET"
+        printf '  %b%s%b %b[auto: y]%b\n' "$BOLD" "$msg" "$RESET" "$DIM" "$RESET"
         _log_file "[auto] $msg → y"
         return 0
     fi
     local hint="y/n"
     [[ "$default" == "y" ]] && hint="Y/n"
     [[ "$default" == "n" ]] && hint="y/N"
-    printf '  %b%s%b %b[%s]%b ' "$YELLOW" "$msg" "$RESET" "$DIM" "$hint" "$RESET"
+    printf '  %b%s%b %b[%s]%b ' "$BOLD" "$msg" "$RESET" "$DIM" "$hint" "$RESET"
     while true; do
         local key=""
         IFS= read -rsn1 key < /dev/tty || true

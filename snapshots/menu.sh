@@ -4,7 +4,7 @@
 # journal_undo_cli). All the heavy lifting lives there; this is menus only.
 
 snapshots_menu() {
-    crumb_push "Snapshots"
+    crumb_push "Snapshots & Undo"
     while true; do
         clear
         local choice

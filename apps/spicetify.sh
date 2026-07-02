@@ -73,7 +73,7 @@ restore_marketplace() {
     fi
 
     if ! command -v spicetify &>/dev/null; then
-        log_err "Spicetify not installed — install it from Apps > Spotify first"
+        log_err "Spicetify not installed — install it from Apps & Packages → Spotify first"
         wait_enter
         return
     fi
@@ -94,7 +94,7 @@ restore_marketplace() {
     key_count=$(python3 -c "import json; print(len(json.load(open('$MARKETPLACE_BACKUP'))))" 2>/dev/null || echo "?")
     mtime=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M" "$MARKETPLACE_BACKUP" 2>/dev/null || echo "?")
 
-    show_info_box "Restore Marketplace Settings" \
+    show_info_box "Restore marketplace settings" \
         "Source: $(basename "$MARKETPLACE_BACKUP")" \
         "        $key_count keys · saved $mtime" \
         "" \
@@ -103,7 +103,7 @@ restore_marketplace() {
         "  2. Apply it to inject saved marketplace settings" \
         "  3. Clean up after Spotify loads"
 
-    if ! confirm "Continue?"; then
+    if ! confirm "Continue?" "y"; then
         return
     fi
 
@@ -188,7 +188,7 @@ save_marketplace() {
     fi
 
     if ! command -v spicetify &>/dev/null; then
-        log_err "Spicetify not installed — install it from Apps > Spotify first"
+        log_err "Spicetify not installed — install it from Apps & Packages → Spotify first"
         wait_enter
         return
     fi
@@ -196,13 +196,13 @@ save_marketplace() {
     _spicetify_ensure_baseline
     _ensure_spotify_prefs || return 0
 
-    show_info_box "Save Marketplace Settings" \
+    show_info_box "Save marketplace settings" \
         "This will:" \
         "  1. Generate a temporary Spicetify extension" \
         "  2. Open Spotify — settings will be copied to clipboard" \
         "  3. Save clipboard data to config/spicetify/marketplace-settings.json"
 
-    if ! confirm "Continue?"; then
+    if ! confirm "Continue?" "y"; then
         return
     fi
 
@@ -281,7 +281,7 @@ JSEOF
         else
             log_err "Clipboard does not contain valid marketplace settings"
         fi
-        if ! confirm "Retry? (open Spotify, wait for notification, then Enter)"; then
+        if ! confirm "Retry? (open Spotify, wait for notification, then Enter)" "y"; then
             _cleanup_save_ext "$ext_file"
             wait_enter
             return
@@ -289,7 +289,7 @@ JSEOF
     done
 
     log_info "Found $key_count marketplace keys"
-    if confirm "Save to config/spicetify/marketplace-settings.json?"; then
+    if confirm "Save to config/spicetify/marketplace-settings.json?" "y"; then
         printf '%s\n' "$clip" > "$MARKETPLACE_BACKUP"
         log_ok "Saved ($key_count keys)"
     fi

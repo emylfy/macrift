@@ -21,7 +21,7 @@ _dithering_check_arch() {
 _dithering_check_clang() {
     if ! xcrun --find clang &>/dev/null; then
         log_warn "Xcode Command Line Tools not found"
-        if confirm "Install Xcode Command Line Tools? (opens system installer)"; then
+        if confirm "Install Xcode Command Line Tools? (opens system installer)" "y"; then
             xcode-select --install 2>/dev/null || true
             log_info "Re-run after the installer finishes"
         fi
@@ -36,7 +36,7 @@ _dithering_compile() {
     fi
     log_info "Compiling stillcolord..."
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile to $DITHERING_BIN"
+        log_info "Dry run — would compile to $DITHERING_BIN"
         return 0
     fi
     if xcrun cc \
@@ -50,6 +50,7 @@ _dithering_compile() {
         log_ok "Compiled → ~${DITHERING_BIN#"$HOME"}"
     else
         log_err "Compile failed"
+        log_hint "clang comes with Xcode CLT — run 'xcode-select --install' and retry"
         return 1
     fi
 }
@@ -68,12 +69,12 @@ dithering_install() {
     log_info "This installs a small headless daemon (no app, no menu bar icon)"
     log_info "It disables GPU/DCP-generated temporal dithering on every login"
     printf '\n'
-    if ! confirm "Continue?"; then crumb_pop; return; fi
+    if ! confirm "Continue?" "y"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile $DITHERING_SRC → $DITHERING_BIN"
-        log_info "Would write LaunchAgent: $DITHERING_PLIST"
-        log_info "Would bootstrap: gui/$UID/$DITHERING_LABEL"
+        log_info "Dry run — would compile $DITHERING_SRC → $DITHERING_BIN"
+        log_info "Dry run — would write LaunchAgent: $DITHERING_PLIST"
+        log_info "Dry run — would bootstrap: gui/$UID/$DITHERING_LABEL"
         wait_enter
         crumb_pop
         return
@@ -116,14 +117,14 @@ dithering_uninstall() {
 
     log_info "This removes the daemon and re-enables dithering"
     printf '\n'
-    if ! confirm "Continue?"; then crumb_pop; return; fi
+    if ! confirm "Continue?" "y"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would bootout: gui/$UID/$DITHERING_LABEL"
-        log_info "Would remove: $DITHERING_PLIST"
-        log_info "Would remove: $DITHERING_BIN"
-        log_info "Would remove: $DITHERING_LOG"
-        log_info "Would run: stillcolord --enable"
+        log_info "Dry run — would bootout: gui/$UID/$DITHERING_LABEL"
+        log_info "Dry run — would remove: $DITHERING_PLIST"
+        log_info "Dry run — would remove: $DITHERING_BIN"
+        log_info "Dry run — would remove: $DITHERING_LOG"
+        log_info "Dry run — would run: stillcolord --enable"
         wait_enter
         crumb_pop
         return
@@ -150,7 +151,7 @@ dithering_status() {
     crumb_push "Status"
 
     if [[ "$ARCH" != "arm64" ]]; then
-        log_err "Apple Silicon required"
+        log_err "Dithering disable requires Apple Silicon (M1+)"
         wait_enter
         crumb_pop
         return

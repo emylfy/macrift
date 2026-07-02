@@ -5,13 +5,13 @@ ITERM2_DOMAIN="com.googlecode.iterm2"
 
 terminal_menu() {
     if ! check_homebrew; then wait_enter; return; fi
-    crumb_push "Terminal"
+    crumb_push "Terminal Emulator"
     while true; do
         clear
 
         local choice
-        choice=$(show_menu "Terminal" \
-            "iTerm2" \
+        choice=$(show_menu "Terminal Emulator" \
+            "iTerm2 ›" \
             "Ghostty" \
             "Back")
 
@@ -42,8 +42,8 @@ setup_iterm2() {
 
         local choice
         choice=$(show_menu "iTerm2" \
-            "Apply theme profile" \
-            "Apply iTerm2 defaults" \
+            "Apply theme profile ›" \
+            "Apply recommended iTerm2 settings" \
             "---" \
             "Export current settings to plist" \
             "Import settings from plist" \
@@ -70,7 +70,7 @@ setup_iterm2() {
                 fi
                 if [[ "$MACRIFT_DRY_RUN" == true ]]; then
                     log_info "Dry run — would import iTerm2 settings"
-                elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)"; then
+                elif confirm "Import iTerm2 settings? (restart iTerm2 to apply)" "y"; then
                     defaults import "$domain" "$config_plist"
                     defaults delete "$domain" PrefsCustomFolder 2>/dev/null || true
                     defaults delete "$domain" LoadPrefsFromCustomFolder 2>/dev/null || true
@@ -102,6 +102,8 @@ _iterm2_install_profile() {
 
     if [[ ${#profiles[@]} -eq 0 ]]; then
         log_err "No profile JSONs found in config/iterm2/"
+        log_hint "drop a profile JSON there and re-run this"
+        wait_enter
         return
     fi
 
@@ -166,7 +168,7 @@ _iterm2_system_tweaks() {
         return
     fi
 
-    if ! confirm "Apply iTerm2 system tweaks?"; then return; fi
+    if ! confirm "Apply iTerm2 system tweaks?" "y"; then return; fi
 
     local domain="$ITERM2_DOMAIN"
 
@@ -203,12 +205,12 @@ setup_ghostty() {
 
     if [[ ! -f "$config_source" ]]; then
         log_warn "No Ghostty config found in config/ghostty/config"
-        log_info "You can add your config there and re-run this"
+        log_info "Add your config there and re-run this"
         wait_enter
         return
     fi
 
-    if confirm "Copy Ghostty config?"; then
+    if confirm "Copy Ghostty config?" "y"; then
         copy_config "$config_source" "$config_target"
         _ghostty_install_themes
         log_ok "Ghostty configured"
@@ -251,7 +253,7 @@ shell_menu() {
             "Full setup (Zinit + Starship + .zshrc)" \
             "---" \
             "Starship (install + preset)" \
-            "Shell theme (fzf / bat / eza / syntax highlighting)" \
+            "Shell theme (fzf / bat / eza / syntax highlighting) ›" \
             "Copy .zshrc only" \
             "Back")
 
@@ -274,7 +276,7 @@ _ensure_nerd_font() {
         return
     fi
     log_warn "FiraCode Nerd Font not found (required for icons)"
-    if confirm "Install font-fira-code-nerd-font via Homebrew?"; then
+    if confirm "Install font-fira-code-nerd-font via Homebrew?" "y"; then
         brew_install "font-fira-code-nerd-font" "cask"
     fi
 }
@@ -295,7 +297,7 @@ install_zinit() {
         return
     fi
 
-    if ! confirm "Install Zinit?"; then return; fi
+    if ! confirm "Install Zinit?" "y"; then return; fi
 
     if ! command -v git &>/dev/null; then
         log_err "Git required — install Xcode Command Line Tools first"
@@ -325,7 +327,7 @@ install_starship() {
 starship_preset() {
     if ! command -v starship &>/dev/null; then
         log_warn "Starship not installed"
-        if confirm "Install Starship?"; then
+        if confirm "Install Starship?" "y"; then
             brew_install "starship" || return 0
         else
             return 0
@@ -372,7 +374,7 @@ starship_preset() {
         return
     fi
 
-    if confirm "Apply '$preset_label'? (current config will be backed up)"; then
+    if confirm "Apply '$preset_label'? (current config will be backed up)" "y"; then
         backup_file "$config_target"
         if starship preset "$preset_id" > "$config_target" 2>/dev/null; then
             log_ok "'$preset_label' applied"
@@ -501,7 +503,7 @@ _fastfetch_apply() {
         log_info "Dry run — would apply '$label'"
         wait_enter; return 0
     fi
-    confirm "Apply '$label'? (current config is backed up)" || return 1
+    confirm "Apply '$label'? (current config is backed up)" "y" || return 1
 
     # Resolve the base config file for this card.
     local base
@@ -650,7 +652,7 @@ install_zshrc() {
         return
     fi
 
-    if confirm "Replace .zshrc? (current will be backed up)"; then
+    if confirm "Replace .zshrc? (current will be backed up)" "y"; then
         copy_config "$config_source" "$config_target"
         log_ok ".zshrc installed (restart shell to apply)"
     fi
@@ -702,22 +704,23 @@ _apply_shell_theme() {
         esac
     done
 
-    crumb_push "Shell colors"
+    crumb_push "$name"
     clear
     printf '\n'
     printf '  %bApply %s to shell tools:%b\n\n' "$BOLD" "$name" "$RESET"
+    # Plain bullets — › is reserved for "opens a submenu" in menus
     if [[ -n "$bat_note" ]]; then
-        printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
-        printf '  %b›%b  bat syntax highlighting (%s)\n' "$CYAN" "$RESET" "$bat_note"
+        printf '  %b•%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+        printf '  %b•%b  bat syntax highlighting (%s)\n' "$CYAN" "$RESET" "$bat_note"
     else
-        printf '  %b›%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
-        printf '  %b›%b  bat syntax highlighting\n' "$CYAN" "$RESET"
+        printf '  %b•%b  fzf / fzf-tab search colors\n' "$CYAN" "$RESET"
+        printf '  %b•%b  bat syntax highlighting\n' "$CYAN" "$RESET"
     fi
-    printf '  %b›%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
-    printf '  %b›%b  eza file colors\n' "$CYAN" "$RESET"
-    printf '  %b›%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
-    [[ -n "$star_preset" ]] && printf '  %b›%b  Starship preset: %s\n' "$CYAN" "$RESET" "$star_preset"
-    [[ -n "$star_file" ]] && printf '  %b›%b  Starship config: %s\n' "$CYAN" "$RESET" "${star_file##*/}"
+    printf '  %b•%b  zsh-autosuggestions hint color\n' "$CYAN" "$RESET"
+    printf '  %b•%b  eza file colors\n' "$CYAN" "$RESET"
+    printf '  %b•%b  fast-syntax-highlighting colors\n' "$CYAN" "$RESET"
+    [[ -n "$star_preset" ]] && printf '  %b•%b  Starship preset: %s\n' "$CYAN" "$RESET" "$star_preset"
+    [[ -n "$star_file" ]] && printf '  %b•%b  Starship config: %s\n' "$CYAN" "$RESET" "${star_file##*/}"
     printf '\n'
     if [[ -n "$ghostty" ]]; then
         printf '  Ghostty: set  %btheme = %s%b\n' "$BOLD" "$ghostty" "$RESET"
@@ -730,7 +733,7 @@ _apply_shell_theme() {
         crumb_pop
         return
     fi
-    if ! confirm "Apply $name to shell tools?"; then
+    if ! confirm "Apply $name to shell tools?" "y"; then
         crumb_pop
         return
     fi
@@ -804,15 +807,18 @@ apply_gruvbox() {
 
 apply_monokai() {
     local variant_choice ghostty_variant=""
+    # "Skip" used to be the trailing item, which show_menu maps to 0 — the same
+    # code ← returns — so it cancelled the whole theme instead of skipping.
     variant_choice=$(show_menu "Ghostty variant" \
         "Monokai Pro" \
         "Monokai Ristretto" \
-        "Skip")
+        "Skip Ghostty theme (shell tools only)" \
+        "Back")
     case "$variant_choice" in
         1) ghostty_variant="Monokai Pro" ;;
         2) ghostty_variant="Monokai Ristretto" ;;
-        0) return ;;
-        *) ghostty_variant="" ;;
+        3) ghostty_variant="" ;;
+        *) return ;;
     esac
 
     local -a extra=()

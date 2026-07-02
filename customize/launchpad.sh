@@ -34,7 +34,7 @@ _lp_reset() {
         return
     fi
 
-    if ! confirm "Reset Launchpad to default layout?"; then return; fi
+    if ! confirm "Reset Launchpad to default layout?" "n"; then return; fi
 
     local lp_db darwin_dir
     darwin_dir=$(getconf DARWIN_USER_DIR)
@@ -130,9 +130,10 @@ _lp_sort_by_category() {
         created=$(echo "$result" | cut -d'|' -f2)
         log_ok "Launchpad sorted into $created category folders"
     else
-        log_err "Failed: $result"
+        log_err "Launchpad sort failed"
+        log_hint "details: $result"
     fi
 
-    log_info "Reset: macrift > Customize > Launchpad > Reset to default"
+    log_info "Reset: Customize → Launchpad → Reset to default"
     wait_enter
 }

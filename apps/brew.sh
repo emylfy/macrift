@@ -242,7 +242,7 @@ _collect_casks() {
 fzf_search_packages() {
     if ! command -v fzf &>/dev/null; then
         log_warn "fzf not found"
-        if confirm "Install fzf via Homebrew?"; then
+        if confirm "Install fzf via Homebrew?" "y"; then
             brew_install "fzf" || return 0
         else
             return 0
@@ -372,7 +372,7 @@ brew_menu() {
             6) install_bundle "Brewfile.comm" "Communication" ;;
             7) install_bundle "Brewfile.media" "Media" ;;
             8) install_bundle "Brewfile.games" "Games" ;;
-            9) install_bundle "Brewfile.fonts" "Fonts" ;;
+            9) install_bundle "Brewfile.fonts" "Fonts (Nerd Fonts)" ;;
             10) install_all_bundles ;;
             11) brewbak_menu ;;
             0) break ;;
@@ -383,12 +383,12 @@ brew_menu() {
 }
 
 brewbak_menu() {
-    crumb_push "Backup"
+    crumb_push "Backup & restore"
     while true; do
         clear
 
         local choice
-        choice=$(show_menu "Backup (.brewbak)" \
+        choice=$(show_menu "Backup & restore"$'\x1f'".brewbak — plain-text package list" \
             "Import from .brewbak" \
             "Export to .brewbak" \
             "Back")
@@ -413,7 +413,7 @@ _fix_broken_casks() {
     printf "\n"
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would reinstall broken casks"
-    elif confirm "Fix them now?"; then
+    elif confirm "Fix them now?" "y"; then
         local idx=0
         for cask in "${casks[@]}"; do
             idx=$((idx + 1))
@@ -580,7 +580,7 @@ install_bundle() {
     fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install:"
+        log_info "Dry run — would install $(wc -l < "$tmp" | tr -d ' ') packages:"
         [[ -s "$tmp" ]] && while IFS= read -r line; do
             printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"
@@ -621,7 +621,7 @@ _bundle_label() {
         Brewfile.comm)     echo "Communication" ;;
         Brewfile.media)    echo "Media" ;;
         Brewfile.games)    echo "Games" ;;
-        Brewfile.fonts)    echo "Fonts" ;;
+        Brewfile.fonts)    echo "Fonts (Nerd Fonts)" ;;
         *)                 echo "$1" ;;
     esac
 }
@@ -724,7 +724,7 @@ install_all_bundles() {
     fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Dry run — would install:"
+        log_info "Dry run — would install $(wc -l < "$tmp" | tr -d ' ') packages:"
         while IFS= read -r line; do
             printf '  %b· %s%b\n' "$DIM" "$line" "$RESET"
         done < "$tmp"

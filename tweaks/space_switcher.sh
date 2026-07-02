@@ -22,7 +22,7 @@ _space_check_arch() {
 _space_check_clang() {
     if ! xcrun --find clang &>/dev/null; then
         log_warn "Xcode Command Line Tools not found"
-        if confirm "Install Xcode Command Line Tools? (opens system installer)"; then
+        if confirm "Install Xcode Command Line Tools? (opens system installer)" "y"; then
             xcode-select --install 2>/dev/null || true
             log_info "Re-run after the installer finishes"
         fi
@@ -37,7 +37,7 @@ _space_compile() {
     fi
     log_info "Compiling space-switcher..."
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile to $SPACE_BIN"
+        log_info "Dry run — would compile to $SPACE_BIN"
         return 0
     fi
     if xcrun cc -O2 -arch arm64 \
@@ -46,6 +46,7 @@ _space_compile() {
         log_ok "Compiled → ~${SPACE_BIN#"$HOME"}"
     else
         log_err "Compile failed"
+        log_hint "clang comes with Xcode CLT — run 'xcode-select --install' and retry"
         return 1
     fi
 }
@@ -74,10 +75,10 @@ space_install() {
     log_info "  • CLI works one-shot: ~${SPACE_BIN#"$HOME"} left|right"
     log_info "  • Daemon (toggle separately) intercepts native Ctrl+←/→"
     printf '\n'
-    if ! confirm "Continue?"; then crumb_pop; return; fi
+    if ! confirm "Continue?" "y"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would compile $SPACE_SRC → $SPACE_BIN"
+        log_info "Dry run — would compile $SPACE_SRC → $SPACE_BIN"
         wait_enter
         crumb_pop
         return
@@ -107,10 +108,10 @@ space_uninstall() {
         crumb_pop
         return
     fi
-    if ! confirm "Remove space-switcher (CLI + daemon)?"; then crumb_pop; return; fi
+    if ! confirm "Remove space-switcher (CLI + daemon)?" "n"; then crumb_pop; return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would bootout, remove plist + binary"
+        log_info "Dry run — would bootout, remove plist + binary"
         wait_enter
         crumb_pop
         return
@@ -133,7 +134,7 @@ space_toggle_daemon() {
 
     if launchd_is_loaded "$SPACE_LABEL"; then
         clear
-        if ! confirm "Stop daemon? Native Ctrl+←/→ becomes slow again."; then return; fi
+        if ! confirm "Stop daemon? Native Ctrl+←/→ becomes slow again." "n"; then return; fi
         launchd_unload "$SPACE_LABEL"
         rm -f "$SPACE_PLIST"
         log_ok "Daemon stopped — native Ctrl+←/→ restored to default behavior"
@@ -147,10 +148,10 @@ space_toggle_daemon() {
     log_info "  • Other Ctrl combos (Ctrl+Shift+←, Ctrl+Cmd+←) pass through unchanged"
     log_info "  • Set-and-forget — survives login"
     printf '\n'
-    if ! confirm "Continue?"; then return; fi
+    if ! confirm "Continue?" "y"; then return; fi
 
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would write plist and bootstrap"
+        log_info "Dry run — would write plist and bootstrap"
         wait_enter
         return
     fi
@@ -176,7 +177,7 @@ space_status() {
     local daemon="off"
     launchd_is_loaded "$SPACE_LABEL" && daemon="running"
 
-    show_info_box "Space Switcher" \
+    show_info_box "Space Switcher Status" \
         "Binary:   $installed" \
         "Daemon:   $daemon"
 

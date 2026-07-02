@@ -19,13 +19,24 @@ install_xcode_clt() {
         return
     fi
 
-    if ! confirm "Install Xcode Command Line Tools?"; then return; fi
+    if ! confirm "Install Xcode Command Line Tools?" "y"; then return; fi
 
     xcode-select --install 2>/dev/null || true
-    printf '  %bWaiting for installation...%b' "$DIM" "$RESET"
+    printf '  %bWaiting for the Apple installer...%b' "$DIM" "$RESET"
+    local waited=0
     until xcode-select -p &>/dev/null; do
+        # If the user cancelled Apple's dialog this would spin forever — give up
+        # after 10 minutes instead of hanging
+        if [[ $waited -ge 600 ]]; then
+            printf '\n'
+            log_warn "Not installed after 10 minutes — stopped waiting"
+            log_hint "finish the Apple installer, then re-run this item"
+            wait_enter
+            return
+        fi
         printf '.'
         sleep 5
+        waited=$((waited + 5))
     done
     printf '\n'
     log_ok "Xcode Command Line Tools installed"
@@ -38,8 +49,8 @@ apps_menu() {
         clear
 
         local -a items=(
-            "Homebrew Bundles ›"
-            "Mac App Store ›"
+            "Homebrew ›"
+            "App Store ›"
         )
         # Spotify (SpotX + Spicetify) now ships as the bundled `misc` plugin and
         # injects itself here via menu.parent=apps (see _plugin_attach_builtin).

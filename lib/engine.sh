@@ -97,7 +97,7 @@ show_audit_table() {
         return 1
     fi
 
-    if confirm "Apply these changes?"; then
+    if confirm "Apply these changes?" "y"; then
         return 0
     else
         log_info "No changes applied"
@@ -537,7 +537,7 @@ journal_undo_cli() {
     fi
 
     printf '\n'
-    if ! confirm "Revert these $changes change(s)?"; then
+    if ! confirm "Revert these $changes change(s)?" "y"; then
         log_info "Undo cancelled"
         RESET_ENTRIES=(); DOTFILE_RESETS=(); BREW_UNDOS=(); PLIST_RESETS=(); COMMAND_UNDOS=()
         return 0
@@ -559,7 +559,7 @@ journal_undo_cli() {
     MACRIFT_CHANGED_DOMAINS=()
     if $need_dock || $need_finder; then
         printf '\n'
-        if confirm "Restart affected services?"; then
+        if confirm "Restart affected services?" "y"; then
             $need_dock   && { killall Dock 2>/dev/null   || true; log_ok "Dock restarted"; }
             $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
         fi
@@ -689,7 +689,7 @@ manifest_apply_cli() {
         MACRIFT_CHANGED_DOMAINS=()
         if $need_dock || $need_finder; then
             printf '\n'
-            if confirm "Restart affected services?"; then
+            if confirm "Restart affected services?" "y"; then
                 $need_dock   && { killall Dock 2>/dev/null   || true; log_ok "Dock restarted"; }
                 $need_finder && { killall Finder 2>/dev/null || true; log_ok "Finder restarted"; }
             fi
@@ -758,7 +758,7 @@ _manifest_apply_dotfiles() {
         printf '\n'; log_info "Dry run — no dotfiles copied"; return 0
     fi
     printf '\n'
-    if ! confirm "Copy these dotfiles?"; then
+    if ! confirm "Copy these dotfiles?" "y"; then
         log_info "No dotfiles copied"; return 0
     fi
 
@@ -820,7 +820,7 @@ _manifest_apply_brew() {
     fi
 
     printf '\n'
-    if ! confirm "Install these packages?"; then
+    if ! confirm "Install these packages?" "y"; then
         log_info "No packages installed"; return 0
     fi
 
@@ -887,7 +887,7 @@ _manifest_apply_plist() {
         printf '\n'; log_info "Dry run — no preferences imported"; return 0
     fi
     printf '\n'
-    if ! confirm "Import these preference domains?"; then
+    if ! confirm "Import these preference domains?" "y"; then
         log_info "No preferences imported"; return 0
     fi
 
@@ -942,7 +942,7 @@ _manifest_apply_command() {
         return 0
     fi
     printf '\n'
-    if ! confirm "Run these commands?"; then
+    if ! confirm "Run these commands?" "n"; then
         log_info "No commands run"; return 0
     fi
 

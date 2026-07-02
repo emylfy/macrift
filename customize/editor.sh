@@ -20,6 +20,7 @@ editor_menu() {
             _editor_installed "$e" || label+=$'\x1f'
             menu+=("$label"); pick+=("$e")
         done
+        menu+=("---")
         menu+=("Install extensions"); pick+=("__install__")
         menu+=("---")
         label="Zed"; _editor_installed "Zed" || label+=$'\x1f'
@@ -27,7 +28,7 @@ editor_menu() {
         menu+=("Back")
 
         local choice
-        choice=$(show_menu "Code Editor" "${menu[@]}")
+        choice=$(show_menu "Code Editor"$'\x1f'"dim = not installed (picking one offers to install it)" "${menu[@]}")
         [[ -z "$choice" || "$choice" == "0" ]] && break
 
         local sel="${pick[$((choice - 1))]:-}"
@@ -117,21 +118,21 @@ apply_editor_config() {
         local cask
         cask=$(_editor_cask "$editor_name")
         log_warn "$editor_name not installed"
-        if [[ -n "$cask" ]] && confirm "Install $editor_name via Homebrew?"; then
+        if [[ -n "$cask" ]] && confirm "Install $editor_name via Homebrew?" "y"; then
             brew_install "$cask" "cask"
         else
             return 0
         fi
     fi
 
-    if confirm "Copy settings.json to $editor_name?"; then
+    if confirm "Copy settings.json to $editor_name?" "y"; then
         copy_config "$source" "$target"
         log_ok "$editor_name settings applied"
         if [[ "$editor_name" == "Zed" ]]; then
             _zed_fonts "$target"
         else
             printf '\n'
-            confirm "Choose extensions to install?" && install_extensions "$editor_name"
+            confirm "Choose extensions to install?" "y" && install_extensions "$editor_name"
         fi
     fi
     wait_enter
@@ -140,7 +141,7 @@ apply_editor_config() {
 # Patch a "key": "value" string in the copied Zed settings, preserving JSONC comments
 _zed_set_font() {
     local file="$1" key="$2" val="$3"
-    if [[ "$MACRIFT_DRY_RUN" == true ]]; then log_info "Would set $key → $val"; return 0; fi
+    if [[ "$MACRIFT_DRY_RUN" == true ]]; then log_info "Dry run — would set $key → $val"; return 0; fi
     [[ -f "$file" ]] || { log_warn "$file not found"; return 1; }
     local tmp esc; tmp=$(mktemp)
     esc=$(printf '%s' "$val" | sed -e 's/[\&|]/\\&/g') # escape sed specials

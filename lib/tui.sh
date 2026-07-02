@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # macrift — TUI framework (menus, boxes, spinners, breadcrumbs)
 
+# Join crumbs with " › " — "${arr[*]}" would join with the first IFS char only
+_crumb_join() {
+    local out="" c
+    for c in "$@"; do
+        [[ -n "$out" ]] && out+=" › "
+        out+="$c"
+    done
+    printf '%s' "$out"
+}
+
 # Update terminal tab/window title — show path to current menu, not the menu itself
 _update_title() {
     local count=${#MACRIFT_CRUMBS[@]}
     if [[ $count -le 1 ]]; then
         printf "\033]0;%s\007" "macrift"
     else
-        local parent=("${MACRIFT_CRUMBS[@]:0:count-1}")
-        local title
-        title=$(IFS=" › "; echo "${parent[*]}")
-        printf "\033]0;%s\007" "$title"
+        printf "\033]0;%s\007" "$(_crumb_join "${MACRIFT_CRUMBS[@]:0:count-1}")"
     fi
 }
 
@@ -305,16 +312,27 @@ show_menu() {
         # A trailing US byte (\x1f) marks a dim row (e.g. "not installed") that is
         # still selectable; strip it before the affordance split below.
         [[ "$raw" == *$'\x1f' ]] && { is_dim=true; raw="${raw%$'\x1f'}"; }
-        # A trailing " ›" (opens a submenu) or " ↗" (opens System Settings) is
-        # split off and right-aligned to the border as a dim affordance.
+        # A trailing " ›" (opens a submenu) or " ↗" (opens outside the app —
+        # System Settings or a URL) is split off and right-aligned to the
+        # border as a dim affordance.
         case "$raw" in
             *' ›') glyph="›"; raw="${raw% ›}" ;;
             *' ↗') glyph="↗"; raw="${raw% ↗}" ;;
         esac
-        local text; text=$(_fit "${indent}${raw}")
+        local text
+        if [[ -n "$glyph" ]]; then
+            # Reserve room for the right-aligned glyph + its margin, otherwise a
+            # max-width label pushes the row one column past the border.
+            local gmax=$((max_text - 1))
+            text="${indent}${raw}"
+            [[ ${#text} -gt $gmax ]] && text="${text:0:gmax-1}…"
+        else
+            text=$(_fit "${indent}${raw}")
+        fi
         local lead="  "; $is_sel && lead=" $BAR"
         local body
-        if $is_sel;               then body=$(printf '%b%s%b' "${BOLD}${ICE}" "$text" "$R")
+        # Selection = cursor bar + bold; ICE stays reserved for titles
+        if $is_sel;               then body=$(printf '%b%s%b' "${BOLD}" "$text" "$R")
         elif $is_back || $is_dim; then body=$(printf '%b%s%b' "$DIM" "$text" "$R")
         else body="$text"; fi
         if [[ -n "$glyph" ]]; then
@@ -328,17 +346,38 @@ show_menu() {
         fi
     }
 
-    # Scrolling
-    local chrome=8
+    # On-screen breadcrumb — dim parent path above the box. Only worth the
+    # line when it shows an actual path: the root is dropped, and a single
+    # parent ("Manage Plugins ›") is skipped too — that's just the screen the
+    # user came from. Menus that pushed their own crumb have themselves as the
+    # last element (excluded); pickers that didn't push keep the full parent
+    # chain, so their direct parent still shows.
+    local crumb_line=""
+    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
+        local _parents=("${MACRIFT_CRUMBS[@]:1}")
+        local _plast=$(( ${#_parents[@]} - 1 ))
+        [[ "${_parents[$_plast]}" == "$title" ]] && unset "_parents[$_plast]"
+        if [[ ${#_parents[@]} -ge 2 ]]; then
+            crumb_line=$(_crumb_join "${_parents[@]}")
+        fi
+    fi
+
+    # Chrome height (non-item lines) — must track the render loop exactly, or
+    # the \033[NA reposition drifts and smears frames (see the frame-geometry
+    # tests). Base 6 = lead + top border + top gap + pre-bottom gap + bottom
+    # border + footer; a visible trailing item (Exit) adds its row + one gap.
+    local chrome=6
+    $hide_back || chrome=$((chrome + 2))
+    [[ -n "$subtitle" ]] && chrome=$((chrome + 2))
+    [[ -n "$crumb_line" ]] && chrome=$((chrome + 1))
     local scroll_info
     scroll_info=$(_calc_scroll "$last_idx" "$chrome")
     local need_scroll=${scroll_info%% *}
     local visible_count=${scroll_info##* }
     local vp_top=0
 
-    local total_lines=$((visible_count + 8))
+    local total_lines=$((visible_count + chrome))
     $need_scroll && total_lines=$((total_lines + 1))
-    [[ -n "$subtitle" ]] && total_lines=$((total_lines + 1))
 
     # Restore cursor from sticky position if we've been here before
     local sel first_draw=true
@@ -358,15 +397,20 @@ show_menu() {
         _frame_start "$first_draw" "$total_lines"
         first_draw=false
 
+        if [[ -n "$crumb_line" ]]; then
+            printf '  %b%s ›%b\033[K\n' "$DIM" "$crumb_line" "$R" >&2
+        fi
         _box_top "$title" "$inner_w"
         # The scroll-up slot below doubles as the top gap when scrolling
         $need_scroll || _box_empty "$inner_w"
 
-        # Optional dim subtitle (live state) right under the title
+        # Optional dim subtitle (live state) right under the title, with a
+        # blank row after it so it doesn't read as the first menu item
         if [[ -n "$subtitle" ]]; then
             local _st; _st=$(_fit "$subtitle")
             local _spad=$((inner_w - 2 - ${#_st})); [[ $_spad -lt 0 ]] && _spad=0
             _box_row "$inner_w" "$(printf '%b%s%b' "$DIM" "$_st" "$R")" "$_spad"
+            _box_empty "$inner_w"
         fi
 
         # Scroll-up
@@ -458,16 +502,25 @@ show_menu() {
         local on_back=false
         if ! $hide_back && [[ $sel -ge $((sel_total - 1)) ]]; then on_back=true; fi
         case "$key" in
-            up)    [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
-            down)  [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
+            up|k)   [[ $sel -gt 0 ]] && sel=$((sel - 1)) ;;
+            down|j) [[ $sel -lt $((sel_total - 1)) ]] && sel=$((sel + 1)) ;;
             right|enter)
                    $on_back || _menu_pos_set "$title" "$sel"
                    _ui_end; echo "${sel_nums[$sel]}"; return ;;
-            left)
+            left|esc)
                    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
                        $on_back || _menu_pos_set "$title" "$sel"
                        _ui_end; echo "0"; return
                    fi ;;
+            [1-9])
+                   # Digit = jump-select that numbered item
+                   local di
+                   for ((di=0; di<sel_total; di++)); do
+                       if [[ "${sel_nums[$di]}" == "$key" ]]; then
+                           _menu_pos_set "$title" "$di"
+                           _ui_end; echo "$key"; return
+                       fi
+                   done ;;
         esac
     done
 }
@@ -488,6 +541,11 @@ show_info_box() {
     local inner_w=$((max_len + 4))
     local title_min=$((${#title} + 5))
     [[ $title_min -gt $inner_w ]] && inner_w=$title_min
+    # Clamp to terminal width so the border never wraps (mirrors show_menu)
+    local term_w; term_w=$(tput cols 2>/dev/null || echo 80)
+    local max_inner=$((term_w - 4)); [[ $max_inner -lt 16 ]] && max_inner=16
+    [[ $inner_w -gt $max_inner ]] && inner_w=$max_inner
+    local max_text=$((inner_w - 4))
 
     local BP="${BOLD}${GRAY}" R="${RESET}"
 
@@ -496,8 +554,11 @@ show_info_box() {
     _box_empty "$inner_w"
 
     for ((i=0; i<count; i++)); do
-        local pad=$((inner_w - ${#lines[$i]} - 2))
-        _box_row "$inner_w" "${lines[$i]}" "$pad"
+        local line="${lines[$i]}"
+        # Lines with embedded ANSI can't be measured by ${#} — leave them alone
+        [[ "$line" != *$'\033'* && ${#line} -gt $max_text ]] && line="${line:0:max_text-1}…"
+        local pad=$((inner_w - ${#line} - 2)); [[ $pad -lt 0 ]] && pad=0
+        _box_row "$inner_w" "$line" "$pad"
     done
 
     _box_empty "$inner_w"
@@ -511,7 +572,6 @@ show_multiselect() {
     shift
     local items=("$@")
     local count=${#items[@]}
-    local total=$((count + 1))
     local cursor=0
     declare -a selected
     local i
@@ -575,9 +635,10 @@ show_multiselect() {
     local BP="${BOLD}${GRAY}" R="${RESET}"
     local BAR="${BOLD}${CYAN}▌${R}"
 
-    # Scrolling — chrome=9 accounts for box (top/bottom + 3 empties + back row) + 2-line hint
+    # Scrolling — chrome=7 accounts for box (top/bottom + 2 empties) + 2-line hint
+    # (Back is implicit here too — ← cancels, same contract as show_menu)
     local scroll_info
-    scroll_info=$(_calc_scroll "$count" 9)
+    scroll_info=$(_calc_scroll "$count" 7)
     local need_scroll=${scroll_info%% *}
     local visible_count=${scroll_info##* }
     local vp_top=0
@@ -589,8 +650,9 @@ show_multiselect() {
         any_scroll=true
     fi
 
-    # +9 (not +8) because the hint is now two lines instead of one
-    local redraw_lines=$((visible_count + 9))
+    # +7: box chrome (4) + blank pad above hint isn't drawn — top/bottom borders,
+    # two empty rows, and the two-line hint + trailing pad line
+    local redraw_lines=$((visible_count + 7))
     $any_scroll && redraw_lines=$((redraw_lines + 1))
 
     local first_draw=true
@@ -655,10 +717,8 @@ show_multiselect() {
                 fi
             fi
 
-            # Mirror picker's bottom chrome height (3 rows) — keep them empty since
+            # Mirror picker's bottom chrome height — keep it empty since
             # navigation is conveyed by the hint line below
-            _box_empty "$inner_w"
-            _box_empty "$inner_w"
             _box_empty "$inner_w"
             _box_bottom "$inner_w"
 
@@ -669,9 +729,9 @@ show_multiselect() {
             local key
             key=$(_read_key)
             case "$key" in
-                up)   [[ $view_cursor -gt 0 ]] && view_cursor=$((view_cursor - 1)) ;;
-                down) [[ $view_cursor -lt $((view_count - 1)) ]] && view_cursor=$((view_cursor + 1)) ;;
-                left|right|enter) view_mode=false ;;   # installed-view is a drill-in; any of these returns to the picker
+                up|k)   [[ $view_cursor -gt 0 ]] && view_cursor=$((view_cursor - 1)) ;;
+                down|j) [[ $view_cursor -lt $((view_count - 1)) ]] && view_cursor=$((view_cursor + 1)) ;;
+                left|esc|i|I|enter) view_mode=false ;;   # installed-view is a drill-in; back out to the picker
             esac
             continue
         fi
@@ -736,7 +796,7 @@ show_multiselect() {
             else box=$(printf '%b[ ]%b' "$DIM" "$R"); fi
             local mbody
             if [[ -n "$mnote" ]]; then
-                mbody=$(printf '%s %s  %b%s%b' "$box" "$mlabel" "$GRAY" "$mnote" "$R")
+                mbody=$(printf '%s %s  %b%s%b' "$box" "$mlabel" "$DIM" "$mnote" "$R")
             else
                 mbody=$(printf '%s %s' "$box" "$mlabel")
             fi
@@ -753,15 +813,7 @@ show_multiselect() {
             fi
         fi
 
-        # Back
-        _box_empty "$inner_w"
-        local blead="  " bbody
-        if [[ $cursor -eq $count ]]; then
-            blead=" $BAR"; bbody=$(printf '%b%bBack%b' "$BOLD" "$ICE" "$R")
-        else
-            bbody=$(printf '%bBack%b' "$DIM" "$R")
-        fi
-        _box_row "$inner_w" "$bbody" "$((inner_w - 6))" "$blead"
+        # Back is implicit — ← cancels (hint says so), same contract as show_menu
         _box_empty "$inner_w"
         _box_bottom "$inner_w"
 
@@ -772,7 +824,7 @@ show_multiselect() {
         else
             printf '  %b↑↓ move  space toggle  a all%b\033[K\n' "$DIM" "$R" >&2
             local hint2="← back  enter confirm"
-            $view_available && hint2+="  → installed"
+            $view_available && hint2+="  i installed"
             printf '  %b%s%b\033[K\n' "$DIM" "$hint2" "$R" >&2
         fi
         _frame_end
@@ -781,7 +833,7 @@ show_multiselect() {
         local key
         key=$(_read_key)
         case "$key" in
-            up)
+            up|k)
                 if [[ $cursor -gt 0 ]]; then
                     cursor=$((cursor - 1))
                     while [[ $cursor -gt 0 && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
@@ -792,24 +844,30 @@ show_multiselect() {
                         cursor=$((cursor + 1))
                     done
                 fi ;;
-            down)
-                if [[ $cursor -lt $((total - 1)) ]]; then
+            down|j)
+                if [[ $cursor -lt $((count - 1)) ]]; then
                     cursor=$((cursor + 1))
                     while [[ $cursor -lt $count && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
                         cursor=$((cursor + 1))
                     done
+                    # ran off the end (trailing headers) — walk back to a selectable
+                    if [[ $cursor -ge $count ]]; then
+                        cursor=$((count - 1))
+                        while [[ $cursor -gt 0 && ( "${items[$cursor]}" == "---" || "${items[$cursor]}" == "## "* ) ]]; do
+                            cursor=$((cursor - 1))
+                        done
+                    fi
                 fi ;;
-            right)
-                # Right activates Back, switches to installed-view if available,
-                # otherwise no-op (so an accidental press doesn't kick off install)
-                if [[ $cursor -eq $count ]]; then _ui_end; return 0; fi
-                if $view_available; then view_mode=true; view_cursor=0; fi
-                ;;
-            left) _ui_end; return 0 ;;
-            space)
+            left|esc) _ui_end; return 0 ;;
+            space|right)
+                # → toggles too — matches the "right = act on this row" habit
+                # from show_menu instead of silently doing nothing
                 if [[ $cursor -lt $count ]]; then
                     if [[ "${selected[cursor]}" == "1" ]]; then selected[cursor]="0"; else selected[cursor]="1"; fi
                 fi ;;
+            i|I)
+                if $view_available; then view_mode=true; view_cursor=0; fi
+                ;;
             a|A)
                 local all_on=true
                 for ((i=0; i<count; i++)); do
@@ -822,7 +880,6 @@ show_multiselect() {
                     selected[i]="$val"
                 done ;;
             enter)
-                if [[ $cursor -eq $count ]]; then _ui_end; return 0; fi
                 break ;;
         esac
     done

@@ -1078,12 +1078,14 @@ plugins_menu() {
             done
             items+=("---")
         fi
-        items+=("## Manage" "Add plugin" "Update all" "Restore from lockfile" "Browse template ↗")
+        items+=("## Manage" "Add plugin ›" "Update all" "Restore from lockfile" "Browse template ↗")
         actions+=(add updateall restore browse)
         items+=("Back")
 
+        local pm_title="Manage Plugins"
+        (( ${#names[@]} == 0 )) && pm_title="Manage Plugins"$'\x1f'"No plugins installed yet"
         local choice
-        choice=$(show_menu "Manage Plugins" "${items[@]}")
+        choice=$(show_menu "$pm_title" "${items[@]}")
         [[ "$choice" == "0" ]] && break
 
         local action="${actions[$((choice - 1))]:-}"
@@ -1092,7 +1094,13 @@ plugins_menu() {
             add)       _plugin_add_menu || true ;;
             updateall) clear; _plugin_cli_update  || true; wait_enter ;;
             restore)   clear; _plugin_cli_restore || true; wait_enter ;;
-            browse)    open "https://github.com/emylfy/macrift-plugin-template" || true ;;
+            browse)
+                if [[ "$MACRIFT_DRY_RUN" == true ]]; then
+                    log_info "Dry run — would open: https://github.com/emylfy/macrift-plugin-template"
+                    wait_enter
+                else
+                    open "https://github.com/emylfy/macrift-plugin-template" || true
+                fi ;;
             "") ;;
         esac
     done

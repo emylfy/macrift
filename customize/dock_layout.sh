@@ -82,7 +82,7 @@ restore_dock_layout() {
         return
     fi
 
-    if ! confirm "Restore saved dock layout?"; then return; fi
+    if ! confirm "Restore saved dock layout?" "y"; then return; fi
 
     if command -v dockutil &>/dev/null; then
         # Clear current dock
@@ -113,7 +113,7 @@ restore_dock_layout() {
         [[ $failed -gt 0 ]] && log_warn "$failed apps not found (uninstalled?)"
     else
         log_err "dockutil required for restore"
-        if confirm "Install dockutil via Homebrew?"; then
+        if confirm "Install dockutil via Homebrew?" "y"; then
             brew_install "dockutil"
         fi
     fi
@@ -124,7 +124,7 @@ clear_dock() {
     clear
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would remove all apps from Dock"
-    elif confirm "Remove all apps from Dock?"; then
+    elif confirm "Remove all apps from Dock?" "n"; then
         dockutil --remove all 2>/dev/null || \
             defaults write com.apple.dock persistent-apps -array
         killall Dock 2>/dev/null || true
@@ -152,7 +152,7 @@ reset_dock() {
     clear
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
         log_info "Dry run — would reset Dock to defaults"
-    elif confirm "Reset Dock to macOS defaults?"; then
+    elif confirm "Reset Dock to macOS defaults?" "n"; then
         defaults delete com.apple.dock 2>/dev/null || true
         killall Dock 2>/dev/null || true
         log_ok "Dock reset to defaults"

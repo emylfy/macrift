@@ -34,7 +34,7 @@ setup_television() {
         return
     fi
 
-    if confirm "Copy television config + channels?"; then
+    if confirm "Copy television config + channels?" "y"; then
         copy_config "$config_source" "$config_target"
         _television_install_cable
         _television_shell_init
@@ -56,7 +56,7 @@ _television_install_cable() {
         return
     fi
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would install cable channels → ~/.config/television/cable/"
+        log_info "Dry run — would install cable channels → ~/.config/television/cable/"
         return
     fi
 
@@ -81,10 +81,10 @@ _television_shell_init() {
         return
     fi
     if [[ "$MACRIFT_DRY_RUN" == true ]]; then
-        log_info "Would add 'tv init zsh' to .zshrc"
+        log_info "Dry run — would add 'tv init zsh' to .zshrc"
         return
     fi
-    if confirm "Add television shell integration (Ctrl-T) to .zshrc?"; then
+    if confirm "Add television shell integration (Ctrl-T) to .zshrc?" "y"; then
         printf '\n# Television shell integration\ncommand -v tv &>/dev/null && eval "$(tv init zsh)"\n' >> "$rc"
         log_ok "Added tv shell init to .zshrc (restart shell to apply)"
     fi

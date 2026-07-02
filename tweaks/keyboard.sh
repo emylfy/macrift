@@ -2,8 +2,8 @@
 # macrift — Keyboard & text tweaks
 
 keyboard_tweaks() {
-    audit_default_optional "NSGlobalDomain" "KeyRepeat" "-int" "2" "Repeat speed"           # 2 = 30ms (fastest non-zero)
-    audit_default_optional "NSGlobalDomain" "InitialKeyRepeat" "-int" "15" "Repeat delay"  # 15 = 225ms before repeat starts
+    audit_default_optional "NSGlobalDomain" "KeyRepeat" "-int" "2" "Repeat speed~lower = faster; 2 ≈ 30 ms per repeat"
+    audit_default_optional "NSGlobalDomain" "InitialKeyRepeat" "-int" "15" "Repeat delay~lower = shorter; 15 ≈ 225 ms before repeat"
     audit_default "NSGlobalDomain" "ApplePressAndHoldEnabled" "-bool" "false" "Press & hold accents~Disables long-press for é ñ ü"
 
     audit_sep
