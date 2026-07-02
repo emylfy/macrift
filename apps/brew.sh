@@ -537,13 +537,6 @@ install_bundle() {
         new_optional=(${clean_optional[@]+"${clean_optional[@]}"})
     fi
 
-    # Handle missing apps separately
-    if [[ ${#broken_casks[@]} -gt 0 ]]; then
-        printf "\n"
-        _fix_broken_casks "${broken_casks[@]}"
-        printf "\n"
-    fi
-
     # After cleanup, if only separators remained they're gone — nothing to show
     if [[ ! ${new_labels[*]+x} || ${#new_labels[@]} -eq 0 ]]; then
         return 0
@@ -609,6 +602,12 @@ install_bundle() {
     else
         log_warn "Some packages failed to install"
         log_hint "re-run, or 'brew doctor' to diagnose; logs in ~/Library/Logs/Homebrew"
+    fi
+
+    # Broken casks come last — don't block the picker on entry
+    if [[ ${broken_casks[*]+x} && ${#broken_casks[@]} -gt 0 ]]; then
+        printf "\n"
+        _fix_broken_casks "${broken_casks[@]}"
     fi
     wait_enter
 }
