@@ -154,6 +154,7 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 | Spotlight Hotkey | Free up ⌘Space by disabling the Spotlight shortcut (for Raycast/Alfred)                                                                                  |
 | Dithering        | Apple Silicon — disable GPU/DCP temporal dithering ([Stillcolor](https://github.com/aiaf/Stillcolor) port); runs as a background daemon, no menu bar app |
 | Space Switcher   | Instant macOS workspace switching via Ctrl+←/→ daemon                                                                                                    |
+| FN Lang Switch   | Tap the Globe/FN key to toggle keyboard layout — instant, no picker popup; hidden background daemon. FN in shortcuts (Fn+F-key, Fn+arrow) left untouched |
 
 ### 📦 Apps & Packages
 
@@ -162,8 +163,8 @@ Tweak wizard with per-item skip, apply, or reset to system default. Batch apply 
 <details>
 <summary>What's in each bundle</summary>
 
-- **Development** — CLI only: git, gh, lazygit, node, python, go, rust, docker, fzf, ripgrep, zoxide, atuin, television, and more — 31 packages
-- **Apps** — dev GUI: editors (VS Code, Cursor, Zed), terminals (Ghostty, Warp, iTerm2), Claude, Docker Desktop — 10 apps
+- **Dev Tools** — CLI only: git, gh, lazygit, node, python, go, rust, docker, fzf, ripgrep, zoxide, atuin, television, and more — 31 packages
+- **Dev Apps** — editors (VS Code, Cursor, Zed), terminals (Ghostty, Warp, iTerm2), Claude, Docker Desktop — 10 apps
 - **Utilities** — Raycast, Alfred, AltTab, AeroSpace, 1Password, BetterDisplay, Keka, and more — 17 packages
 - **Browsers** — Chrome, Arc, Zen, Ungoogled Chromium, Helium
 - **Communication** — Ayugram, Telegram, Discord, Vesktop

@@ -429,6 +429,7 @@ tweaks_menu() {
             "---"
             "Dithering ›"
             "Space Switcher ›"
+            "FN Lang Switch ›"
         )
 
         # Plugins targeting menu.parent=tweaks append below the built-ins.
@@ -469,6 +470,7 @@ tweaks_menu() {
                fi ;;
             4) source "$MACRIFT_DIR/tweaks/dithering.sh" && dithering_menu ;;
             5) source "$MACRIFT_DIR/tweaks/space_switcher.sh" && space_switcher_menu ;;
+            6) source "$MACRIFT_DIR/tweaks/fn_lang_switch.sh" && fn_lang_switch_menu ;;
             0) break ;;
             *) ;;
         esac
