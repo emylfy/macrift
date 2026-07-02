@@ -54,18 +54,6 @@ fi
 printf '%s\n' "$new_version" >VERSION
 git add VERSION
 
-# Optional: regenerate CHANGELOG.md from conventional commits via git-cliff so
-# every release ships a human-readable history. Skip silently if the tool
-# isn't installed (publish stays usable on stock systems).
-if command -v git-cliff >/dev/null 2>&1; then
-    if git-cliff --tag "v$new_version" -o CHANGELOG.md 2>/dev/null; then
-        git add CHANGELOG.md
-        printf 'publish: regenerated CHANGELOG.md (via git-cliff)\n'
-    else
-        printf 'publish: git-cliff failed — CHANGELOG.md not updated\n' >&2
-    fi
-fi
-
 git commit -q -m "chore(release): v$new_version"
 printf 'publish: %s → %s\n' "${current:-<empty>}" "$new_version"
 

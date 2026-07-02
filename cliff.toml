@@ -1,7 +1,8 @@
-# git-cliff config — used by .githooks/publish to (re)generate CHANGELOG.md
-# from conventional commits, and by .githooks/pre-push to render the body for
-# a GitHub Release. Both call-sites are optional: if git-cliff isn't on PATH
-# the hooks fall back to plain VERSION bump + tag, with no changelog written.
+# git-cliff config — used by .githooks/pre-push to render the body for a
+# GitHub Release from conventional commits. Optional: if git-cliff isn't on
+# PATH the hook falls back to a plain "Release v<VERSION>" body.
+# There is deliberately no tracked CHANGELOG.md — release notes live on the
+# GitHub Releases page and in the in-app update changelog.
 
 [changelog]
 # Single header line; per-version sections are emitted by the body template.
