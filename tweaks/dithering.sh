@@ -54,51 +54,6 @@ _dithering_compile() {
     fi
 }
 
-_dithering_write_plist() {
-    mkdir -p "$DITHERING_LOG_DIR" "$(dirname "$DITHERING_PLIST")"
-    cat > "$DITHERING_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$DITHERING_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$DITHERING_BIN</string>
-        <string>--daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>ProcessType</key>
-    <string>Background</string>
-    <key>StandardOutPath</key>
-    <string>$DITHERING_LOG</string>
-    <key>StandardErrorPath</key>
-    <string>$DITHERING_LOG</string>
-</dict>
-</plist>
-PLIST
-}
-
-_dithering_is_loaded() {
-    launchctl print "gui/$UID/$DITHERING_LABEL" &>/dev/null
-}
-
-_dithering_load() {
-    if _dithering_is_loaded; then
-        launchctl bootout "gui/$UID/$DITHERING_LABEL" 2>/dev/null || true
-    fi
-    launchctl bootstrap "gui/$UID" "$DITHERING_PLIST" 2>&1
-    launchctl enable "gui/$UID/$DITHERING_LABEL" 2>/dev/null || true
-}
-
-_dithering_unload() {
-    launchctl bootout "gui/$UID/$DITHERING_LABEL" 2>/dev/null || true
-}
-
 _dithering_query_status() {
     /usr/sbin/ioreg -lw0 2>/dev/null | grep -c '"enableDither" = No' || true
 }
@@ -125,10 +80,10 @@ dithering_install() {
     fi
 
     _dithering_compile || { wait_enter; crumb_pop; return; }
-    _dithering_write_plist
+    write_launch_agent "$DITHERING_PLIST" "$DITHERING_LABEL" "$DITHERING_BIN" "$DITHERING_LOG" Background --daemon
     log_ok "Wrote LaunchAgent → ${DITHERING_PLIST/#$HOME/~}"
 
-    _dithering_load
+    launchd_load "$DITHERING_LABEL" "$DITHERING_PLIST"
     sleep 1
 
     local off_count
@@ -174,7 +129,7 @@ dithering_uninstall() {
         return
     fi
 
-    _dithering_unload
+    launchd_unload "$DITHERING_LABEL"
     log_ok "LaunchAgent stopped"
 
     if [[ -x "$DITHERING_BIN" ]]; then
@@ -203,7 +158,7 @@ dithering_status() {
 
     local daemon_status="not installed"
     if [[ -f "$DITHERING_PLIST" ]]; then
-        if _dithering_is_loaded; then
+        if launchd_is_loaded "$DITHERING_LABEL"; then
             daemon_status="running"
         else
             daemon_status="installed (not running)"

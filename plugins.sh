@@ -751,7 +751,7 @@ _plugin_cli_lint() {
     # 2. Raw `launchctl bootstrap`
     hits=$(grep -rnE 'launchctl[[:space:]]+bootstrap' "$target" --include='*.sh' 2>/dev/null | grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true)
     if [[ -n "$hits" ]]; then
-        log_warn "Raw 'launchctl bootstrap' (use _journal_append_launchd for undo):"
+        log_warn "Raw 'launchctl bootstrap' (use launchd_load + _journal_append_command for undo):"
         printf '%s\n' "$hits" | sed 's|^|    |'
         issues=$((issues + 1))
     fi

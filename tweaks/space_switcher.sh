@@ -50,47 +50,6 @@ _space_compile() {
     fi
 }
 
-_space_write_plist() {
-    mkdir -p "$SPACE_LOG_DIR" "$(dirname "$SPACE_PLIST")"
-    cat > "$SPACE_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$SPACE_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$SPACE_BIN</string>
-        <string>--daemon</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>ProcessType</key>
-    <string>Interactive</string>
-    <key>StandardOutPath</key>
-    <string>$SPACE_LOG</string>
-    <key>StandardErrorPath</key>
-    <string>$SPACE_LOG</string>
-</dict>
-</plist>
-PLIST
-}
-
-_space_is_loaded() { launchctl print "gui/$UID/$SPACE_LABEL" &>/dev/null; }
-
-_space_load() {
-    if _space_is_loaded; then
-        launchctl bootout "gui/$UID/$SPACE_LABEL" 2>/dev/null || true
-    fi
-    launchctl bootstrap "gui/$UID" "$SPACE_PLIST" 2>&1
-    launchctl enable "gui/$UID/$SPACE_LABEL" 2>/dev/null || true
-}
-
-_space_unload() { launchctl bootout "gui/$UID/$SPACE_LABEL" 2>/dev/null || true; }
-
 _space_show_usage() {
     local bin="${SPACE_BIN/#$HOME/~}"
     printf '\n  %bCLI usage:%b\n' "$BOLD" "$RESET"
@@ -155,7 +114,7 @@ space_uninstall() {
         return
     fi
 
-    _space_unload
+    launchd_unload "$SPACE_LABEL"
     rm -f "$SPACE_PLIST" "$SPACE_BIN" "$SPACE_LOG"
     log_ok "Removed"
     log_info "Accessibility entry remains in System Settings — remove manually if desired"
@@ -170,10 +129,10 @@ space_toggle_daemon() {
         return
     fi
 
-    if _space_is_loaded; then
+    if launchd_is_loaded "$SPACE_LABEL"; then
         clear
         if ! confirm "Stop daemon? Native Ctrl+←/→ becomes slow again."; then return; fi
-        _space_unload
+        launchd_unload "$SPACE_LABEL"
         rm -f "$SPACE_PLIST"
         log_ok "Daemon stopped — native Ctrl+←/→ restored to default behavior"
         sleep 1
@@ -194,11 +153,11 @@ space_toggle_daemon() {
         return
     fi
 
-    _space_write_plist
-    _space_load
+    write_launch_agent "$SPACE_PLIST" "$SPACE_LABEL" "$SPACE_BIN" "$SPACE_LOG" Interactive --daemon
+    launchd_load "$SPACE_LABEL" "$SPACE_PLIST"
     sleep 1
 
-    if _space_is_loaded; then
+    if launchd_is_loaded "$SPACE_LABEL"; then
         log_ok "Daemon running — try Ctrl+←/→ now"
     else
         log_warn "Daemon failed to start — check $SPACE_LOG"
@@ -213,7 +172,7 @@ space_status() {
     local installed="not installed"
     [[ -x "$SPACE_BIN" ]] && installed="installed"
     local daemon="off"
-    _space_is_loaded && daemon="running"
+    launchd_is_loaded "$SPACE_LABEL" && daemon="running"
 
     show_info_box "Space Switcher" \
         "Binary:   $installed" \
@@ -234,7 +193,7 @@ space_switcher_menu() {
         local items=()
         if [[ -x "$SPACE_BIN" ]]; then
             local toggle_label
-            if _space_is_loaded; then
+            if launchd_is_loaded "$SPACE_LABEL"; then
                 toggle_label="Intercept Ctrl+←/→: on"
             else
                 toggle_label="Intercept Ctrl+←/→: off"
