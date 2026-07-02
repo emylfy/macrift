@@ -337,7 +337,7 @@ show_menu() {
     local vp_top=0
 
     local total_lines=$((visible_count + 8))
-    $need_scroll && total_lines=$((total_lines + 2))
+    $need_scroll && total_lines=$((total_lines + 1))
     [[ -n "$subtitle" ]] && total_lines=$((total_lines + 1))
 
     # Restore cursor from sticky position if we've been here before
@@ -359,7 +359,8 @@ show_menu() {
         first_draw=false
 
         _box_top "$title" "$inner_w"
-        _box_empty "$inner_w"
+        # The scroll-up slot below doubles as the top gap when scrolling
+        $need_scroll || _box_empty "$inner_w"
 
         # Optional dim subtitle (live state) right under the title
         if [[ -n "$subtitle" ]]; then
@@ -590,7 +591,7 @@ show_multiselect() {
 
     # +9 (not +8) because the hint is now two lines instead of one
     local redraw_lines=$((visible_count + 9))
-    $any_scroll && redraw_lines=$((redraw_lines + 2))
+    $any_scroll && redraw_lines=$((redraw_lines + 1))
 
     local first_draw=true
     _ui_start
@@ -618,7 +619,7 @@ show_multiselect() {
             first_draw=false
 
             _box_top "$title" "$inner_w"
-            _box_empty "$inner_w"
+            $any_scroll || _box_empty "$inner_w"
 
             # Reserve indicator slot if either mode needs scrolling
             if $any_scroll; then
@@ -681,7 +682,8 @@ show_multiselect() {
         first_draw=false
 
         _box_top "$title" "$inner_w"
-        _box_empty "$inner_w"
+        # The scroll-up slot below doubles as the top gap when scrolling
+        $any_scroll || _box_empty "$inner_w"
 
         # Scroll-up
         if $any_scroll; then
