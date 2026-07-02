@@ -814,6 +814,22 @@ eq "bundle journal: new formula" "$(jq -r 'select(.kind=="brew" and .source=="fo
 eq "bundle journal: new cask"    "$(jq -r 'select(.kind=="brew" and .source=="cask").name' "$MACRIFT_JOURNAL")" "raycast"
 unset -f brew
 
+# --- Brewfile tokenizer: kinds, optional flag, descriptions ---
+_brewfile_parse_line 'brew "fzf"'
+eq "tokenizer: formula, no comment"  "$BF_KIND/$BF_NAME/$BF_OPTIONAL/$BF_DESC" "formula/fzf/0/"
+_brewfile_parse_line 'brew "zoxide"               # smarter cd — jumps to frecent dirs'
+eq "tokenizer: description captured" "$BF_DESC" "smarter cd — jumps to frecent dirs"
+_brewfile_parse_line 'brew "node"                 # optional'
+eq "tokenizer: bare optional"        "$BF_OPTIONAL/$BF_DESC" "1/"
+_brewfile_parse_line 'cask "aerospace"  # optional — from nikitabobko/tap (taps above)'
+eq "tokenizer: optional with prose"  "$BF_OPTIONAL/$BF_DESC" "1/from nikitabobko/tap (taps above)"
+_brewfile_parse_line 'mas "Xcode", id: 497799835 # optional'
+eq "tokenizer: mas id + optional"    "$BF_KIND/$BF_ID/$BF_OPTIONAL" "mas/497799835/1"
+_brewfile_parse_line 'tap "nikitabobko/tap"   # aerospace tiling WM'
+eq "tokenizer: tap description"      "$BF_KIND/$BF_DESC" "tap/aerospace tiling WM"
+if _brewfile_parse_line '# just a comment'; then no "tokenizer: comment rejected"; else ok "tokenizer: comment rejected"; fi
+if _brewfile_parse_line '   '; then no "tokenizer: blank rejected"; else ok "tokenizer: blank rejected"; fi
+
 # --- launchd: agent install journals a removal undo ---
 : > "$MACRIFT_JOURNAL"
 LA_TMP="$(mktemp -d)"

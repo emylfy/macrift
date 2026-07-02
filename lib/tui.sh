@@ -555,6 +555,7 @@ show_multiselect() {
         [[ "${items[$i]}" == "---" ]] && continue
         local _ilen=${#items[$i]}
         [[ "${items[$i]}" == "## "* ]] && _ilen=$((_ilen - 3))   # strip "## " prefix
+        [[ "${items[$i]}" == *"~"* ]] && _ilen=$((_ilen + 1))    # "~" renders as two spaces
         [[ $_ilen -gt $max_len ]] && max_len=$_ilen
     done
     for ((i=0; i<view_count; i++)); do
@@ -713,12 +714,31 @@ show_multiselect() {
                 continue
             fi
 
-            local pad=$((inner_w - 6 - ${#items[$i]})); [[ $pad -lt 0 ]] && pad=0
+            # "label~note" items render the note dim on the same row (as in the
+            # tweaks menu); the full string still round-trips through selection.
+            local mlabel="${items[$i]}" mnote=""
+            if [[ "$mlabel" == *"~"* ]]; then
+                mnote="${mlabel#*~}"; mlabel="${mlabel%%~*}"
+            fi
+            local dlen=${#mlabel}; [[ -n "$mnote" ]] && dlen=$((dlen + 2 + ${#mnote}))
+            local avail=$((inner_w - 6))
+            if [[ -n "$mnote" && $dlen -gt $avail ]]; then
+                local nmax=$((avail - ${#mlabel} - 3))
+                if [[ $nmax -lt 1 ]]; then mnote=""; dlen=${#mlabel}
+                else mnote="${mnote:0:nmax}…"; dlen=$((${#mlabel} + 2 + ${#mnote})); fi
+            fi
+            local pad=$((inner_w - 6 - dlen)); [[ $pad -lt 0 ]] && pad=0
             local lead="  "; [[ $i -eq $cursor ]] && lead=" $BAR"
             local box
             if [[ "${selected[i]}" == "1" ]]; then box=$(printf '%b[*]%b' "$GREEN" "$R")
             else box=$(printf '%b[ ]%b' "$DIM" "$R"); fi
-            _box_row "$inner_w" "$(printf '%s %s' "$box" "${items[$i]}")" "$pad" "$lead"
+            local mbody
+            if [[ -n "$mnote" ]]; then
+                mbody=$(printf '%s %s  %b%s%b' "$box" "$mlabel" "$GRAY" "$mnote" "$R")
+            else
+                mbody=$(printf '%s %s' "$box" "$mlabel")
+            fi
+            _box_row "$inner_w" "$mbody" "$pad" "$lead"
             rendered=$((rendered + 1))
         done
 

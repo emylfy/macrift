@@ -471,7 +471,7 @@ install_bundle() {
         had_items=true
         _brewfile_parse_line "$line" || continue
         [[ "$BF_KIND" == "formula" || "$BF_KIND" == "cask" ]] || continue
-        local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL"
+        local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL" desc="$BF_DESC"
         if grep -qxF "$name" <<< "$installed"; then
             if [[ "$kind" == "cask" ]] && _is_cask_broken "$name"; then
                 broken_casks+=("$name")
@@ -484,7 +484,9 @@ install_bundle() {
             installed_view+=("$name [external]")
         else
             new_lines+=("$line")
-            new_labels+=("$name")
+            # "name~desc" — show_multiselect renders the desc dim after the name;
+            # a desc carrying "~" itself would split wrong, so it stays file-only
+            if [[ -n "$desc" && "$desc" != *"~"* ]]; then new_labels+=("$name~$desc"); else new_labels+=("$name"); fi
             new_optional+=("$optional")
         fi
     done < "$path"
@@ -652,7 +654,7 @@ install_all_bundles() {
         while IFS= read -r line; do
             _brewfile_parse_line "$line" || continue
             [[ "$BF_KIND" == "formula" || "$BF_KIND" == "cask" ]] || continue
-            local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL"
+            local name="$BF_NAME" kind="$BF_KIND" optional="$BF_OPTIONAL" desc="$BF_DESC"
             if grep -qxF "$name" <<< "$installed"; then
                 installed_count=$((installed_count + 1))
                 installed_view+=("$name [brew · $section_label]")
@@ -661,7 +663,7 @@ install_all_bundles() {
                 installed_view+=("$name [external · $section_label]")
             else
                 section_lines+=("$line")
-                section_labels+=("$name")
+                if [[ -n "$desc" && "$desc" != *"~"* ]]; then section_labels+=("$name~$desc"); else section_labels+=("$name"); fi
                 section_optional+=("$optional")
                 had_new=true
             fi

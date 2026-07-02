@@ -52,12 +52,13 @@ brew_install() {
 }
 
 # Tokenize one Brewfile line into BF_KIND (formula|cask|mas|tap), BF_NAME,
-# BF_ID (mas only) and BF_OPTIONAL (1 when tagged "# optional"). Returns 1 for
-# comments, blanks and unrecognized lines. Installed/broken/section policy
-# stays with the callers — this only parses.
+# BF_ID (mas only), BF_OPTIONAL (1 when tagged "# optional") and BF_DESC (the
+# trailing "# ..." comment, minus the optional marker). Returns 1 for comments,
+# blanks and unrecognized lines. Installed/broken/section policy stays with the
+# callers — this only parses.
 _brewfile_parse_line() {
     local line="$1"
-    BF_KIND="" BF_NAME="" BF_ID="" BF_OPTIONAL=0
+    BF_KIND="" BF_NAME="" BF_ID="" BF_OPTIONAL=0 BF_DESC=""
     [[ "$line" =~ ^[[:space:]]*#.*$ || -z "${line// /}" ]] && return 1
     if [[ "$line" =~ ^brew[[:space:]]+\"([^\"]+)\" ]]; then
         BF_KIND="formula"; BF_NAME="${BASH_REMATCH[1]}"
@@ -71,6 +72,18 @@ _brewfile_parse_line() {
         return 1
     fi
     [[ "$line" == *"# optional"* ]] && BF_OPTIONAL=1
+    if [[ "$line" == *"#"* ]]; then
+        local desc="${line#*#}"
+        desc="${desc#"${desc%%[![:space:]]*}"}"
+        if [[ "$desc" == optional* ]]; then
+            # "# optional — prose" keeps the prose; the marker itself is not a description
+            desc="${desc#optional}"
+            desc="${desc#"${desc%%[![:space:]]*}"}"
+            case "$desc" in "—"*) desc="${desc#—}" ;; "-"*) desc="${desc#-}" ;; esac
+            desc="${desc#"${desc%%[![:space:]]*}"}"
+        fi
+        BF_DESC="${desc%"${desc##*[![:space:]]}"}"
+    fi
     return 0
 }
 
