@@ -1016,11 +1016,16 @@ precheck_cli() {
     esac
 
     local smart
-    smart=$(_precheck_field "SMART Status" "$(system_profiler SPNVMeDataType 2>/dev/null)")
+    # system_profiler labels the field "S.M.A.R.T. status" (with dots), not
+    # "SMART Status" — that's diskutil's spelling, kept as the fallback for
+    # non-NVMe (SATA) Macs
+    smart=$(_precheck_field "S.M.A.R.T" "$(system_profiler SPNVMeDataType 2>/dev/null)")
+    [[ -z "$smart" ]] && smart=$(_precheck_field "SMART Status" "$(diskutil info disk0 2>/dev/null)")
     case "$smart" in
-        Verified) log_ok "SMART (disk):     Verified" ;;
-        "")       log_skip "SMART (disk):     unknown (not NVMe?)" ;;
-        *)        log_err "SMART (disk):     $smart (disk failing)"; critical=$((critical + 1)) ;;
+        Verified)      log_ok "SMART (disk):     Verified" ;;
+        "Not Supported") log_skip "SMART (disk):     not supported (external/virtual disk)" ;;
+        "")            log_skip "SMART (disk):     couldn't parse — verify: diskutil info disk0 | grep SMART" ;;
+        *)             log_err "SMART (disk):     $smart (disk failing)"; critical=$((critical + 1)) ;;
     esac
 
     local panics

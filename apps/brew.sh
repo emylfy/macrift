@@ -819,7 +819,7 @@ import_brewbak() {
         installed_str+="${installed_view[$i]}"$'\n'
     done
     local selected
-    selected=$(MULTISELECT_INSTALLED="$installed_str" show_multiselect "Import" "${new_labels[@]}")
+    selected=$(MULTISELECT_INSTALLED="$installed_str" show_multiselect "Import from .brewbak" "${new_labels[@]}")
 
     if [[ -z "$selected" ]]; then
         log_info "Nothing selected"

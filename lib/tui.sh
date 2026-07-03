@@ -346,21 +346,9 @@ show_menu() {
         fi
     }
 
-    # On-screen breadcrumb — dim parent path above the box. Only worth the
-    # line when it shows an actual path: the root is dropped, and a single
-    # parent ("Manage Plugins ›") is skipped too — that's just the screen the
-    # user came from. Menus that pushed their own crumb have themselves as the
-    # last element (excluded); pickers that didn't push keep the full parent
-    # chain, so their direct parent still shows.
-    local crumb_line=""
-    if [[ ${#MACRIFT_CRUMBS[@]} -gt 1 ]]; then
-        local _parents=("${MACRIFT_CRUMBS[@]:1}")
-        local _plast=$(( ${#_parents[@]} - 1 ))
-        [[ "${_parents[$_plast]}" == "$title" ]] && unset "_parents[$_plast]"
-        if [[ ${#_parents[@]} -ge 2 ]]; then
-            crumb_line=$(_crumb_join "${_parents[@]}")
-        fi
-    fi
+    # No on-screen breadcrumb: it always duplicated context the user just
+    # navigated through. The full path lives in the terminal tab title
+    # (_update_title); picker titles are written to be self-sufficient.
 
     # Chrome height (non-item lines) — must track the render loop exactly, or
     # the \033[NA reposition drifts and smears frames (see the frame-geometry
@@ -369,7 +357,6 @@ show_menu() {
     local chrome=6
     $hide_back || chrome=$((chrome + 2))
     [[ -n "$subtitle" ]] && chrome=$((chrome + 2))
-    [[ -n "$crumb_line" ]] && chrome=$((chrome + 1))
     local scroll_info
     scroll_info=$(_calc_scroll "$last_idx" "$chrome")
     local need_scroll=${scroll_info%% *}
@@ -388,18 +375,19 @@ show_menu() {
     _ui_start
 
     while true; do
-        # Viewport
-        if $need_scroll && [[ $sel -lt $((sel_total - 1)) ]]; then
-            local cur_item=${sel_to_item[$sel]}
-            _adjust_viewport "$cur_item" "$last_idx"
+        # Viewport — keep the cursor visible. Only a visible trailing item
+        # (Exit) sits outside the scroll region; with a hidden Back every
+        # selectable is inside it, so the adjustment must always run — else
+        # the cursor walks off the bottom edge and disappears.
+        if $need_scroll; then
+            if $hide_back || [[ $sel -lt $((sel_total - 1)) ]]; then
+                _adjust_viewport "${sel_to_item[$sel]}" "$last_idx"
+            fi
         fi
 
         _frame_start "$first_draw" "$total_lines"
         first_draw=false
 
-        if [[ -n "$crumb_line" ]]; then
-            printf '  %b%s ›%b\033[K\n' "$DIM" "$crumb_line" "$R" >&2
-        fi
         _box_top "$title" "$inner_w"
         # The scroll-up slot below doubles as the top gap when scrolling
         $need_scroll || _box_empty "$inner_w"

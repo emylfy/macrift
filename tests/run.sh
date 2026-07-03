@@ -876,6 +876,10 @@ _read_key() {
         printf 'enter\n'
     fi
 }
+# Deterministic terminal size for scroll tests
+if [[ -n "${TFG_LINES:-}" ]]; then
+    tput() { case "$1" in lines) echo "$TFG_LINES";; cols) echo 80;; *) command tput "$@" 2>/dev/null;; esac; }
+fi
 MACRIFT_CRUMBS=()
 for ((i = 0; i < ${TFG_DEPTH:-1}; i++)); do MACRIFT_CRUMBS+=("crumb$i"); done
 # A menu that pushed its own crumb has itself as the last element
@@ -910,6 +914,20 @@ _frame_geom "geometry: menu, crumb path"      4 "T" "down"  show_menu "T" "A" "B
 _frame_geom "geometry: menu, scrolling"       2 "T" "down"  show_menu "T" Item{1..30} "Back"
 _frame_geom "geometry: multiselect"           2 ""  "space" show_multiselect "MS" "one~note" "## H" "two" "three"
 _frame_geom "geometry: wizard"                2 ""  "down"  _tweak_wizard "Cat:0:5"
+
+# Cursor must stay visible when it moves past the viewport in a scrolling
+# hidden-Back menu — the viewport skip for the trailing item used to apply to
+# the last regular item too, letting the cursor walk off the bottom edge.
+printf 'down\n%.0s' {1..35} > "$TFG/keys"
+scroll_out=$(MACRIFT_NO_INIT=1 MACRIFT_THEME=dark TERM=xterm-256color \
+             MACRIFT_DIR="$ROOT" TFG="$TFG" TFG_DEPTH=2 TFG_TITLE="T" TFG_LINES=14 \
+             "$BASH" "$TFG/driver.sh" show_menu "T" Item{1..30} "Back" 2>&1 >/dev/null | \
+             LC_ALL=C perl -pe 's/\e\[[0-9;?]*[a-zA-Z]//g')
+if printf '%s' "$scroll_out" | grep -q '▌Item30'; then
+    ok "scroll: cursor stays visible at the bottom"
+else
+    no "scroll: cursor stays visible at the bottom" "cursor row for Item30 never rendered"
+fi
 rm -rf "$TFG"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

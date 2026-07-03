@@ -36,7 +36,7 @@ save_profile() {
     local dest_name="macrift-profile"
 
     local choice
-    choice=$(show_menu "Save to" \
+    choice=$(show_menu "Save profile to" \
         "Desktop" \
         "Documents" \
         "iCloud Drive" \
@@ -102,7 +102,7 @@ restore_profile() {
         log_info "Found profile in ${locations[0]}"
     else
         local choice
-        choice=$(show_menu "Restore from" "${locations[@]}" "Back")
+        choice=$(show_menu "Restore profile from" "${locations[@]}" "Back")
         [[ "$choice" == "0" ]] && return
         restore_dir="${location_paths[$((choice - 1))]}"
     fi

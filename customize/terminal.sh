@@ -108,7 +108,7 @@ _iterm2_install_profile() {
     fi
 
     local choice
-    choice=$(show_menu "Choose Profile" "${descriptions[@]}" "Back")
+    choice=$(show_menu "iTerm2 profile" "${descriptions[@]}" "Back")
 
     if [[ "$choice" == "0" || -z "$choice" ]]; then return; fi
 

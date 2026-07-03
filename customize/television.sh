@@ -8,7 +8,7 @@ television_menu() {
         clear
 
         local choice
-        choice=$(show_menu "television" \
+        choice=$(show_menu "television"$'\x1f'"Fuzzy picker — Ctrl-T inserts a path into your command line" \
             "Install television + channels" \
             "Back")
 
@@ -23,6 +23,14 @@ television_menu() {
 
 setup_television() {
     if ! brew_install "television"; then return; fi
+
+    # The flagship channels are dead without their source/preview tools —
+    # files/dirs run fd, text runs ripgrep, previews run bat (otherwise the
+    # picker opens empty with "command not found: fd")
+    local dep
+    for dep in fd ripgrep bat; do
+        brew_install "$dep" || log_warn "$dep missing — some channels won't work"
+    done
 
     local config_source="$MACRIFT_DIR/config/television/config.toml"
     local config_target="$HOME/.config/television/config.toml"
@@ -39,7 +47,8 @@ setup_television() {
         _television_install_cable
         _television_shell_init
         log_ok "television configured"
-        log_hint "Run 'tv' to pick files; try 'tv git-log' or 'tv procs'"
+        log_hint "Ctrl-T while typing a command fuzzy-picks a file into the line"
+        log_hint "standalone: 'tv' browses files, 'tv git-log' picks a commit, 'tv procs' a process"
     fi
     wait_enter
 }
